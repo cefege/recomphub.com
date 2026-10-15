@@ -68,7 +68,7 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 
 These need your Cloudflare, cluster and GitHub access.
 
-1. Create the public repo `cefege/recomphub.com` and push. After the first image push, make the GHCR package `ghcr.io/cefege/recomphub.com` public.
+1. Create the public repo `cefege/recomphub.com` and push. The GHCR package `ghcr.io/cefege/recomphub.com` inherits the repo's public visibility, so the cluster pulls it without a pull secret.
 2. Create the tunnel and wire DNS:
    - `cloudflared tunnel create recomphub`
    - `kubectl -n recomphub create secret generic cloudflared-credentials --from-file=credentials.json=<path to credentials.json>`
@@ -92,7 +92,7 @@ These need your Cloudflare, cluster and GitHub access.
    ```
 
    The namespace is created by Flux, so run `kubectl create namespace recomphub` first if you create the secret before the first sync.
-5. On `ovh1`, apply the Flux bootstrap: `kubectl apply -f deploy/flux/bootstrap.yaml`.
+5. On `ovh1`, apply the Flux bootstrap: `kubectl apply -f deploy/flux/bootstrap.yaml`. Then run `kubectl -n recomphub create job --from=cronjob/postgres-backup postgres-backup-init` once: the `local-path` backup volume binds only when a pod first uses it, and Flux reports the Kustomization unhealthy until it is bound.
 6. Run each worker once, in this order, with `kubectl -n recomphub create job --from=cronjob/<name> <name>-init`: `catalog-sync`, `import-recompendium`, `import-portsdr`, `github-sync`, `media-sync`.
 7. Check `curl -s https://recomphub.com/healthz`; it should return `ok`.
 
