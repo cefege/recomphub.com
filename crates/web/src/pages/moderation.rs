@@ -250,7 +250,7 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
                             oninput: move |e| query.set(e.value()),
                         }
                         button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| search(false), "Search library" }
-                        button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| search(true), "Search IGDB" }
+                        button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| search(true), "Search all games" }
                     }
                     p { class: "text-sm text-success", "{picked_text}" }
                     ul { class: "grid gap-2 sm:grid-cols-2",
@@ -332,7 +332,7 @@ fn ChoiceButton(choice: GameChoice, picked: Option<Pick>, on_pick: EventHandler<
     let source = if choice.game_id.is_some() {
         "In RecompHub"
     } else {
-        "From IGDB"
+        "New game"
     };
     let class = if selected {
         "w-full rounded-xl border border-accent bg-surface-2 px-3 py-2 text-left text-sm"

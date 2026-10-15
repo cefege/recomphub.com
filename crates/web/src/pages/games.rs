@@ -646,7 +646,6 @@ fn GameBody(detail: GameDetail) -> Element {
 
         if let Some(text) = summary {
             Section { heading: "About".to_string(),
-                p { class: "text-xs font-bold uppercase tracking-wide text-muted", "Summary from IGDB" }
                 p { class: "mt-2 max-w-3xl leading-relaxed", "{text}" }
             }
         }

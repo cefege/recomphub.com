@@ -98,4 +98,4 @@ These need your Cloudflare, cluster and GitHub access.
 
 ## Attribution
 
-Game data and images: IGDB.com. Seed data: Recompendium (MIT).
+Seed data: Recompendium (MIT).

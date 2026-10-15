@@ -269,7 +269,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
                                 r#type: "button",
                                 class: BTN_GHOST,
                                 onclick: move |_| search_games(w, game_query.read().clone(), true),
-                                "Not listed? Search IGDB"
+                                "Not listed? Search all games"
                             }
                         }
                         ul { class: "grid gap-2 sm:grid-cols-2",
@@ -938,7 +938,7 @@ fn igdb_tag(choice: &GameChoice) -> &'static str {
     if choice.game_id.is_some() {
         ""
     } else {
-        " · new from IGDB"
+        " · new game"
     }
 }
 

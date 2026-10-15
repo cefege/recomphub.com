@@ -299,7 +299,7 @@ async fn resolve_game(
     let Some(igdb_id) = igdb_id else {
         return Err(http_error(
             StatusCode::BAD_REQUEST,
-            "Choose a game or search IGDB for one.",
+            "Choose a game or search all games for one.",
         ));
     };
     let client = igdb_client()?;
@@ -310,7 +310,7 @@ async fn resolve_game(
         .ok_or_else(|| {
             http_error(
                 StatusCode::NOT_FOUND,
-                format!("IGDB has no game {igdb_id}."),
+                format!("No game found with id {igdb_id}."),
             )
         })?;
     ensure_platforms(pool, &client, &game.platform_igdb_ids)

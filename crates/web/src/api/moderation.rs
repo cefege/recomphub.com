@@ -40,16 +40,18 @@ fn sql_error(e: sqlx::Error) -> ServerFnError {
 #[cfg(feature = "server")]
 pub(crate) fn igdb_client() -> Result<IgdbClient, ServerFnError> {
     IgdbClient::from_env().map_err(|e| {
+        tracing::warn!(error = %format!("{e:#}"), "game search client not configured");
         http_error(
             StatusCode::SERVICE_UNAVAILABLE,
-            format!("IGDB is not configured: {e}"),
+            "Game search is not configured.",
         )
     })
 }
 
 #[cfg(feature = "server")]
 pub(crate) fn igdb_error(e: anyhow::Error) -> ServerFnError {
-    http_error(StatusCode::BAD_GATEWAY, format!("IGDB request failed: {e}"))
+    tracing::warn!(error = %format!("{e:#}"), "game search request failed");
+    http_error(StatusCode::BAD_GATEWAY, "Game search failed.")
 }
 
 #[cfg(feature = "server")]
@@ -121,7 +123,10 @@ pub async fn approve(item_id: i64, overrides: ReviewOverrides) -> Result<(), Ser
             .await
             .map_err(igdb_error)?
             .ok_or_else(|| {
-                http_error(StatusCode::NOT_FOUND, format!("IGDB has no game {igdb_id}"))
+                http_error(
+                    StatusCode::NOT_FOUND,
+                    format!("No game found with id {igdb_id}"),
+                )
             })?;
         ensure_platforms(pool, &client, &game.platform_igdb_ids)
             .await

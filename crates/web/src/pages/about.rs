@@ -61,7 +61,6 @@ pub fn About() -> Element {
             }
             Section { heading: "Data sources and attributions".to_string(),
                 ul { class: "list-disc space-y-2 pl-6",
-                    li { "Game data, cover art and screenshots: IGDB.com." }
                     li { "Seed data: Recompendium (MIT licensed), PortsDR, and GitHub search and r/recomps for new candidates." }
                     li { "Platform icons: Simple Icons (CC0)." }
                     li { "Gameplay videos are YouTube search results, shown with YouTube's privacy-enhanced embeds." }

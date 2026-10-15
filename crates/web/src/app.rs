@@ -153,8 +153,7 @@ pub fn Shell() -> Element {
                     a { href: "/about", class: "hover:text-foreground", "About" }
                     a { href: "/feed.xml", class: "hover:text-foreground", "RSS" }
                 }
-                p { class: "mt-3", "Game data and images: IGDB.com" }
-                p { "Seed data: Recompendium (MIT)" }
+                p { class: "mt-3", "Seed data: Recompendium (MIT)" }
             }
         }
     }
