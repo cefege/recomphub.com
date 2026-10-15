@@ -24,6 +24,9 @@ const OG_HEIGHT: u32 = 630;
 const OG_QUALITY: u8 = 82;
 /// Rows fetched per `process_pending` call.
 pub const BATCH_SIZE: i64 = 500;
+/// Rows downloaded and encoded at the same time. Encoding is single-threaded per image, so this
+/// is roughly the number of cores one run uses.
+const CONCURRENCY: usize = 4;
 const USER_AGENT: &str = "recomphub/1.0 (+https://recomphub.com)";
 
 /// Output widths for a media kind (plan §3). `og` is handled separately.
@@ -213,8 +216,8 @@ pub struct MediaReport {
     pub failed: usize,
 }
 
-/// Processes up to `limit` pending or retryable rows. Failed rows are retried until they reach
-/// three attempts.
+/// Processes up to `limit` pending or retryable rows, `CONCURRENCY` at a time. Failed rows are
+/// retried until they reach three attempts.
 pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Result<MediaReport> {
     let http = reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -223,9 +226,17 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
         .context("building the media HTTP client")?;
     let rows = media::next_pending(pool, limit.min(BATCH_SIZE)).await?;
     let mut report = MediaReport::default();
-    for row in &rows {
+    let mut tasks = tokio::task::JoinSet::new();
+    let mut queue = rows.into_iter();
+    loop {
+        while tasks.len() < CONCURRENCY {
+            let Some(row) = queue.next() else { break };
+            let (pool, http, dir) = (pool.clone(), http.clone(), media_dir.to_path_buf());
+            tasks.spawn(async move { process_row(&pool, &http, &dir, &row).await });
+        }
+        let Some(joined) = tasks.join_next().await else { break };
         report.processed += 1;
-        if process_row(pool, &http, media_dir, row).await? {
+        if joined.context("media task panicked")?? {
             report.ready += 1;
         } else {
             report.failed += 1;
