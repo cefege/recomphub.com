@@ -1,0 +1,454 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-sync
+  labels:
+    app.kubernetes.io/name: worker-media-sync
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-media-sync
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "media-sync"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: github-sync
+  labels:
+    app.kubernetes.io/name: worker-github-sync
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-github-sync
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "github-sync"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: catalog-sync
+  labels:
+    app.kubernetes.io/name: worker-catalog-sync
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-catalog-sync
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "catalog-sync"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: discover
+  labels:
+    app.kubernetes.io/name: worker-discover
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 4 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-discover
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "discover"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: youtube-sync
+  labels:
+    app.kubernetes.io/name: worker-youtube-sync
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 5 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-youtube-sync
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "youtube-sync"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: import-recompendium
+  labels:
+    app.kubernetes.io/name: worker-import-recompendium
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 1 * * 1"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-import-recompendium
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "import-recompendium"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: import-portsdr
+  labels:
+    app.kubernetes.io/name: worker-import-portsdr
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "30 1 * * 1"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-import-portsdr
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "import-portsdr"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: media
+                  mountPath: /data/media
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: media
+            - name: tmp
+              emptyDir: {}

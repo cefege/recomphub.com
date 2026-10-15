@@ -1,0 +1,6 @@
+[application]
+name = "recomphub"
+default_platform = "web"
+
+[web.app]
+title = "RecompHub"

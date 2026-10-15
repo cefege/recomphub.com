@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: recomphub
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - web.yaml
+  - workers.yaml
+  - cloudflared.yaml
+  - networkpolicy.yaml
+images:
+  - name: ghcr.io/cefege/recomphub.com
+    newTag: sha-000000000000

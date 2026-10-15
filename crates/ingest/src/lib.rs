@@ -1,0 +1,11 @@
+pub mod detect;
+pub mod discover;
+pub mod github;
+pub mod github_links;
+pub mod igdb;
+pub mod media;
+pub mod platform_map;
+pub mod portsdr;
+pub mod recompendium;
+pub mod reddit;
+pub mod youtube;
