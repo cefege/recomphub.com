@@ -234,7 +234,9 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
             let (pool, http, dir) = (pool.clone(), http.clone(), media_dir.to_path_buf());
             tasks.spawn(async move { process_row(&pool, &http, &dir, &row).await });
         }
-        let Some(joined) = tasks.join_next().await else { break };
+        let Some(joined) = tasks.join_next().await else {
+            break;
+        };
         report.processed += 1;
         if joined.context("media task panicked")?? {
             report.ready += 1;
