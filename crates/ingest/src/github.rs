@@ -119,6 +119,8 @@ pub struct GithubSyncReport {
     pub scanned: usize,
     /// Ports hidden because their repository no longer exists.
     pub hidden: usize,
+    /// Ports whose scan request failed; they stay due and are retried on the next run.
+    pub failed: usize,
 }
 
 /// HTTP client for the GitHub REST and GraphQL APIs.
@@ -717,7 +719,16 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
     let scan = ports::due_ai_scan(pool, SCAN_LIMIT_PER_RUN).await?;
     for port in &scan {
         let (owner, repo) = parse_repo(&port.repo_url)?;
-        match client.fetch_preview(&owner, &repo).await? {
+        // One flaky request must not stop the scan; the port stays due and is retried next run.
+        let fetched = match client.fetch_preview(&owner, &repo).await {
+            Ok(fetched) => fetched,
+            Err(e) => {
+                tracing::warn!(port_id = port.id, repo = %port.repo_url, error = %format!("{e:#}"), "scan failed; retrying next run");
+                report.failed += 1;
+                continue;
+            }
+        };
+        match fetched {
             None => {
                 hide_port(pool, port).await?;
                 report.hidden += 1;
