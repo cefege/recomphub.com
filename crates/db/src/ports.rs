@@ -451,6 +451,24 @@ pub async fn find_by_repo_url(
     Ok(row)
 }
 
+/// Another port that already owns this GitHub repository, by id or by canonical URL.
+pub async fn other_port_with_repo(
+    ex: impl PgExecutor<'_>,
+    port_id: i64,
+    github_repo_id: i64,
+    repo_url: &str,
+) -> DbResult<Option<i64>> {
+    let id = sqlx::query_scalar::<_, i64>(
+        "SELECT id FROM ports WHERE id <> $1 AND (github_repo_id = $2 OR repo_url = $3) LIMIT 1",
+    )
+    .bind(port_id)
+    .bind(github_repo_id)
+    .bind(repo_url)
+    .fetch_optional(ex)
+    .await?;
+    Ok(id)
+}
+
 /// Authors of a port in position order.
 pub async fn authors(ex: impl PgExecutor<'_>, port_id: i64) -> DbResult<Vec<AuthorRow>> {
     let rows = sqlx::query_as::<_, AuthorRow>(

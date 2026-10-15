@@ -701,6 +701,10 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                 }
                 Some(r) => {
                     let sync = r.to_sync()?;
+                    if hide_if_duplicate(pool, port, &sync).await? {
+                        report.hidden += 1;
+                        continue;
+                    }
                     let mut tx = pool.begin().await?;
                     ports::update_github(&mut tx, port.id, &sync, None).await?;
                     tx.commit().await?;
@@ -720,6 +724,10 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
             }
             Some(prev) => {
                 let sync = preview_sync(&prev);
+                if hide_if_duplicate(pool, port, &sync).await? {
+                    report.hidden += 1;
+                    continue;
+                }
                 let ai = ai_sync(&prev.ai);
                 let authors = author_inputs(pool, &author_specs(&prev)).await?;
                 let mut tx = pool.begin().await?;
@@ -739,6 +747,21 @@ async fn hide_port(pool: &PgPool, port: &PortRow) -> Result<()> {
     tx.commit().await?;
     tracing::warn!(port_id = port.id, repo = %port.repo_url, "repository no longer exists; port hidden");
     Ok(())
+}
+
+/// Hides `port` when another port already holds its repository, which happens when a repo was
+/// imported under both its old and its new name. Returns whether it was hidden.
+async fn hide_if_duplicate(pool: &PgPool, port: &PortRow, sync: &GithubSync) -> Result<bool> {
+    let Some(other) =
+        ports::other_port_with_repo(pool, port.id, sync.github_repo_id, &sync.repo_url).await?
+    else {
+        return Ok(false);
+    };
+    let mut tx = pool.begin().await?;
+    ports::set_status(&mut tx, port.id, "hidden").await?;
+    tx.commit().await?;
+    tracing::warn!(port_id = port.id, duplicate_of = other, repo = %sync.repo_url, "repository already listed under another port; port hidden");
+    Ok(true)
 }
 
 fn snippet(s: &str) -> String {
