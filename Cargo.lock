@@ -3868,6 +3868,7 @@ dependencies = [
  "recomphub-ingest",
  "recomphub-shared",
  "reqwest",
+ "serde",
  "serde_json",
  "sqlx",
  "tar",

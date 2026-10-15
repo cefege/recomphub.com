@@ -15,15 +15,18 @@ use recomphub_db::ports::{
 };
 use recomphub_db::submissions::add_candidate;
 use recomphub_ingest::igdb::{self, IgdbClient, MatchResult};
-use recomphub_ingest::platform_map::igdb_slug_for;
+use recomphub_ingest::platform_map::{IGDB_SLUGS, igdb_slug_for};
 use recomphub_ingest::portsdr::{PortsDrCard, parse_cards};
 use recomphub_ingest::recompendium::{RecompEntry, parse_entry};
-use recomphub_shared::{AiSource, AiUsage, Playability, TargetPlatform};
+use recomphub_shared::{AiSource, AiUsage, Playability, PortKind, TargetPlatform};
 use serde_json::{Value, json};
 use tracing::warn;
 
 const TARBALL_URL: &str = "https://api.github.com/repos/nio03/unricopie/tarball";
 const PORTSDR_URL: &str = "https://portsdr.com/";
+/// The reviewed seed list in this repository, served raw by GitHub.
+pub const CURATED_URL: &str =
+    "https://raw.githubusercontent.com/cefege/recomphub.com/main/seed/curated-ports.json";
 const USER_AGENT: &str = "recomphub/1.0 (+https://recomphub.com)";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -134,6 +137,68 @@ pub fn portsdr_source(card: &PortsDrCard) -> SourcePort {
             playability: Playability::Unknown.as_str().to_string(),
             ai_usage: ai_usage.as_str().to_string(),
             ai_source: ai_source.map(|s| s.as_str().to_string()),
+            ..PortInput::default()
+        },
+        authors: Vec::new(),
+    }
+}
+
+/// One reviewed row of the curated seed list (`seed/curated-ports.json`).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CuratedRow {
+    pub repo_url: String,
+    pub game: String,
+    /// IGDB platform slug, or any key [`igdb_slug_for`] knows.
+    pub original_platform: String,
+    pub kind: String,
+    #[serde(default)]
+    pub runs_on: Vec<String>,
+    pub ai_usage: String,
+    pub playable: bool,
+}
+
+/// Maps a curated row to a source record. Unknown kinds or platforms are left for moderators.
+pub fn curated_source(row: &CuratedRow) -> SourcePort {
+    let kind = match row.kind.as_str() {
+        "decompilation_port" => PortKind::DecompPort,
+        other => other.parse().unwrap_or(PortKind::SourcePort),
+    };
+    let ai_usage = match row.ai_usage.as_str() {
+        "generated" => AiUsage::PrimarilyAi,
+        other => other.parse().unwrap_or(AiUsage::Unknown),
+    };
+    let platform_slug = IGDB_SLUGS
+        .iter()
+        .copied()
+        .find(|slug| *slug == row.original_platform)
+        .or_else(|| igdb_slug_for(&row.original_platform));
+    let repo_url = row.repo_url.trim_end_matches('/').to_string();
+    let name = repo_url.rsplit('/').next().unwrap_or(&row.game).to_string();
+    SourcePort {
+        source: "import:curated",
+        game_title: row.game.clone(),
+        console: Some(row.original_platform.clone()),
+        platform_slug,
+        port: PortInput {
+            name,
+            kind: kind.as_str().to_string(),
+            repo_url,
+            declared_platforms: row
+                .runs_on
+                .iter()
+                .filter_map(|p| p.parse::<TargetPlatform>().ok())
+                .map(|p| p.as_str().to_string())
+                .collect(),
+            playability: if row.playable {
+                Playability::Playable
+            } else {
+                Playability::InProgress
+            }
+            .as_str()
+            .to_string(),
+            ai_source: (ai_usage != AiUsage::Unknown)
+                .then(|| AiSource::Imported.as_str().to_string()),
+            ai_usage: ai_usage.as_str().to_string(),
             ..PortInput::default()
         },
         authors: Vec::new(),
@@ -362,6 +427,33 @@ pub async fn import_portsdr(
     for card in &cards {
         report.seen += 1;
         let placement = place(pool, client, &platforms, portsdr_source(card)).await?;
+        report.record(placement);
+    }
+    Ok(report)
+}
+
+/// Imports the curated seed list (a JSON array of [`CuratedRow`]) from `url`.
+pub async fn import_curated(
+    pool: &PgPool,
+    client: &IgdbClient,
+    http: &reqwest::Client,
+    url: &str,
+) -> Result<ImportReport> {
+    let platforms = prepare_platforms(pool, client).await?;
+    let rows: Vec<CuratedRow> = http
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("requesting {url}"))?
+        .error_for_status()
+        .with_context(|| format!("{url} returned an error status"))?
+        .json()
+        .await
+        .context("parsing the curated list")?;
+    let mut report = ImportReport::default();
+    for row in &rows {
+        report.seen += 1;
+        let placement = place(pool, client, &platforms, curated_source(row)).await?;
         report.record(placement);
     }
     Ok(report)

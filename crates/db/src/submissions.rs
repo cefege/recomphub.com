@@ -16,6 +16,7 @@ pub const SOURCES: &[&str] = &[
     "discovery:reddit",
     "import:recompendium",
     "import:portsdr",
+    "import:curated",
 ];
 
 /// One submission row.

@@ -31,6 +31,11 @@ enum Command {
     ImportRecompendium,
     /// Import the PortsDR index page.
     ImportPortsdr,
+    /// Import the reviewed seed list (`seed/curated-ports.json`) from a URL.
+    ImportCurated {
+        #[arg(long, default_value = imports::CURATED_URL)]
+        url: String,
+    },
     /// Refresh GitHub metadata, releases, authors and AI usage for stale ports.
     GithubSync,
     /// Find new recomp repositories on GitHub search and r/recomps as candidates.
@@ -86,6 +91,13 @@ async fn run(command: Command) -> Result<()> {
             let http = imports::http_client()?;
             let report = imports::import_portsdr(&pool, &client, &http).await?;
             info!(?report, "import-portsdr finished");
+        }
+        Command::ImportCurated { url } => {
+            let pool = pool().await?;
+            let client = IgdbClient::from_env()?;
+            let http = imports::http_client()?;
+            let report = imports::import_curated(&pool, &client, &http, &url).await?;
+            info!(?report, "import-curated finished");
         }
         Command::GithubSync => {
             let pool = pool().await?;

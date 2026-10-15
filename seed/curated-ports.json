@@ -1,0 +1,2719 @@
+[
+ {
+  "repo_url": "https://github.com/thefixinhixon/SplosionManRecomp",
+  "game": "'Splosion Man",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/riseio/TWIPE_00Sheven",
+  "game": "007: The World Is Not Enough",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/nlwstein/skullburglar",
+  "game": "50 Cent: Blood on the Sand",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sal063/AC6_recomp",
+  "game": "Ace Combat 6: Fires of Liberation",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elprogramadorloco-arch/agvg2-recomp",
+  "game": "Advanced V.G. 2",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/alondero/aerogauge-recomp",
+  "game": "AeroGauge",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Genesis5500/ArmyOfTwo-Recomp",
+  "game": "Army of Two",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elprogramadorloco-arch/asuka100-recomp",
+  "game": "Asuka 120% Final - Burning Fest. Final",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/alondero/automobililamborghini-recomp",
+  "game": "Automobili Lamborghini",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/BanjoRecomp/BanjoRecomp",
+  "game": "Banjo-Kazooie",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/Lighthouse",
+  "game": "Banjo-Kazooie",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/some-scurvy-dog/banjo-tooie-scurvy-dog-port",
+  "game": "Banjo-Tooie",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/danielgomesvieira2000/beetle-adventure-racing-recomp",
+  "game": "Beetle Adventure Racing",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/portingpete/Black-2006-Recomp",
+  "game": "BLACK",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/novapowers0/BloodyRoar2Recomp",
+  "game": "Bloody Roar II",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/zolaware/reblue",
+  "game": "Blue Dragon",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RevoSucks/BM64Recomp",
+  "game": "Bomberman 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/nikeymikey/bomberman-generation-moderngekko",
+  "game": "Bomberman Generation",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RevoSucks/BMHeroRecomp",
+  "game": "Bomberman Hero",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/xenophobentx/takedawn",
+  "game": "Burnout 3: Takedown",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/FrankHUN88453/CoD3Recomp",
+  "game": "Call of Duty 3",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/PaulCombal/mw2-recompiled",
+  "game": "Call of Duty: Modern Warfare 2",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/DankZoneStudios/CV64Recomp",
+  "game": "Castlevania 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/fliperama86/cvlod_recomp",
+  "game": "Castlevania: Legacy of Darkness",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/BlackLabelHQ/SymphonyRecomp",
+  "game": "Castlevania: Symphony of the Night",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Rainchus/ChameleonTwist1-JP-Recomp",
+  "game": "Chameleon Twist",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Rainchus/ChameleonTwist2-JP-Recomp",
+  "game": "Chameleon Twist 2",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/crazyriddler/Conan2007Recomp",
+  "game": "Conan",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/psxrestore/Condemned2Recomp",
+  "game": "Condemned 2: Bloodshot",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sciaschi/CBFD-Recompiled",
+  "game": "Conker's Bad Fur Day",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Unowa001/crackdown-recomp",
+  "game": "Crackdown",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Matteo842/CrashBandicoot-Launcher",
+  "game": "Crash Bandicoot",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Zumbo06/Crash2Recomp",
+  "game": "Crash Bandicoot 2: Cortex Strikes Back",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/OAleex/MojoRecomp",
+  "game": "Crash of the Titans",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/CameronRedmore/Crash-Team-Racing-Turbocharged",
+  "game": "Crash Team Racing",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/CTR-tools/ctr-native",
+  "game": "Crash Team Racing",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Rinnegatamante/Crash-Team-Racing-High-Octane",
+  "game": "Crash Team Racing",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "web"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/OAleex/MojoRecomp",
+  "game": "Crash: Mind Over Mutant",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/yell0wsuit/cuttherope-dx",
+  "game": "Cut the Rope",
+  "original_platform": "win",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "web"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/florinp93/hells-gate-recomp",
+  "game": "Dante's Inferno",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/alphanu1/daytona-arcade-recomp",
+  "game": "Daytona USA",
+  "original_platform": "arcade",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/NoRain211/doaxvb-re",
+  "game": "Dead or Alive Xtreme Beach Volleyball",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bifftannen1/Dead-Space-2-Recomp",
+  "game": "Dead Space 2",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/LittleBitUA/DPRecomp",
+  "game": "Deadly Premonition",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/comoria08/defjam_recomp",
+  "game": "Def Jam: Fight for NY",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Gui-Tora/dmc-recomp",
+  "game": "Devil May Cry",
+  "original_platform": "ps2",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/Wyrelade/DW2-PC",
+  "game": "Digimon World 2",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/DinosaurPlanetRecomp/dino-recomp",
+  "game": "Dinosaur Planet",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/obaidr1/hercules-recompiled",
+  "game": "Disney's Hercules",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/eandis/SDOJ-Recomp",
+  "game": "DoDonPachi Saidaioujou",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Rainchus/Donkey-Kong-64-Recompiled",
+  "game": "Donkey Kong 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elliotttate/DKC1Recomp",
+  "game": "Donkey Kong Country",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elliotttate/DKC2Recomp",
+  "game": "Donkey Kong Country 2: Diddy's Kong Quest",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elliotttate/DKC3Recomp",
+  "game": "Donkey Kong Country 3: Dixie Kong's Double Trouble!",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/BodbDearg/PsyDoom",
+  "game": "Doom",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/AngheloAlf/drmario64_recomp",
+  "game": "Dr. Mario 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Sinan-Karakaya/DQ8-Recompiled",
+  "game": "Dragon Quest VIII: Journey of the Cursed King",
+  "original_platform": "ps2",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/OpenDriver2/REDRIVER2",
+  "game": "Driver 2",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TheRunaway5/Phase-Distorter",
+  "game": "EarthBound",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elprogramadorloco-arch/jim2-recomp",
+  "game": "Earthworm Jim 2",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TekRantGaming/earthworm-jim-hd-recompiled",
+  "game": "Earthworm Jim HD",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/BeyondTomrrow/2K5Remade",
+  "game": "ESPN NFL 2K5",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/birabittoh/EternalSonataReprise",
+  "game": "Eternal Sonata",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/FZeroSNESRecomp",
+  "game": "F-Zero",
+  "original_platform": "snes",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/himdo/Fable-2-Recomp",
+  "game": "Fable 2",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elprogramadorloco-arch/fuc-recomp",
+  "game": "Fate/unlimited codes",
+  "original_platform": "psp",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/samuelit0davila/fifa-street-pc-port",
+  "game": "FIFA Street (2012)",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/BodbDearg/PsyDoom",
+  "game": "Final Doom",
+  "original_platform": "ps",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/JonathanDC64/FFCCEOT-Recomp",
+  "game": "Final Fantasy Crystal Chronicles: Echoes of Time",
+  "original_platform": "nds",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Jorge262007/FFTARecomp",
+  "game": "Final Fantasy Tactics Advance",
+  "original_platform": "gba",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Lordingard/SacredStonesRecomp",
+  "game": "Fire Emblem: The Sacred Stones",
+  "original_platform": "gba",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/arcanite24/pinyon-shift",
+  "game": "Forza Horizon",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/saulob/geometry-wars-retro-evolved-2-recompiled",
+  "game": "Geometry Wars: Retro Evolved 2",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/FelipePrado0/gow3_pc",
+  "game": "God of War III Remastered",
+  "original_platform": "ps4",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SunJaycy/GoldenEye-Recomp",
+  "game": "GoldenEye 007",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/GTTeancum/OpenGTPS1",
+  "game": "Gran Turismo 2",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/ianitsky/gt2-multiplayer",
+  "game": "Gran Turismo 2",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TechnicallyComputers/GundamWingEndlessDuelSNESRecomp",
+  "game": "Gundam Wing: Endless Duel",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "unknown",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/saulob/hard-corps-uprising-recompiled",
+  "game": "Hard Corps: Uprising",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarvestMoon64Recomp/HarvestMoon64Recomp",
+  "game": "Harvest Moon 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sonsegajp/HWDER",
+  "game": "Hyrule Warriors: Definitive Edition",
+  "original_platform": "switch",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/doc-haz/infinite-undiscovery-recomp",
+  "game": "Infinite Undiscovery",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/distilledorion-sketch/Initial-D-Arcade-Stage-3-Native-SH-4-Recompilation-WIP-",
+  "game": "Initial D Arcade Stage 3",
+  "original_platform": "arcade",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/open-goal/jak-project",
+  "game": "Jak 3",
+  "original_platform": "ps2",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/open-goal/jak-project",
+  "game": "Jak and Daxter: The Precursor Legacy",
+  "original_platform": "ps2",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/open-goal/jak-project",
+  "game": "Jak II",
+  "original_platform": "ps2",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/birabittoh/KameoRePowered",
+  "game": "Kameo: Elements of Power",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/drakolordx7/KillzoneRecomp",
+  "game": "Killzone",
+  "original_platform": "ps2",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Voicedrew11/verdite2",
+  "game": "King's Field",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Voicedrew11/verdite3",
+  "game": "King's Field II",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/elprogramadorloco-arch/korokoro-recomp",
+  "game": "KoroKoro Post nin",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/NeverCookFirst/DimensionsRecomp",
+  "game": "LEGO Dimensions",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/lf2-port",
+  "game": "Little Fighter 2",
+  "original_platform": "win",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/MaxDeadBear/Re-Cherry",
+  "game": "Lollipop Chainsaw",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/freefrank/LostOdysseyRecomp",
+  "game": "Lost Odyssey",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/rlerrr/shandalar-decomp",
+  "game": "Magic: The Gathering",
+  "original_platform": "win",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/SpaghettiKart",
+  "game": "Mario Kart 64",
+  "original_platform": "n64",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sonicdcer/MarioKart64Recomp",
+  "game": "Mario Kart 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/BlackLabelHQ/MediEvilRecomp",
+  "game": "MediEvil",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/MegaMan64Recomp/MegaMan64Recompiled",
+  "game": "Mega Man 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/MegaManX6Recomp",
+  "game": "Mega Man X6",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/KraftMacAndChee/Mercenaries-Recompiled",
+  "game": "Mercenaries: Playground of Destruction",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/holdmysocks/mcla-recomp",
+  "game": "Midnight Club: Los Angeles",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TheRunaway5/Phase-Distorter",
+  "game": "Mother 2",
+  "original_platform": "snes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/josiahg2502-glitch/Mother3Recomp",
+  "game": "Mother 3",
+  "original_platform": "gba",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/klorfmorf/Goemon64Recomp",
+  "game": "Mystical Ninja Starring Goemon",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/jorjbarbosa/naruto-rise-recomp",
+  "game": "Naruto: Rise of a Ninja",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/MaxDeadBear/NaughtyBear_ReStuff",
+  "game": "Naughty Bear",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/antoxa2584x/nfsu2-sw",
+  "game": "Need for Speed Underground 2",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SpeedBreakerProject/speedbreaker",
+  "game": "Need for Speed: Most Wanted",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/evaa-01/adam",
+  "game": "Neon Genesis Evangelion",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/nikeymikey/DominoRecomp",
+  "game": "No One Can Stop Mr. Domino",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TekRantGaming/outpost-kaloki-x-recompiled",
+  "game": "Outpost Kaloki X",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Mr-Shizzy/PacManRecomp",
+  "game": "Pac-Man",
+  "original_platform": "nes",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/PaperBoat",
+  "game": "Paper Mario",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Alex-LeTux/perfect_dark_VR",
+  "game": "Perfect Dark",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/perfect-dark-pc-port/perfect_dark",
+  "game": "Perfect Dark",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TekRantGaming/king-kong-recompiled",
+  "game": "Peter Jackson's King Kong: The Official Game of the Movie",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/danielgomesvieira2000/pilotwings-64-recomp",
+  "game": "Pilotwings 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/NoahVl/Birdman64",
+  "game": "Pilotwings 64",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Blue",
+  "original_platform": "gb",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Crystal",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/UNDERdecoded/Gen2Recomped",
+  "game": "Pokémon Crystal",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Emerald",
+  "original_platform": "gba",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/tripplyons/pokeemerald-3d",
+  "game": "Pokémon Emerald",
+  "original_platform": "gba",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "web"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon FireRed",
+  "original_platform": "gba",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Gold",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/UNDERdecoded/Gen2Recomped",
+  "game": "Pokémon Gold",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon LeafGreen",
+  "original_platform": "gba",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Red",
+  "original_platform": "gb",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Ruby",
+  "original_platform": "gba",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Sapphire",
+  "original_platform": "gba",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Silver",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/UNDERdecoded/Gen2Recomped",
+  "game": "Pokémon Silver",
+  "original_platform": "gbc",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/JackandBeans/Snap64Recomp",
+  "game": "Pokémon Snap",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/ClickingMaster/ssrecomp",
+  "game": "Pokémon SoulSilver",
+  "original_platform": "nds",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/PokemonStadiumRecomp",
+  "game": "Pokémon Stadium",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryanthaboi/gen1recomp",
+  "game": "Pokémon Yellow",
+  "original_platform": "gb",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/FulGerNet/rePOP",
+  "game": "Prince of Persia: The Sands of Time",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/beatrixzy/PGR4-Recomp",
+  "game": "Project Gotham Racing 4",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/boricuapab/quest64tale-recompiled",
+  "game": "Quest 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Rainchus/Quest64-Recomp",
+  "game": "Quest 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sp00nznet/Rampage",
+  "game": "Rampage 2: Universal Tour",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/sp00nznet/Rampage",
+  "game": "Rampage: World Tour",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/thefixinhixon/RealSteelRecomp",
+  "game": "Real Steel",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/tokeneffortports/ReCompiledSteel",
+  "game": "Real Steel",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sergiomanzur/regaiden-recomp",
+  "game": "Resident Evil Gaiden",
+  "original_platform": "gbc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/kazuyette/rr-decomp",
+  "game": "Ridge Racer",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RobGreenUK/Ridge-Racer-PS1-Recomp",
+  "game": "Ridge Racer",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Sirhalo23/RidgeRacer6-Recompilation",
+  "game": "Ridge Racer 6",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RobGreenUK/Ridge-Racer-Revolution-PS1-Recomp",
+  "game": "Ridge Racer Revolution",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "macos"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/danisandoval/fukami",
+  "game": "Ridge Racer V",
+  "original_platform": "ps2",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/jackpoison-prog/RingOut",
+  "game": "Ring Out",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/linkssy2/RoadRash64Recompiled",
+  "game": "Road Rash 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/ThatGuyMcd/Rocket-R",
+  "game": "Rocket: Robot on Wheels",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/bryantmh/rush2recompiled",
+  "game": "Rush 2: Extreme Racing USA",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Campfirecrucifix/scooby-doo-mystery-mayhem-pc",
+  "game": "Scooby-Doo! Mystery Mayhem",
+  "original_platform": "ps2",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/takoshero96/Silly-ReEncounter",
+  "game": "Serious Sam: Next Encounter",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/72ak/sh4-nx",
+  "game": "Silent Hill 4: The Room",
+  "original_platform": "win",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/LittleBitUA/DownpourRecomp",
+  "game": "Silent Hill: Downpour",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/christianortel/skate2-recompile-pc",
+  "game": "Skate 2",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/cdlewis/snowboardkids2-recomp",
+  "game": "Snowboard Kids 2",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/dvilelaf/opendana",
+  "game": "Solomon's Key 2",
+  "original_platform": "nes",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SAT-R/sa2",
+  "game": "Sonic Advance 2",
+  "original_platform": "gba",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sonicfreak1337/SARecomp",
+  "game": "Sonic Adventure",
+  "original_platform": "dc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RSDKModding/RSDKv3-Decompilation",
+  "game": "Sonic CD",
+  "original_platform": "genesis-slash-megadrive",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/YuutaTsubasa/Free-Riders-Recompiled",
+  "game": "Sonic Free Riders",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/RSDKModding/RSDKv4-Decompilation",
+  "game": "Sonic the Hedgehog",
+  "original_platform": "genesis-slash-megadrive",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sonicnext-dev/MarathonRecomp",
+  "game": "Sonic the Hedgehog (2006)",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/RSDKModding/RSDKv4-Decompilation",
+  "game": "Sonic the Hedgehog 2",
+  "original_platform": "genesis-slash-megadrive",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/hedge-dev/UnleashedRecomp",
+  "game": "Sonic Unleashed",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Cellenseres/SSSV_Recomp",
+  "game": "Space Station Silicon Valley",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/goliathret/EdgeOfTimeRecomp",
+  "game": "Spider-Man: Edge of Time",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TGP482/SCDA-XBERecomp",
+  "game": "Splinter Cell: Double Agent",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/Starship",
+  "game": "Star Fox 64",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sonicdcer/Starfox64Recomp",
+  "game": "Star Fox 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/n0madic/StarCraft64-recomp",
+  "game": "StarCraft 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/strider973/Street-Fighter-EX2-Plus-Recompiled",
+  "game": "Street Fighter EX2 Plus",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/coop-deluxe/sm64coopdx",
+  "game": "Super Mario 64",
+  "original_platform": "n64",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/Ghostship",
+  "game": "Super Mario 64",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/keepvaibin/nebula",
+  "game": "Super Mario Galaxy",
+  "original_platform": "wii",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/aharonahdoot/StrikersRecomp",
+  "game": "Super Mario Strikers",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/sunbright",
+  "game": "Super Mario Sunshine",
+  "original_platform": "ngc",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/snesrev/smw",
+  "game": "Super Mario World",
+  "original_platform": "snes",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/dyzz/srw64-recomp",
+  "game": "Super Robot Wars 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/JRickey/BattleShip",
+  "game": "Super Smash Bros.",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/sennecaelen/melee-ace-unlocked",
+  "game": "Super Smash Bros. Melee",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/fabioap-cpu/Tekken3Recomp",
+  "game": "Tekken 3",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/invinceble55-wq/Estacado-The-Darkness-Recomp",
+  "game": "The Darkness",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/snesrev/zelda3",
+  "game": "The Legend of Zelda: A Link to the Past",
+  "original_platform": "snes",
+  "kind": "reimplementation",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/2ship2harkinian/2ship2harkinian",
+  "game": "The Legend of Zelda: Majora's Mask",
+  "original_platform": "n64",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/zelda3d",
+  "game": "The Legend of Zelda: Majora's Mask",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Zelda64Recomp/Zelda64Recomp",
+  "game": "The Legend of Zelda: Majora's Mask",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/2ship2harkinian/2ship2harkinian",
+  "game": "The Legend of Zelda: Ocarina of Time",
+  "original_platform": "n64",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/HarbourMasters/Shipwright",
+  "game": "The Legend of Zelda: Ocarina of Time",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/zelda3d",
+  "game": "The Legend of Zelda: Ocarina of Time",
+  "original_platform": "n64",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "linux"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/999sian/tmc",
+  "game": "The Legend of Zelda: The Minish Cap",
+  "original_platform": "gba",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/MinishCapRecomp",
+  "game": "The Legend of Zelda: The Minish Cap",
+  "original_platform": "gba",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SSunnKing/ZeldaWWHDRecompAndroid---ENHANCED",
+  "game": "The Legend of Zelda: The Wind Waker HD",
+  "original_platform": "wiiu",
+  "kind": "static_recomp",
+  "runs_on": [
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp",
+  "game": "The Legend of Zelda: The Wind Waker HD",
+  "original_platform": "wiiu",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TwilitRealm/dusklight",
+  "game": "The Legend of Zelda: Twilight Princess",
+  "original_platform": "ngc",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "android"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/YesterMester/TheSimpsonsGameRecomp",
+  "game": "The Simpsons Game",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TekRantGaming/simpsons-wrestling-recompiled",
+  "game": "The Simpsons: Wrestling",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/phobos665/split2-recomp",
+  "game": "TimeSplitters 2",
+  "original_platform": "xbox",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/TombaRecomp",
+  "game": "Tomba!",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/psx-tomba",
+  "game": "Tomba!",
+  "original_platform": "ps",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/psx-tomba",
+  "game": "Tomba! 2: The Evil Swine Return",
+  "original_platform": "ps",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/RussoPhone/tomodachi-ltd-recomp",
+  "game": "Tomodachi Life: Living the Dream",
+  "original_platform": "switch",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/Capridog/SpaceRanger",
+  "game": "Toy Story 2: Buzz Lightyear to the Rescue",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/TechnicallyComputers/TwistedMetal4Recomp",
+  "game": "Twisted Metal 4",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [],
+  "ai_usage": "unknown",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/thiagordsfx/urban-reign-recomp",
+  "game": "Urban Reign",
+  "original_platform": "ps2",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Ed1z19/ValkyrieRecomp",
+  "game": "Valkyrie Profile",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/crabinacrabic/VivaPinataRecomp",
+  "game": "Viva Pinata",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/SolarCookies/TiP-Recomp",
+  "game": "Viva Pinata: Trouble in Paradise",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/mstan/WarioWareTwistedRecomp",
+  "game": "WarioWare: Twisted!",
+  "original_platform": "gba",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "android"
+  ],
+  "ai_usage": "unknown",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/danielgomesvieira2000/wave-race-64-recomp",
+  "game": "Wave Race 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "generated",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/DomazinUS/RaceWave46",
+  "game": "Wave Race 64",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/jessetbh/WCWvsNWOWorldTourRecomp",
+  "game": "WCW vs. nWo World Tour",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/jessetbh/WCWnWoRevengeRecomp",
+  "game": "WCW/nWo Revenge",
+  "original_platform": "n64",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/arelkair/wiiparty-recomp",
+  "game": "Wii Party",
+  "original_platform": "wii",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/iMrBurn/wwe12-pc",
+  "game": "WWE '12",
+  "original_platform": "xbox360",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/lurendrejer/wwfmania_recomp_public",
+  "game": "WWF WrestleMania: The Arcade Game",
+  "original_platform": "arcade",
+  "kind": "decompilation_port",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/SomeoneIsWorking/xmen2",
+  "game": "X-Men Legends II: Rise of Apocalypse",
+  "original_platform": "win",
+  "kind": "static_recomp",
+  "runs_on": [
+   "linux",
+   "macos",
+   "android"
+  ],
+  "ai_usage": "none",
+  "playable": false
+ },
+ {
+  "repo_url": "https://github.com/OpokXeno/xenogears-recomp",
+  "game": "Xenogears",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/Unchiga/YuGiOhForbiddenMemoriesRecomp",
+  "game": "Yu-Gi-Oh! Forbidden Memories",
+  "original_platform": "ps",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows",
+   "linux",
+   "macos"
+  ],
+  "ai_usage": "none",
+  "playable": true
+ }
+]

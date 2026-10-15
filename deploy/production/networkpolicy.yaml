@@ -61,6 +61,7 @@ spec:
                   - worker-youtube-sync
                   - worker-import-recompendium
                   - worker-import-portsdr
+                  - worker-import-curated
       ports:
         - protocol: TCP
           port: 5432
