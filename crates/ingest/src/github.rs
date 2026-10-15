@@ -309,7 +309,7 @@ impl GithubClient {
             .into_iter()
             .map(|c| CommitInfo {
                 message: c.commit.message,
-                author_login: c.author.map(|a| a.login),
+                author_login: c.author.and_then(|a| a.login),
             })
             .collect();
         let ai = detect::detect_ai(&root_refs, copilot, readme.as_deref(), &commit_infos);
@@ -844,9 +844,10 @@ struct CommitBody {
     message: String,
 }
 
+/// GitHub sends `{}` for commits whose email is not linked to an account.
 #[derive(Deserialize)]
 struct CommitAuthor {
-    login: String,
+    login: Option<String>,
 }
 
 #[derive(Deserialize)]
