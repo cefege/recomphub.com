@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: recomphub
 data:
   config.yaml: |
-    tunnel: 97edbe63-be7a-4e20-98ab-34adc117fa5e
+    tunnel: 152ceebc-cbe8-442d-9b03-54bf2f37e4e0
     credentials-file: /etc/cloudflared/creds/credentials.json
     metrics: 0.0.0.0:2000
     no-autoupdate: true

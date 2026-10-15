@@ -74,7 +74,7 @@ These need your Cloudflare, cluster and GitHub access.
    - `kubectl -n recomphub create secret generic cloudflared-credentials --from-file=credentials.json=<path to credentials.json>`
    - `cloudflared tunnel route dns recomphub recomphub.com`
    - `cloudflared tunnel route dns recomphub www.recomphub.com`
-   - Put the tunnel ID in `deploy/production/cloudflared.yaml` (currently tunnel `recomphub`, `97edbe63-be7a-4e20-98ab-34adc117fa5e`).
+   - Put the tunnel ID in `deploy/production/cloudflared.yaml` (currently tunnel `recomphub`, `152ceebc-cbe8-442d-9b03-54bf2f37e4e0`).
 3. Create a GitHub OAuth app with the callback `https://recomphub.com/auth/github/callback`.
 4. Create the application secret:
 
