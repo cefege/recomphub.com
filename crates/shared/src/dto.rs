@@ -247,6 +247,7 @@ pub struct SessionUser {
 /// Display name for a stored provider key.
 pub fn provider_label(provider: &str) -> &'static str {
     match provider {
+        "google" => "Google",
         "github" => "GitHub",
         "cloudflare" => "Cloudflare",
         _ => "Unknown provider",
