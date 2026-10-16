@@ -133,15 +133,26 @@ fn cut_subtitle(s: &str) -> &str {
     for (i, &(at, len)) in cuts.iter().enumerate() {
         let end = cuts.get(i + 1).map_or(s.len(), |next| next.0);
         let segment = &s[at + len..end];
-        let platformy = segment
+        // Cut only when the whole segment is platform or port wording ("PC Port",
+        // "Mac/Linux/Windows/Web Native"); "Android Enhanced" names a fork and stays.
+        let mut words = segment
             .split(|c: char| !c.is_alphanumeric())
-            .any(|w| PLATFORM_WORDS.contains(&w.to_lowercase().as_str()));
+            .filter(|w| !w.is_empty())
+            .map(str::to_lowercase)
+            .peekable();
+        let platformy = words.peek().is_some()
+            && words.all(|w| {
+                PLATFORM_WORDS.contains(&w.as_str()) || SUFFIX_FILLER.contains(&w.as_str())
+            });
         if platformy {
             return &s[..at];
         }
     }
     s
 }
+
+/// Words that may sit between platform words in a suffix without making it part of the title.
+const SUFFIX_FILLER: &[&str] = &["unofficial", "for", "and", "on", "pi", "version", "build"];
 
 /// Drops HTML tags, link targets, emphasis marks, images and symbols (emoji, ™).
 fn strip_markup(s: &str) -> String {
@@ -297,11 +308,21 @@ Play the 2002 game with a modern launcher on macOS, Windows, Linux, and Raspberr
     #[test]
     fn dash_separated_platform_suffix_is_cut() {
         let name = derive_display_name(
+            Some("# Majora's Mask Recompiled — Android Native Port"),
+            None,
+            "mm-android",
+        );
+        assert_eq!(name, "Majora's Mask Recompiled");
+    }
+
+    #[test]
+    fn suffix_naming_a_fork_is_kept() {
+        let name = derive_display_name(
             Some("# Wind Waker HD Recompiled — Android Enhanced"),
             None,
             "wwhd-android",
         );
-        assert_eq!(name, "Wind Waker HD Recompiled");
+        assert_eq!(name, "Wind Waker HD Recompiled — Android Enhanced");
     }
 
     #[test]

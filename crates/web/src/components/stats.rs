@@ -49,10 +49,41 @@ pub fn ProgressBar(pct: f64, label: String, #[props(default)] class: String) -> 
     }
 }
 
+/// A ring filled clockwise from 12 o'clock to `pct` (0..=100), with the percentage in the middle.
+/// `size` is the diameter in pixels.
+#[component]
+pub fn Donut(pct: f64, label: String, #[props(default = 64)] size: u32) -> Element {
+    let p = pct.clamp(0.0, 100.0);
+    // r = 15.915… makes the circumference 100, so the dash length is the percentage.
+    let dash = format!("{p:.2} {:.2}", 100.0 - p);
+    let now = format!("{p:.0}");
+    let text = if size >= 96 { "text-2xl" } else { "text-sm" };
+    rsx! {
+        div {
+            class: "relative shrink-0",
+            style: "width: {size}px; height: {size}px",
+            role: "progressbar",
+            "aria-label": "{label}",
+            "aria-valuemin": "0",
+            "aria-valuemax": "100",
+            "aria-valuenow": "{now}",
+            svg { class: "size-full -rotate-90", view_box: "0 0 36 36", "aria-hidden": "true",
+                circle { cx: "18", cy: "18", r: "15.9155", fill: "none", stroke_width: "3.5", class: "stroke-muted" }
+                if p > 0.0 {
+                    circle {
+                        cx: "18", cy: "18", r: "15.9155", fill: "none", stroke_width: "3.5",
+                        stroke_linecap: "round", stroke_dasharray: "{dash}", class: "stroke-success",
+                    }
+                }
+            }
+            span { class: "absolute inset-0 flex items-center justify-center font-semibold tabular {text}", "{now}%" }
+        }
+    }
+}
+
 /// Headline parity: the percentage, the slots behind it and the change over 30 days.
 #[component]
 pub fn ParityMeter(parity: ParityDto) -> Element {
-    let shown = format!("{:.0}", parity.pct);
     let trend = parity.pct_30d.map(|old| {
         let delta = parity.pct - old;
         if delta.abs() < 0.05 {
@@ -68,16 +99,15 @@ pub fn ParityMeter(parity: ParityDto) -> Element {
         pl(parity.ported_games, "ported game", "ported games"),
     );
     rsx! {
-        div { class: "space-y-3",
-            div { class: "flex flex-wrap items-baseline gap-x-3 gap-y-1",
-                span { class: "text-4xl font-semibold tabular", "{shown}%" }
-                span { class: "text-sm text-muted-foreground", "platform parity" }
+        div { class: "flex flex-wrap items-center gap-5",
+            Donut { pct: parity.pct, label: "Platform parity across the six major platforms", size: 112 }
+            div { class: "space-y-1",
+                p { class: "text-lg font-semibold", "Platform parity" }
+                p { class: "text-sm text-muted-foreground tabular", "{slots}" }
                 if let Some(t) = trend {
-                    span { class: "text-sm tabular text-muted-foreground", "{t}" }
+                    p { class: "text-sm tabular text-muted-foreground", "{t}" }
                 }
             }
-            ProgressBar { pct: parity.pct, label: "Platform parity across the six major platforms" }
-            p { class: "text-sm text-muted-foreground tabular", "{slots}" }
         }
     }
 }
@@ -130,17 +160,15 @@ pub fn PlatformCoverage(coverage: ParityDto, #[props(default = 6)] limit: usize)
             if let Some(text) = to_next {
                 p { class: "text-sm font-medium", "{text}" }
             }
-            ul { class: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
+            ul { class: "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6",
                 for row in rows {
-                    li { key: "{row.slug}", class: "space-y-2 rounded-xl border bg-card p-4 shadow-sm",
-                        div { class: "flex items-center justify-between gap-3",
-                            span { class: "flex items-center gap-2 text-sm font-medium",
-                                TargetIcon { target: row.slug.clone() }
-                                "{row.label}"
-                            }
-                            span { class: "text-sm tabular text-muted-foreground", "{row.count}" }
+                    li { key: "{row.slug}", class: "flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center shadow-sm",
+                        Donut { pct: row.pct, label: "{row.label} coverage", size: 72 }
+                        span { class: "flex items-center gap-1.5 text-sm font-medium",
+                            TargetIcon { target: row.slug.clone() }
+                            "{row.label}"
                         }
-                        ProgressBar { pct: row.pct, label: "{row.label} coverage" }
+                        span { class: "text-xs tabular text-muted-foreground", "{row.count}" }
                     }
                 }
             }

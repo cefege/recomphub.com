@@ -595,6 +595,9 @@
     --tw-translate-y: calc(calc(1/2 * 100%) * -1);
     translate: var(--tw-translate-x) var(--tw-translate-y);
   }
+  .-rotate-90 {
+    rotate: calc(90deg * -1);
+  }
   .animate-bump {
     animation: bump 0.45s ease-out;
   }
@@ -975,6 +978,12 @@
   }
   .fill-success {
     fill: var(--success);
+  }
+  .stroke-muted {
+    stroke: var(--muted);
+  }
+  .stroke-success {
+    stroke: var(--success);
   }
   .object-cover {
     object-fit: cover;
