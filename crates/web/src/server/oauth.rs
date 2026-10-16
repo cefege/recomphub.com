@@ -151,7 +151,7 @@ async fn start(provider: Provider, headers: &HeaderMap, query: LoginQuery) -> Re
     };
     let link = query.link.as_deref() == Some("1");
     if link && let Err(response) = signed_in_user(headers).await {
-        return response;
+        return *response;
     }
     let next = safe_next(query.next.as_deref().or(link.then_some("/account")));
 
@@ -232,7 +232,7 @@ async fn callback(provider: Provider, headers: &HeaderMap, query: CallbackQuery)
     let member = if pending.link {
         match signed_in_user(headers).await {
             Ok(user) => Some(user),
-            Err(response) => return response,
+            Err(response) => return *response,
         }
     } else {
         None
@@ -373,29 +373,33 @@ fn is_admin(profile: &IdentityProfile, admin_logins: &[String], admin_emails: &[
 }
 
 /// The signed-in, unbanned member behind these headers, or the response to send instead.
-async fn signed_in_user(headers: &HeaderMap) -> std::result::Result<UserRow, Response> {
+/// The response is boxed: it is far larger than `UserRow` and only built on the error path.
+async fn signed_in_user(headers: &HeaderMap) -> std::result::Result<UserRow, Box<Response>> {
     let sign_in_first = || {
-        plain(
+        Box::new(plain(
             StatusCode::UNAUTHORIZED,
             "sign in before connecting another account",
-        )
+        ))
     };
     let Some(token) = session::token_from_headers(headers) else {
         return Err(sign_in_first());
     };
     let pool = state::pool().map_err(|err| {
         tracing::error!(error = %err, "database pool unavailable during sign-in");
-        plain(StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed")
+        Box::new(plain(StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed"))
     })?;
     let user = users_sessions::find_session_user(pool, &token)
         .await
         .map_err(|err| {
             tracing::error!(error = ?err, "loading the session failed");
-            plain(StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed")
+            Box::new(plain(StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed"))
         })?
         .ok_or_else(sign_in_first)?;
     if user.banned {
-        return Err(plain(StatusCode::FORBIDDEN, "this account is banned"));
+        return Err(Box::new(plain(
+            StatusCode::FORBIDDEN,
+            "this account is banned",
+        )));
     }
     Ok(user)
 }
