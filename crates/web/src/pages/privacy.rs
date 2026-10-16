@@ -27,13 +27,13 @@ pub fn PrivacyPage() -> Element {
                 }
             }
             Section { heading: "When you sign in".to_string(),
-                p { "You can sign in with Google (or GitHub, when offered). From the provider RecompHub receives and stores:" }
+                p { "You sign in with Google. From Google RecompHub receives and stores:" }
                 ul { class: "list-disc space-y-2 pl-6",
                     li { "the account's stable id, used to recognise you next time;" }
                     li { "your name and profile picture, shown next to your comments, ratings and submissions;" }
-                    li { "your email address, used only to recognise the site admin. It is never shown to anyone." }
+                    li { "your email address, shown only to the site admin and used to recognise the admin account. It is never shown publicly." }
                 }
-                p { "A sign-in cookie keeps you signed in for up to 30 days. RecompHub does not post anything or read anything else from your Google or GitHub account." }
+                p { "A sign-in cookie keeps you signed in for up to 30 days. RecompHub does not post anything or read anything else from your Google account." }
                 p { "Stars, wants, ratings, comments and submissions you make are stored with your account. Comments, ratings and submissions are public; stars and wants are counted without showing who made them." }
             }
             Section { heading: "Deleting your data".to_string(),
