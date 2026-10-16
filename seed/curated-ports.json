@@ -2715,5 +2715,30 @@
   ],
   "ai_usage": "none",
   "playable": true
+ },
+ {
+  "repo_url": "https://github.com/cefege/harry-potter-2-chamber-of-secrets-pc",
+  "game": "Harry Potter and the Chamber of Secrets",
+  "original_platform": "win",
+  "kind": "source_port",
+  "runs_on": [
+   "windows",
+   "macos",
+   "linux",
+   "web"
+  ],
+  "ai_usage": "assisted",
+  "playable": true
+ },
+ {
+  "repo_url": "https://github.com/ant0-blase/HPCOS-GC-RECOMP",
+  "game": "Harry Potter and the Chamber of Secrets",
+  "original_platform": "ngc",
+  "kind": "static_recomp",
+  "runs_on": [
+   "windows"
+  ],
+  "ai_usage": "unknown",
+  "playable": false
  }
 ]

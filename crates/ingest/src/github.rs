@@ -272,11 +272,18 @@ impl GithubClient {
         }
     }
 
-    /// Repositories matching a search query, most recently updated first. One REST call.
-    pub async fn search_repositories(&self, query: &str) -> Result<Vec<SearchRepo>> {
+    /// One page (1-based, 100 per page) of repositories matching a search query, most recently
+    /// updated first. One REST call. GitHub serves at most 10 pages per query.
+    pub async fn search_repositories(&self, query: &str, page: u32) -> Result<Vec<SearchRepo>> {
+        let page = page.to_string();
         let url = reqwest::Url::parse_with_params(
             &format!("{API}/search/repositories"),
-            &[("q", query), ("sort", "updated"), ("per_page", "100")],
+            &[
+                ("q", query),
+                ("sort", "updated"),
+                ("per_page", "100"),
+                ("page", page.as_str()),
+            ],
         )
         .context("building the repository search URL")?;
         let path = format!("{}?{}", url.path(), url.query().unwrap_or_default());

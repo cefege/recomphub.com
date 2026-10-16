@@ -28,12 +28,24 @@ pub const GITHUB_QUERIES: &[&str] = &[
     "XenonRecomp in:readme",
     "ReXGlue in:readme",
     "\"pc port\" in:name,description",
+    "topic:decomp",
+    "topic:source-port",
+    "topic:pc-port",
+    "topic:native-port",
+    "decomp in:name",
+    "\"static recompilation\" in:readme",
+    "\"source port\" in:name,description",
+    "\"your own copy of the original game\" in:readme",
 ];
 
 pub const REDDIT_FEED_URL: &str = "https://www.reddit.com/r/recomps/new/.rss?limit=100";
 pub const REDDIT_USER_AGENT: &str = "recomphub/1.0 (+https://recomphub.com)";
 /// A GitHub search hit is kept when it has at least this many stars, or any release.
 pub const KEEP_MIN_STARS: i64 = 5;
+/// Result pages read per query (100 repositories each). Page 1 holds the most recently updated
+/// repositories and gets the release check; deeper pages reach older projects and keep only
+/// repositories with `KEEP_MIN_STARS`, so a broad query cannot trigger thousands of calls.
+pub const SEARCH_PAGES: u32 = 5;
 /// Spacing between GitHub search calls, to stay under the search rate limit.
 pub const REQUEST_SPACING: Duration = Duration::from_millis(2500);
 const REDDIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -90,45 +102,57 @@ pub fn reddit_payload(repo: &reddit::RedditRepo) -> Value {
 /// Runs every GitHub query, then the r/recomps feed.
 ///
 /// Requires `GITHUB_TOKEN` through `client`: unauthenticated search is limited to 10 requests a
-/// minute, which the 12 queries exceed.
+/// minute, which the queries exceed.
 pub async fn run_discover(pool: &PgPool, client: &GithubClient) -> Result<DiscoverReport> {
     let mut report = DiscoverReport::default();
     let mut seen: HashSet<String> = HashSet::new();
-    for (i, query) in GITHUB_QUERIES.iter().enumerate() {
-        if i > 0 {
-            tokio::time::sleep(REQUEST_SPACING).await;
-        }
+    let mut first_call = true;
+    for query in GITHUB_QUERIES {
         let full_query = format!("{query} fork:false");
-        let repos = client
-            .search_repositories(&full_query)
-            .await
-            .with_context(|| format!("GitHub search {full_query:?}"))?;
-        for repo in repos {
-            let Some(canonical) =
-                canonical_repo_url(&format!("https://github.com/{}", repo.full_name))
-            else {
-                continue;
-            };
-            if !seen.insert(canonical) {
-                continue;
-            }
-            report.seen += 1;
-            let kept = if repo.stars >= KEEP_MIN_STARS {
-                true
-            } else {
+        for page in 1..=SEARCH_PAGES {
+            if !first_call {
                 tokio::time::sleep(REQUEST_SPACING).await;
-                let has_release = client
-                    .has_release(&repo.full_name)
-                    .await
-                    .with_context(|| format!("checking releases of {}", repo.full_name))?;
-                keep(repo.stars, has_release)
-            };
-            if !kept {
-                continue;
             }
-            report.kept += 1;
-            if submissions::add_candidate(pool, "discovery:github", &github_payload(&repo)).await? {
-                report.inserted += 1;
+            first_call = false;
+            let repos = client
+                .search_repositories(&full_query, page)
+                .await
+                .with_context(|| format!("GitHub search {full_query:?} page {page}"))?;
+            let last_page = repos.len() < 100;
+            for repo in repos {
+                let Some(canonical) =
+                    canonical_repo_url(&format!("https://github.com/{}", repo.full_name))
+                else {
+                    continue;
+                };
+                if !seen.insert(canonical) {
+                    continue;
+                }
+                report.seen += 1;
+                let kept = if repo.stars >= KEEP_MIN_STARS {
+                    true
+                } else if page == 1 {
+                    tokio::time::sleep(REQUEST_SPACING).await;
+                    let has_release = client
+                        .has_release(&repo.full_name)
+                        .await
+                        .with_context(|| format!("checking releases of {}", repo.full_name))?;
+                    keep(repo.stars, has_release)
+                } else {
+                    false
+                };
+                if !kept {
+                    continue;
+                }
+                report.kept += 1;
+                if submissions::add_candidate(pool, "discovery:github", &github_payload(&repo))
+                    .await?
+                {
+                    report.inserted += 1;
+                }
+            }
+            if last_page {
+                break;
             }
         }
     }
