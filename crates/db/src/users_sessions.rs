@@ -28,12 +28,13 @@ impl UserRow {
     }
 }
 
-/// A user row plus the providers connected to it, for the admin user list.
+/// A user row plus the providers and sign-in emails connected to it, for the admin user list.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserListRow {
     #[sqlx(flatten)]
     pub user: UserRow,
     pub providers: Vec<String>,
+    pub emails: Vec<String>,
 }
 
 /// SHA-256 of a session token. Only this hash is stored.
@@ -103,14 +104,18 @@ pub async fn get_by_id(ex: impl PgExecutor<'_>, id: i64) -> DbResult<UserRow> {
         .ok_or_else(|| DbError::NotFound(format!("user {id}")))
 }
 
-/// Users whose display name or GitHub login contains `q` (case-insensitive), at most `limit` rows.
+/// Users whose display name, GitHub login or sign-in email contains `q` (case-insensitive), at
+/// most `limit` rows.
 pub async fn search(ex: impl PgExecutor<'_>, q: &str, limit: i64) -> DbResult<Vec<UserListRow>> {
     let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
     let rows = sqlx::query_as::<_, UserListRow>(
         "SELECT u.*,
-            ARRAY(SELECT i.provider FROM user_identities i WHERE i.user_id = u.id ORDER BY i.provider) AS providers
+            ARRAY(SELECT i.provider FROM user_identities i WHERE i.user_id = u.id ORDER BY i.provider) AS providers,
+            ARRAY(SELECT DISTINCT i.email FROM user_identities i
+                  WHERE i.user_id = u.id AND i.email IS NOT NULL ORDER BY i.email) AS emails
          FROM users u
          WHERE u.display_name ILIKE $1 OR u.github_login ILIKE $1
+            OR EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id AND i.email ILIKE $1)
          ORDER BY u.display_name, u.id
          LIMIT $2",
     )

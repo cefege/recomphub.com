@@ -133,6 +133,7 @@ fn UserRow(row: UserAdminRow, on_changed: EventHandler<()>) -> Element {
     let role = row.role.clone();
     let display = row.display_name.clone();
     let github = row.github_login.clone();
+    let emails = row.emails.join(", ");
     let providers: Vec<(String, &'static str)> = row
         .providers
         .iter()
@@ -168,6 +169,9 @@ fn UserRow(row: UserAdminRow, on_changed: EventHandler<()>) -> Element {
                 p { class: "font-medium", "{display}" }
                 if let Some(login) = github {
                     p { class: "text-xs text-muted-foreground", "@{login}" }
+                }
+                if !emails.is_empty() {
+                    p { class: "text-xs text-muted-foreground", "{emails}" }
                 }
                 div { class: "mt-1 flex flex-wrap gap-1",
                     for (key, label) in providers {

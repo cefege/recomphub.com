@@ -494,8 +494,10 @@ pub struct UserAdminRow {
     pub id: i64,
     pub display_name: String,
     pub github_login: Option<String>,
-    /// Sign-in providers in use: "github" for members, "cloudflare" for the admin.
+    /// Sign-in providers in use: "google", "github", "cloudflare".
     pub providers: Vec<String>,
+    /// Emails from the sign-in providers. Admin-only; never shown publicly.
+    pub emails: Vec<String>,
     pub role: String,
     pub banned: bool,
     pub approved_count: i32,

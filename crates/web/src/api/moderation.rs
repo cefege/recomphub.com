@@ -227,6 +227,7 @@ pub async fn admin_users(term: String) -> Result<Vec<UserAdminRow>, ServerFnErro
             display_name: row.user.display_name,
             github_login: row.user.github_login,
             providers: row.providers,
+            emails: row.emails,
             role: row.user.role,
             banned: row.user.banned,
             approved_count: row.user.approved_count,
