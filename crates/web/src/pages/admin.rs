@@ -38,7 +38,7 @@ pub fn AdminPage() -> Element {
                 ] }
                 h1 { class: "{H1} mt-4", "Admin" }
             }
-            RoleGate { admin_only: true, next: "/admin".to_string(),
+            RoleGate { admin_only: true,
                 div { class: "mt-8 space-y-12",
                     UsersPanel {}
                     SettingsPanel {}

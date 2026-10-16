@@ -1,18 +1,19 @@
 //! Sign-in identities: which external accounts belong to which RecompHub user.
 //!
-//! An identity is keyed by the provider's stable subject: the GitHub user id, or the
-//! Cloudflare Access token's `sub` claim. Email is stored for display and admin matching
-//! only, never as a key. Nothing here merges accounts by email.
+//! An identity is keyed by the provider's stable subject: the Google OpenID `sub`, the GitHub
+//! user id, or the Cloudflare Access token's `sub` claim. Email is stored for display and admin
+//! matching only, never as a key. Nothing here merges accounts by email.
 
 use sqlx::{PgConnection, PgPool};
 
 use crate::DbResult;
 use crate::users_sessions::UserRow;
 
-/// The sign-in provider. GitHub signs members in; Cloudflare Access signs in the admin.
-/// The stored text is the `provider` column value.
+/// The sign-in provider. Google and GitHub sign members in; Cloudflare Access signs in the
+/// admin. The stored text is the `provider` column value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
+    Google,
     GitHub,
     Cloudflare,
 }
@@ -20,23 +21,24 @@ pub enum Provider {
 impl Provider {
     pub fn as_str(self) -> &'static str {
         match self {
+            Provider::Google => "google",
             Provider::GitHub => "github",
             Provider::Cloudflare => "cloudflare",
         }
     }
 }
 
-/// What Cloudflare told us about the account at sign-in time.
+/// What the provider told us about the account at sign-in time.
 #[derive(Debug, Clone)]
 pub struct IdentityProfile {
     pub provider: Provider,
-    /// The Access token `sub` claim.
+    /// The provider's stable account id (`sub` for Google and Access, user id for GitHub).
     pub subject: String,
-    /// The GitHub login for GitHub identities; unused for Cloudflare.
+    /// The GitHub login for GitHub identities; unused otherwise.
     pub login: Option<String>,
-    /// The verified email from the Access token.
+    /// The account email, when the provider shares one.
     pub email: Option<String>,
-    /// The display name from Cloudflare's identity endpoint, when it has one.
+    /// The provider's display name, when it has one.
     pub name: Option<String>,
     pub avatar_media_id: Option<i64>,
 }
@@ -160,7 +162,7 @@ async fn refresh_user(
     .bind(is_admin)
     .bind(match profile.provider {
         Provider::GitHub => profile.login.as_deref(),
-        Provider::Cloudflare => None,
+        Provider::Google | Provider::Cloudflare => None,
     })
     .fetch_one(conn)
     .await?;

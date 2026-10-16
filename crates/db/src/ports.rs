@@ -389,7 +389,8 @@ pub async fn update_port(conn: &mut PgConnection, port_id: i64, full: &PortFull)
             source_platform_id = $5, repo_url = $6, homepage_url = $7, description = $8,
             import_description = $9, requirements = $10, toolchain = $11, license = $12,
             playability = $13, declared_platforms = $14, detected_platforms = $15,
-            ai_usage = $16, ai_tools = $17, ai_source = $18, ai_evidence = $19, name_source = $20,
+            ai_usage = $16, ai_tools = $17, ai_source = $18, ai_evidence = $19,
+            name_source = CASE WHEN name = $3 THEN name_source ELSE $20 END,
             updated_at = now()
          WHERE id = $1
          RETURNING game_id",

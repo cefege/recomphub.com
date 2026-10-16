@@ -73,3 +73,36 @@ async fn banned_users_are_returned_for_the_caller_to_refuse(pool: PgPool) -> DbR
     assert!(again.banned);
     Ok(())
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn google_identity_signs_in_and_never_merges_with_another_provider(
+    pool: PgPool,
+) -> DbResult<()> {
+    let google = IdentityProfile {
+        provider: Provider::Google,
+        subject: "1098765".to_string(),
+        login: None,
+        email: Some("ada@example.com".to_string()),
+        name: Some("Ada Lovelace".to_string()),
+        avatar_media_id: None,
+    };
+    let user = identities::sign_in(&pool, &google, true).await?;
+    assert_eq!(user.role, "admin");
+    assert_eq!(user.github_login, None);
+    assert_eq!(
+        identities::sign_in(&pool, &google, false).await?.id,
+        user.id
+    );
+
+    let other = identities::sign_in(
+        &pool,
+        &cloudflare("1098765", Some("ada@example.com")),
+        false,
+    )
+    .await?;
+    assert_ne!(
+        other.id, user.id,
+        "same subject and email under another provider is another account"
+    );
+    Ok(())
+}

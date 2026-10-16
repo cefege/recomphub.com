@@ -52,7 +52,7 @@ impl ViewerStore {
 /// Send the visitor to the sign-in chooser, returning to the current page.
 pub fn login_redirect() {
     let _ = document::eval(
-        "location.href='/auth/github?next='+encodeURIComponent(location.pathname+location.search)",
+        "location.href='/sign-in?next='+encodeURIComponent(location.pathname+location.search)",
     );
 }
 
@@ -251,9 +251,11 @@ pub fn SignedIn(prompt: String, children: Element) -> Element {
 }
 
 /// Renders its children when the signed-in viewer's role is allowed. `admin_only` pages refuse
-/// moderators. The server enforces the same rule on every API call.
+/// moderators. The server enforces the same rule on every API call. Everyone, the admin
+/// included, signs in through the normal sign-in page; the admin role comes from a verified
+/// Google email listed in `ADMIN_EMAILS`.
 #[component]
-pub fn RoleGate(admin_only: bool, next: String, children: Element) -> Element {
+pub fn RoleGate(admin_only: bool, children: Element) -> Element {
     let viewer = use_context::<ViewerStore>();
     if !*viewer.ready.read() {
         return rsx! { div { class: "skeleton h-96 rounded-xl", "aria-hidden": "true" } };
@@ -271,14 +273,8 @@ pub fn RoleGate(admin_only: bool, next: String, children: Element) -> Element {
     if allowed {
         return children;
     }
-    if !admin_only && !viewer.logged_in() {
-        // Moderators are members and sign in like everyone else; the admin uses Cloudflare.
-        return rsx! {
-            LoginPrompt { text: "Sign in to continue.".to_string() }
-            div { class: "mt-4 flex justify-center",
-                AdminSignInLink { next }
-            }
-        };
+    if !viewer.logged_in() {
+        return rsx! { LoginPrompt { text: "Sign in to continue.".to_string() } };
     }
     let text = if admin_only {
         "This area is for the site admin."
@@ -288,19 +284,6 @@ pub fn RoleGate(admin_only: bool, next: String, children: Element) -> Element {
     rsx! {
         div { class: "{CARD_SURFACE} flex flex-col items-center gap-4 p-8 text-center",
             p { class: "text-sm text-muted-foreground", "{text}" }
-            AdminSignInLink { next }
-        }
-    }
-}
-
-/// "Admin sign-in" link. It opens `/auth/cloudflare`, the only route that grants the admin role.
-#[component]
-fn AdminSignInLink(next: String) -> Element {
-    rsx! {
-        a {
-            href: "/auth/cloudflare?next={next}",
-            class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
-            "Admin sign-in"
         }
     }
 }

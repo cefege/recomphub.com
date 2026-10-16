@@ -37,8 +37,10 @@ pub fn with_site_routes(router: Router) -> Router {
         .route("/sitemap.xml", get(sitemap_index))
         .route("/sitemaps/{name}", get(sitemap_file))
         .route("/feed.xml", get(feed))
-        .route("/auth/github", get(oauth::login))
-        .route("/auth/github/callback", get(oauth::callback))
+        .route("/auth/google", get(oauth::google_login))
+        .route("/auth/google/callback", get(oauth::google_callback))
+        .route("/auth/github", get(oauth::github_login))
+        .route("/auth/github/callback", get(oauth::github_callback))
         .route("/auth/cloudflare", get(cloudflare::login))
         .route("/auth/logout", post(cloudflare::logout))
         .nest_service("/media", ServeDir::new(&config::get().media_dir));

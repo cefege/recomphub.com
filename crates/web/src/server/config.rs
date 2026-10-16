@@ -11,6 +11,9 @@ pub struct Config {
     /// Public origin without a trailing slash, for example `https://recomphub.com`.
     pub site_url: String,
     pub media_dir: PathBuf,
+    /// Google OAuth client credentials for member sign-in. Without them, Google sign-in is off.
+    pub google_client_id: Option<String>,
+    pub google_client_secret: Option<String>,
     /// GitHub OAuth app credentials for member sign-in. Without them, GitHub sign-in is off.
     pub github_client_id: Option<String>,
     pub github_client_secret: Option<String>,
@@ -48,6 +51,8 @@ impl Config {
             database_url,
             site_url,
             media_dir,
+            google_client_id: env_var("GOOGLE_OAUTH_CLIENT_ID"),
+            google_client_secret: env_var("GOOGLE_OAUTH_CLIENT_SECRET"),
             github_client_id: env_var("GITHUB_OAUTH_CLIENT_ID"),
             github_client_secret: env_var("GITHUB_OAUTH_CLIENT_SECRET"),
             github_token: env_var("GITHUB_TOKEN"),

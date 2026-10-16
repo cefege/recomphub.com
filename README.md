@@ -59,11 +59,13 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `SECRETS_KEY` | 32 bytes, base64 (`openssl rand -base64 32`); encrypts AI provider credentials at rest. Web and workers need the same value |
 | `YTDLP_BIN` | `yt-dlp` |
 | `YTDLP_COOKIES` | optional path to a Netscape cookies.txt; copied to a temp file, never logged |
-| `ADMIN_EMAILS` | comma-separated; matched against the verified Cloudflare Access email |
-| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain; `/auth/cloudflare` returns 503 without it |
-| `CF_ACCESS_AUD` | Cloudflare Access application audience tag |
-| `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID for member sign-in; `/auth/github` returns 503 without it. Callback: `${SITE_URL}/auth/github/callback` |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Web application) for sign-in; the Google button appears on `/sign-in` only when set. Redirect URI: `${SITE_URL}/auth/google/callback` |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
+| `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed (or a Cloudflare Access sign-in with that email) gets the admin role |
+| `GITHUB_OAUTH_CLIENT_ID` | optional GitHub OAuth app client ID; the GitHub button appears on `/sign-in` only when set. Callback: `${SITE_URL}/auth/github/callback` |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret |
+| `CF_ACCESS_TEAM_DOMAIN` | optional Cloudflare Access team domain for the `/auth/cloudflare` admin path; 503 without it |
+| `CF_ACCESS_AUD` | Cloudflare Access application audience tag |
 | `RUST_LOG` | |
 | `IP` and `PORT` | set by the Dockerfile; dx reads them |
 
@@ -90,17 +92,16 @@ These need your Cloudflare, cluster and GitHub access.
    - `cloudflared tunnel route dns recomphub recomphub.com`
    - `cloudflared tunnel route dns recomphub www.recomphub.com`
    - Put the tunnel ID in `deploy/production/cloudflared.yaml` (currently tunnel `recomphub`, `152ceebc-cbe8-442d-9b03-54bf2f37e4e0`).
-3. Create a Cloudflare Access application (self-hosted) covering only `recomphub.com/auth/cloudflare`, with one Allow policy: Include → Emails → `mateiasmihaiandrei@gmail.com`, login method One-time PIN. That uses one of the free plan's 50 seats; never open it to everyone, since every person who signs in holds a seat. Leave the rest of the site outside Access. Note the team domain and the application's audience (AUD) tag for the secret below.
-   Admin sign-in uses only this Access application; the admin role is granted only to the verified email in `ADMIN_EMAILS`. Members sign in with GitHub at `/auth/github`; there is no other sign-in method.
-3b. Create a GitHub OAuth app whose callback URL is `https://recomphub.com/auth/github/callback`. Note its client ID and secret for the secret below.
+3. Create the Google sign-in client in Google Cloud Console: **APIs & Services → OAuth consent screen** (External, app name RecompHub, scopes `openid`, `email`, `profile`, then **Publish app** so any Google account can sign in), then **Credentials → Create credentials → OAuth client ID → Web application** with authorized JavaScript origin `https://recomphub.com` and authorized redirect URI `https://recomphub.com/auth/google/callback`. Note the client ID and secret for the secret below.
+   Everyone, the admin included, signs in at `/sign-in`. The admin role goes to a Google account whose verified email is in `ADMIN_EMAILS`. GitHub sign-in (an OAuth app with callback `https://recomphub.com/auth/github/callback`) and the Cloudflare Access path (`/auth/cloudflare`) are optional.
 4. Create the application secret:
 
    ```sh
    kubectl -n recomphub create secret generic recomphub-secrets \
      --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
      --from-literal=DATABASE_URL="postgres://recomphub:<same password>@postgres:5432/recomphub" \
-     --from-literal=CF_ACCESS_TEAM_DOMAIN=... \
-     --from-literal=CF_ACCESS_AUD=... \
+     --from-literal=GOOGLE_OAUTH_CLIENT_ID=... \
+     --from-literal=GOOGLE_OAUTH_CLIENT_SECRET=... \
      --from-literal=GITHUB_TOKEN=... \
      --from-literal=TWITCH_CLIENT_ID=... \
      --from-literal=TWITCH_CLIENT_SECRET=... \
