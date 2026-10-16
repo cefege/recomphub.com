@@ -853,6 +853,100 @@ mod tests {
     }
 
     #[test]
+    fn repo_slug_headings_fall_back_but_cased_brands_stay() {
+        assert_eq!(
+            name(Some("# dmc-recomp"), None, "dmc-recomp", "Devil May Cry"),
+            "Devil May Cry Recomp"
+        );
+        assert_eq!(
+            name(
+                Some("# Kirby-Dream-Land-Recomp"),
+                None,
+                "kirby-dream-land-recomp",
+                "Kirby's Dream Land"
+            ),
+            "Kirby's Dream Land Recomp"
+        );
+        assert_eq!(
+            name(
+                Some("# smw\nA reimplementation of Super Mario World."),
+                None,
+                "smw",
+                "Super Mario World"
+            ),
+            "Super Mario World Recomp"
+        );
+        assert_eq!(
+            name(Some("# MikuPan"), None, "mikupan", "Fatal Frame"),
+            "MikuPan"
+        );
+    }
+
+    #[test]
+    fn glued_abbreviation_repo_is_not_a_brand() {
+        assert_eq!(
+            name(None, None, "ssrecomp", "Pokémon SoulSilver Version"),
+            "Pokémon SoulSilver Version Recomp"
+        );
+    }
+
+    #[test]
+    fn slug_prefix_and_toolchain_note_are_dropped() {
+        assert_eq!(
+            name(
+                Some("# rb2 - Dragon Ball Raging Blast 2 Recompiled"),
+                None,
+                "rb2",
+                "Dragon Ball: Raging Blast 2"
+            ),
+            "Dragon Ball Raging Blast 2 Recompiled"
+        );
+        assert_eq!(
+            name(
+                Some("# Lost Odyssey Recomp using XenonRecomp"),
+                None,
+                "lostodysseyrecomp",
+                "Lost Odyssey"
+            ),
+            "Lost Odyssey Recomp"
+        );
+    }
+
+    #[test]
+    fn game_name_with_console_noise_becomes_game_and_kind_but_plain_tails_stay() {
+        assert_eq!(
+            derive_display_name(&NameSources {
+                readme: Some(
+                    "# nfs4-decomp — Need for Speed: High Stakes (PSX) matching decompilation"
+                ),
+                description: None,
+                repo: "nfshs-psx-decomp",
+                game: "Need for Speed: High Stakes",
+                kind: "decompilation",
+            }),
+            "Need for Speed: High Stakes Decompilation"
+        );
+        assert_eq!(
+            name(
+                Some("# Castlevania (N64) Recompiled"),
+                None,
+                "castlevania-recomp",
+                "Castlevania"
+            ),
+            "Castlevania Recomp"
+        );
+        assert_eq!(
+            name(
+                Some("# AeroGauge: Recompiled"),
+                None,
+                "aerogauge-recomp",
+                "AeroGauge"
+            ),
+            "AeroGauge: Recompiled"
+        );
+    }
+
+    #[test]
     fn kind_phrases_in_descriptions_become_names() {
         assert_eq!(
             name(
