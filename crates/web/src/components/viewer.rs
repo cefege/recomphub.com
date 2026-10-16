@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use dioxus::prelude::*;
 use recomphub_shared::{Role, SessionUser};
 
+use super::styles::{BADGE, BADGE_SECONDARY, BUTTON, BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM};
 use super::ui::{EmptyState, LoginPrompt};
 use crate::api;
 
@@ -46,10 +47,10 @@ impl ViewerStore {
     }
 }
 
-/// Send the visitor through GitHub sign-in, returning to the current page.
+/// Send the visitor to the sign-in chooser, returning to the current page.
 pub fn login_redirect() {
     let _ = document::eval(
-        "location.href='/auth/github/login?next='+encodeURIComponent(location.pathname+location.search)",
+        "location.href='/signin?next='+encodeURIComponent(location.pathname+location.search)",
     );
 }
 
@@ -84,16 +85,12 @@ pub fn StarButton(port_id: i64, count: i64) -> Element {
     let mut error = use_signal(|| None::<String>);
     let starred = viewer.starred.read().contains(&port_id);
     let label = if starred { "Starred" } else { "Star" };
-    let classes = if starred {
-        "border-warning/60 bg-warning/15 text-warning"
-    } else {
-        "border-border bg-surface-2 text-foreground hover:border-accent"
-    };
+    let tone = if starred { "text-warning" } else { "" };
     rsx! {
         span { class: "relative inline-flex flex-col items-start gap-1",
             button {
                 r#type: "button",
-                class: "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold transition {classes}",
+                class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} {tone}",
                 "aria-pressed": "{starred}",
                 onclick: move |_| {
                     if !viewer.logged_in() {
@@ -119,14 +116,16 @@ pub fn StarButton(port_id: i64, count: i64) -> Element {
                     });
                 },
                 span { "★" }
-                span { class: "tabular", "{total}" }
+                if total() > 0 {
+                    span { class: "tabular", "{total}" }
+                }
                 span { class: "sr-only", "{label}" }
             }
             if burst() > 0 {
                 Burst { key: "{burst}", seed: burst() }
             }
             if let Some(msg) = error() {
-                span { class: "text-xs text-error", "{msg}" }
+                span { class: "text-xs text-destructive", "{msg}" }
             }
         }
     }
@@ -140,17 +139,17 @@ pub fn WantButton(game_id: i64, count: i64) -> Element {
     let mut burst = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
     let wanted = viewer.wanted.read().contains(&game_id);
-    let classes = if wanted {
-        "border-accent/60 bg-accent/15 text-foreground"
+    let style = if wanted {
+        BUTTON_SECONDARY
     } else {
-        "accent-bg text-white hover:brightness-110"
+        BUTTON_OUTLINE
     };
     let label = if wanted { "Wanted" } else { "Want a port" };
     rsx! {
         span { class: "relative inline-flex flex-col items-start gap-1",
             button {
                 r#type: "button",
-                class: "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition {classes}",
+                class: "{BUTTON} {style} {BUTTON_SM}",
                 "aria-pressed": "{wanted}",
                 onclick: move |_| {
                     if !viewer.logged_in() {
@@ -176,13 +175,15 @@ pub fn WantButton(game_id: i64, count: i64) -> Element {
                     });
                 },
                 span { "{label}" }
-                span { class: "tabular rounded-full bg-black/20 px-2 py-0.5 text-xs", "{total}" }
+                if total() > 0 {
+                    span { class: "{BADGE} {BADGE_SECONDARY} tabular", "{total}" }
+                }
             }
             if burst() > 0 {
                 Burst { key: "{burst}", seed: burst() }
             }
             if let Some(msg) = error() {
-                span { class: "text-xs text-error", "{msg}" }
+                span { class: "text-xs text-destructive", "{msg}" }
             }
         }
     }
@@ -206,7 +207,7 @@ pub fn Burst(seed: u32) -> Element {
             let dx = radians.cos() * dist;
             let dy = radians.sin() * dist;
             let hue = match next() % 3 {
-                0 => "bg-accent",
+                0 => "bg-primary",
                 1 => "bg-live",
                 _ => "bg-warning",
             };
@@ -239,7 +240,7 @@ pub fn set_me(viewer: ViewerStore, me: Option<SessionUser>) {
 pub fn SignedIn(prompt: String, children: Element) -> Element {
     let viewer = use_context::<ViewerStore>();
     if !*viewer.ready.read() {
-        return rsx! { div { class: "skeleton h-96 rounded-2xl", "aria-hidden": "true" } };
+        return rsx! { div { class: "skeleton h-96 rounded-xl", "aria-hidden": "true" } };
     }
     if !viewer.logged_in() {
         return rsx! { LoginPrompt { text: prompt } };
@@ -253,11 +254,11 @@ pub fn SignedIn(prompt: String, children: Element) -> Element {
 pub fn RoleGate(admin_only: bool, children: Element) -> Element {
     let viewer = use_context::<ViewerStore>();
     if !*viewer.ready.read() {
-        return rsx! { div { class: "skeleton h-96 rounded-2xl", "aria-hidden": "true" } };
+        return rsx! { div { class: "skeleton h-96 rounded-xl", "aria-hidden": "true" } };
     }
     if !viewer.logged_in() {
         return rsx! {
-            LoginPrompt { text: "Sign in with GitHub to continue.".to_string() }
+            LoginPrompt { text: "Sign in to continue.".to_string() }
         };
     }
     let role = viewer

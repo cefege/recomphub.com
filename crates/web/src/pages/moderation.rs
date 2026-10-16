@@ -7,13 +7,9 @@ use recomphub_shared::{GameChoice, LogItem, Page, PortKind, QueueItem, ReviewOve
 use serde_json::Value;
 
 use crate::api;
+use crate::components::styles::*;
 use crate::components::{Breadcrumb, Chip, EmptyState, Pager, RoleGate, Seo, parse_page};
 use crate::routes::Route;
-
-const INPUT: &str = "w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent";
-const BTN: &str =
-    "accent-bg rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50";
-const BTN_GHOST: &str = "rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm font-semibold hover:border-accent disabled:opacity-50";
 
 #[component]
 pub fn ModerationQueue() -> Element {
@@ -24,13 +20,13 @@ pub fn ModerationQueue() -> Element {
             path: "/moderation".to_string(),
             noindex: true,
         }
-        div { class: "mx-auto max-w-5xl px-4 py-10",
+        div { class: "mx-auto max-w-5xl space-y-8",
             Breadcrumb { items: vec![
                 ("Home".to_string(), "/".to_string()),
                 ("Moderation".to_string(), "/moderation".to_string()),
             ] }
             div { class: "mt-4 flex flex-wrap items-end justify-between gap-4",
-                h1 { class: "text-3xl font-extrabold tracking-tight", "Moderation queue" }
+                h1 { class: H1, "Moderation queue" }
                 Link {
                     class: "text-sm font-semibold underline underline-offset-4",
                     to: Route::ModerationLog { page: "1".to_string() },
@@ -59,12 +55,12 @@ fn QueueList() -> Element {
         None => rsx! {
             div { class: "mt-8 space-y-4",
                 for i in 0..3 {
-                    div { key: "{i}", class: "skeleton h-40 rounded-2xl", "aria-hidden": "true" }
+                    div { key: "{i}", class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
                 }
             }
         },
         Some(Err(message)) => rsx! {
-            p { class: "mt-8 text-sm text-error", "Could not load the queue: {message}" }
+            p { class: "mt-8 text-sm text-destructive", "Could not load the queue: {message}" }
         },
         Some(Ok(items)) if items.is_empty() => rsx! {
             div { class: "mt-8",
@@ -87,23 +83,23 @@ fn QueueList() -> Element {
 fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
     let diff = field_rows(&item.payload_json, item.before_json.as_deref());
     let submitter = item
-        .submitter_login
+        .submitter_name
         .clone()
         .unwrap_or_else(|| "automated".to_string());
     let approved = item.submitter_approved.unwrap_or(0);
     let when = stamp(item.created_at);
     let diff_view = match diff {
         Err(message) => rsx! {
-            p { class: "mt-4 text-sm text-error", "Could not read the submitted data: {message}" }
+            p { class: "mt-4 text-sm text-destructive", "Could not read the submitted data: {message}" }
         },
         Ok(rows) if rows.is_empty() => rsx! {
-            p { class: "mt-4 text-sm text-muted", "No fields to compare." }
+            p { class: "mt-4 text-sm text-muted-foreground", "No fields to compare." }
         },
         Ok(rows) => rsx! {
             div { class: "mt-4 overflow-x-auto",
                 table { class: "w-full text-left text-sm",
                     thead {
-                        tr { class: "text-muted",
+                        tr { class: "text-muted-foreground",
                             th { scope: "col", class: "py-2 pr-4 font-semibold", "Field" }
                             th { scope: "col", class: "py-2 pr-4 font-semibold", "Before" }
                             th { scope: "col", class: "py-2 font-semibold", "After" }
@@ -113,7 +109,7 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
                         for row in rows {
                             tr {
                                 key: "{row.key}",
-                                class: if row.changed { "border-t border-border font-semibold" } else { "border-t border-border text-muted" },
+                                class: if row.changed { "border-t font-semibold" } else { "border-t text-muted-foreground" },
                                 th { scope: "row", class: "py-2 pr-4 font-normal", "{row.key}" }
                                 td { class: "py-2 pr-4 break-all", "{row.before}" }
                                 td { class: "py-2 break-all", "{row.after}" }
@@ -127,7 +123,7 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
     let needs_match = item.needs_game_match || item.kind == "candidate";
 
     rsx! {
-        article { class: "rounded-2xl border border-border bg-surface p-5",
+        article { class: "{CARD_SURFACE} p-5",
             div { class: "flex flex-wrap items-center gap-2",
                 Chip { "{item.kind}" }
                 Chip { "{item.source}" }
@@ -138,7 +134,7 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
                     Chip { class: "text-warning", "Needs a game match" }
                 }
             }
-            p { class: "mt-3 text-sm text-muted", "#{item.id} · {submitter} · {approved} approved · {when}" }
+            p { class: "mt-3 text-sm text-muted-foreground", "#{item.id} · {submitter} · {approved} approved · {when}" }
             {diff_view}
             Decision {
                 item_id: item.id,
@@ -236,7 +232,7 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
     let found = choices();
 
     rsx! {
-        div { class: "mt-5 space-y-4 border-t border-border pt-5",
+        div { class: "mt-5 space-y-4 border-t pt-5",
             if needs_match {
                 div { class: "space-y-3",
                     p { class: "text-sm font-semibold", "Which game is this for?" }
@@ -249,8 +245,8 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
                             value: "{query_text}",
                             oninput: move |e| query.set(e.value()),
                         }
-                        button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| search(false), "Search library" }
-                        button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| search(true), "Search all games" }
+                        button { r#type: "button", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", disabled: busy_now, onclick: move |_| search(false), "Search library" }
+                        button { r#type: "button", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", disabled: busy_now, onclick: move |_| search(true), "Search all games" }
                     }
                     p { class: "text-sm text-success", "{picked_text}" }
                     ul { class: "grid gap-2 sm:grid-cols-2",
@@ -292,11 +288,12 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
                 }
             }
             if !error_text.is_empty() {
-                p { class: "text-sm text-error", "{error_text}" }
+                p { class: "text-sm text-destructive", "{error_text}" }
             }
+            p { class: "text-sm text-muted-foreground", "Check the ground rules: no game data, ROMs, firmware or keys in the repo or releases." }
             div { class: "flex flex-wrap gap-3",
-                button { r#type: "button", class: BTN, disabled: busy_now, onclick: move |_| approve(), "Approve" }
-                button { r#type: "button", class: BTN_GHOST, disabled: busy_now, onclick: move |_| reject(), "Reject" }
+                button { r#type: "button", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", disabled: busy_now, onclick: move |_| approve(), "Approve" }
+                button { r#type: "button", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", disabled: busy_now, onclick: move |_| reject(), "Reject" }
             }
         }
     }
@@ -335,9 +332,9 @@ fn ChoiceButton(choice: GameChoice, picked: Option<Pick>, on_pick: EventHandler<
         "New game"
     };
     let class = if selected {
-        "w-full rounded-xl border border-accent bg-surface-2 px-3 py-2 text-left text-sm"
+        "w-full rounded-md border border-primary bg-accent px-3 py-2 text-left text-sm"
     } else {
-        "w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-left text-sm hover:border-accent"
+        "w-full rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-accent"
     };
     rsx! {
         button {
@@ -346,7 +343,7 @@ fn ChoiceButton(choice: GameChoice, picked: Option<Pick>, on_pick: EventHandler<
             "aria-pressed": if selected { "true" } else { "false" },
             onclick: move |_| on_pick.call(pick.clone()),
             span { class: "block font-semibold", "{choice.name}" }
-            span { class: "block text-xs text-muted", "{year} · {source}" }
+            span { class: "block text-xs text-muted-foreground", "{year} · {source}" }
         }
     }
 }
@@ -361,13 +358,13 @@ pub fn ModerationLog(page: String) -> Element {
             path: "/moderation/log".to_string(),
             noindex: true,
         }
-        div { class: "mx-auto max-w-5xl px-4 py-10",
+        div { class: "mx-auto max-w-5xl space-y-8",
             Breadcrumb { items: vec![
                 ("Home".to_string(), "/".to_string()),
                 ("Moderation".to_string(), "/moderation".to_string()),
                 ("Log".to_string(), "/moderation/log".to_string()),
             ] }
-            h1 { class: "mt-4 text-3xl font-extrabold tracking-tight", "Moderation log" }
+            h1 { class: "mt-4 {H1}", "Moderation log" }
             RoleGate { admin_only: false, LogList { page: page_number } }
         }
     }
@@ -409,7 +406,7 @@ fn LogList(page: i64) -> Element {
             }
         },
         Some(Err(message)) => rsx! {
-            p { class: "mt-8 text-sm text-error", "Could not load the log: {message}" }
+            p { class: "mt-8 text-sm text-destructive", "Could not load the log: {message}" }
         },
         Some(Ok(data)) => {
             let page_no = data.page;
@@ -418,7 +415,7 @@ fn LogList(page: i64) -> Element {
             let empty = rows.is_empty();
             rsx! {
                 if !notice_text.is_empty() {
-                    p { class: "mt-6 text-sm text-error", "{notice_text}" }
+                    p { class: "mt-6 text-sm text-destructive", "{notice_text}" }
                 }
                 if empty {
                     div { class: "mt-6",
@@ -428,7 +425,7 @@ fn LogList(page: i64) -> Element {
                     div { class: "mt-6 overflow-x-auto",
                         table { class: "w-full text-left text-sm",
                             thead {
-                                tr { class: "text-muted",
+                                tr { class: "text-muted-foreground",
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Submission" }
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Kind" }
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Status" }
@@ -471,7 +468,7 @@ fn LogRow(row: LogItem, on_revert: EventHandler<i64>) -> Element {
     let created = stamp(row.created_at);
     let id = row.id;
     rsx! {
-        tr { class: "border-t border-border",
+        tr { class: "border-t",
             td { class: "py-2 pr-4 font-semibold", "#{row.id}" }
             td { class: "py-2 pr-4", "{row.kind}" }
             td { class: "py-2 pr-4", "{row.status}" }
@@ -483,7 +480,7 @@ fn LogRow(row: LogItem, on_revert: EventHandler<i64>) -> Element {
                 if revertible {
                     button {
                         r#type: "button",
-                        class: BTN_GHOST,
+                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
                         onclick: move |_| on_revert.call(id),
                         "Revert"
                     }

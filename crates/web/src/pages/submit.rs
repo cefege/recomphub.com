@@ -9,17 +9,17 @@ use recomphub_shared::{
 };
 
 use crate::api;
-use crate::components::{Section, Seo, SignedIn, ai_text};
+use crate::components::styles::*;
+use crate::components::{GroundRules, Seo, SignedIn, ai_text};
 use crate::routes::Route;
 
 const DESCRIPTION_MAX: usize = 2000;
 const REQUIREMENTS_MAX: usize = 500;
-const INPUT: &str = "w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent";
-const CARD: &str = "rounded-2xl border border-border bg-surface p-6";
-const BTN: &str = "accent-bg rounded-xl px-5 py-2.5 font-semibold text-white disabled:opacity-50";
-const BTN_GHOST: &str = "rounded-xl border border-border bg-surface-2 px-4 py-2 text-sm font-semibold hover:border-accent";
+/// Checkbox tile for platform and AI tool choices.
 const CHECK: &str =
-    "flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm";
+    "flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm shadow-xs";
+/// Selectable option tile, for game picks.
+const OPTION: &str = "w-full rounded-md border bg-background px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground";
 
 /// Form state shared by the submit and edit forms.
 #[derive(Clone, PartialEq)]
@@ -119,6 +119,7 @@ struct Wiz {
     busy: Signal<bool>,
     error: Signal<Option<String>>,
     result: Signal<Option<SubmitResult>>,
+    rules_ok: Signal<bool>,
 }
 
 /// The submit page for `/submit?:game&:repo`.
@@ -127,12 +128,12 @@ pub fn SubmitPage(game: String, repo: String) -> Element {
     rsx! {
         Seo {
             title: "Submit a port | RecompHub".to_string(),
-            description: "Submit a native port or recompilation of a console game. Paste a GitHub repository and the details are filled in for you.".to_string(),
+            description: "Submit a native port or recompilation of a game. Paste a GitHub repository and the details are filled in for you.".to_string(),
             path: "/submit".to_string(),
             noindex: true,
         }
         SignedIn {
-            prompt: "Sign in with GitHub to submit a port or suggest an edit.".to_string(),
+            prompt: "Sign in to submit a port or suggest an edit.".to_string(),
             SubmitForm { game, repo }
         }
     }
@@ -149,7 +150,7 @@ pub fn EditPortPage(port_id: i64) -> Element {
             noindex: true,
         }
         SignedIn {
-            prompt: "Sign in with GitHub to suggest an edit.".to_string(),
+            prompt: "Sign in to suggest an edit.".to_string(),
             EditLoaded { port_id }
         }
     }
@@ -167,6 +168,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
         busy: use_signal(|| false),
         error: use_signal(|| None),
         result: use_signal(|| None),
+        rules_ok: use_signal(|| false),
     };
     let mut game_query = use_signal(String::new);
 
@@ -193,18 +195,19 @@ fn SubmitForm(game: String, repo: String) -> Element {
     let preview_now = w.preview.read().clone();
 
     rsx! {
-        div { class: "mx-auto max-w-3xl space-y-8",
+        div { class: "mx-auto max-w-3xl space-y-12",
             header {
-                h1 { class: "text-3xl font-extrabold tracking-tight", "Submit a port" }
-                p { class: "mt-2 text-muted",
+                h1 { class: H1, "Submit a port" }
+                p { class: "{LEAD} mt-2 max-w-2xl",
                     "Paste a GitHub repository, pick the game, and check the details. Trusted accounts publish right away."
                 }
+                if let Some(msg) = w.error.read().clone() {
+                    p { class: "mt-6 rounded-lg border border-destructive/50 p-4 text-sm text-destructive", "{msg}" }
+                }
             }
-            if let Some(msg) = w.error.read().clone() {
-                p { class: "rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error", "{msg}" }
-            }
+            GroundRules { class: "mb-8" }
 
-            Section { heading: "1. The repository".to_string(), class: CARD.to_string(),
+            FormPanel { heading: "1. The repository".to_string(),
                 div { class: "flex flex-col gap-2 sm:flex-row",
                     input {
                         class: INPUT,
@@ -215,18 +218,18 @@ fn SubmitForm(game: String, repo: String) -> Element {
                     }
                     button {
                         r#type: "button",
-                        class: BTN,
+                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
                         disabled: *w.busy.read(),
                         onclick: move |_| start_preview(w, w.repo_url.read().clone()),
                         "Fetch details"
                     }
                 }
                 if let Some((game_slug, port_slug)) = w.already.read().clone() {
-                    p { class: "mt-4 text-sm",
+                    p { class: "text-sm text-muted-foreground",
                         "This repository is already listed. "
                         Link {
                             to: Route::PortPage { game_slug, port_slug },
-                            class: "accent-text underline",
+                            class: TEXT_LINK,
                             "View the port"
                         }
                     }
@@ -236,21 +239,21 @@ fn SubmitForm(game: String, repo: String) -> Element {
                 }
             }
 
-            Section { heading: "2. The game".to_string(), class: CARD.to_string(),
+            FormPanel { heading: "2. The game".to_string(),
                 if let Some(t) = target_now {
                     div { class: "flex flex-wrap items-center justify-between gap-3",
-                        p { class: "font-semibold",
+                        p { class: "font-medium",
                             "{t.name}{year_suffix(t.release_year)}{igdb_tag(&t)}"
                         }
                         button {
                             r#type: "button",
-                            class: BTN_GHOST,
+                            class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}",
                             onclick: move |_| w.target.set(None),
                             "Change game"
                         }
                     }
                 } else {
-                    div { class: "space-y-3",
+                    div { class: "grid gap-4",
                         div { class: "flex flex-col gap-2 sm:flex-row",
                             input {
                                 class: INPUT,
@@ -261,13 +264,13 @@ fn SubmitForm(game: String, repo: String) -> Element {
                             }
                             button {
                                 r#type: "button",
-                                class: BTN_GHOST,
+                                class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
                                 onclick: move |_| search_games(w, game_query.read().clone(), false),
                                 "Search"
                             }
                             button {
                                 r#type: "button",
-                                class: BTN_GHOST,
+                                class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}",
                                 onclick: move |_| search_games(w, game_query.read().clone(), true),
                                 "Not listed? Search all games"
                             }
@@ -277,7 +280,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
                                 li {
                                     button {
                                         r#type: "button",
-                                        class: "w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-left text-sm hover:border-accent",
+                                        class: OPTION,
                                         onclick: move |_| pick_game(w, c.clone()),
                                         "{c.name}{year_suffix(c.release_year)}{igdb_tag(&c)}"
                                     }
@@ -288,18 +291,27 @@ fn SubmitForm(game: String, repo: String) -> Element {
                 }
             }
 
-            Section { heading: "3. The port".to_string(), class: CARD.to_string(),
+            FormPanel { heading: "3. The port".to_string(),
                 PortFields { draft: w.draft, full: true, platforms: platforms.clone() }
             }
 
-            Section { heading: "4. Submit".to_string(), class: CARD.to_string(),
-                p { class: "mb-4 text-sm text-muted",
+            FormPanel { heading: "4. Submit".to_string(),
+                p { class: "text-sm text-muted-foreground",
                     "Everyone else's submission goes to the moderation queue, and moderators review it before it is published."
+                }
+                label { class: "flex items-start gap-2 text-sm",
+                    input {
+                        r#type: "checkbox",
+                        class: "mt-1",
+                        checked: *w.rules_ok.read(),
+                        onchange: move |e| w.rules_ok.set(e.checked()),
+                    }
+                    span { "This project follows the ground rules and ships no game data" }
                 }
                 button {
                     r#type: "button",
-                    class: BTN,
-                    disabled: *w.busy.read(),
+                    class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} w-fit",
+                    disabled: *w.busy.read() || !*w.rules_ok.read(),
                     onclick: move |_| submit_port(w),
                     "Submit port"
                 }
@@ -331,57 +343,55 @@ fn EditForm(data: EditPortForm) -> Element {
     let heading = format!("Edit {} for {}", data.port.name, data.game_name);
 
     rsx! {
-        div { class: "mx-auto max-w-3xl space-y-8",
+        div { class: "mx-auto max-w-3xl space-y-12",
             header {
-                h1 { class: "text-3xl font-extrabold tracking-tight", "{heading}" }
-                p { class: "mt-2 text-muted",
+                h1 { class: H1, "{heading}" }
+                p { class: "{LEAD} mt-2 max-w-2xl",
                     "Change only what is wrong. Changes from trusted accounts are applied at once, and everyone else's go to the moderation queue."
                 }
+                if let Some(msg) = error.read().clone() {
+                    p { class: "mt-6 rounded-lg border border-destructive/50 p-4 text-sm text-destructive", "{msg}" }
+                }
             }
-            if let Some(msg) = error.read().clone() {
-                p { class: "rounded-xl border border-error/40 bg-error/10 p-3 text-sm text-error", "{msg}" }
-            }
-            Section { heading: "Port details".to_string(), class: CARD.to_string(),
+            FormPanel { heading: "Port details".to_string(),
                 PortFields { draft, full: false, platforms: Vec::new() }
-                div { class: "mt-6",
-                    button {
-                        r#type: "button",
-                        class: BTN,
-                        disabled: *busy.read(),
-                        onclick: move |_| {
-                            let edited = match build_port(&draft.read(), &original.repo_url) {
-                                Ok(p) => p,
-                                Err(msg) => {
-                                    error.set(Some(msg));
-                                    return;
-                                }
-                            };
-                            let input = edit_input(&original, &edited, port_id);
-                            if !has_changes(&input) {
-                                error.set(Some("Nothing has changed.".to_string()));
+                button {
+                    r#type: "button",
+                    class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} w-fit",
+                    disabled: *busy.read(),
+                    onclick: move |_| {
+                        let edited = match build_port(&draft.read(), &original.repo_url) {
+                            Ok(p) => p,
+                            Err(msg) => {
+                                error.set(Some(msg));
                                 return;
                             }
-                            busy.set(true);
-                            error.set(None);
-                            spawn(async move {
-                                match api::submit_edit(input).await {
-                                    Ok(r) => result.set(Some(r)),
-                                    Err(e) => error.set(Some(e.to_string())),
-                                }
-                                busy.set(false);
-                            });
-                        },
-                        "Save changes"
-                    }
+                        };
+                        let input = edit_input(&original, &edited, port_id);
+                        if !has_changes(&input) {
+                            error.set(Some("Nothing has changed.".to_string()));
+                            return;
+                        }
+                        busy.set(true);
+                        error.set(None);
+                        spawn(async move {
+                            match api::submit_edit(input).await {
+                                Ok(r) => result.set(Some(r)),
+                                Err(e) => error.set(Some(e.to_string())),
+                            }
+                            busy.set(false);
+                        });
+                    },
+                    "Save changes"
                 }
                 if let Some(r) = result.read().clone() {
                     SubmitOutcome { result: r }
                 }
                 if let Some(port_slug) = result.read().as_ref().and_then(|r| r.port_slug.clone()) {
-                    p { class: "mt-4 text-sm",
+                    p { class: "text-sm",
                         Link {
                             to: Route::PortPage { game_slug: game_slug.clone(), port_slug },
-                            class: "accent-text underline",
+                            class: TEXT_LINK,
                             "Back to the port"
                         }
                     }
@@ -402,7 +412,7 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
         .collect();
 
     rsx! {
-        div { class: "grid gap-5 md:grid-cols-2",
+        div { class: "grid gap-6 md:grid-cols-2",
             Field { caption: "Port name".to_string(),
                 input {
                     class: INPUT,
@@ -469,8 +479,8 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
             }
         }
 
-        div { class: "mt-6 space-y-2",
-            p { class: "text-sm font-semibold", "Runs on" }
+        div { class: "grid gap-2",
+            span { class: LABEL, "Runs on" }
             div { class: "grid gap-2 sm:grid-cols-3",
                 for t in TargetPlatform::ALL.iter().copied() {
                     label { class: CHECK,
@@ -485,13 +495,14 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
             }
         }
 
-        div { class: "mt-6 space-y-2",
-            p { class: "text-sm font-semibold", "AI use" }
-            select {
-                class: INPUT,
-                onchange: move |e| draft.write().ai_usage = e.value(),
-                for u in AiUsage::ALL.iter().copied() {
-                    option { value: "{u.as_str()}", selected: draft.read().ai_usage == u.as_str(), "{u.label()}" }
+        div { class: "grid gap-4",
+            Field { caption: "AI use".to_string(),
+                select {
+                    class: INPUT,
+                    onchange: move |e| draft.write().ai_usage = e.value(),
+                    for u in AiUsage::ALL.iter().copied() {
+                        option { value: "{u.as_str()}", selected: draft.read().ai_usage == u.as_str(), "{u.label()}" }
+                    }
                 }
             }
             div { class: "grid gap-2 sm:grid-cols-3",
@@ -515,28 +526,28 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
             }
         }
 
-        div { class: "mt-6 grid gap-5 md:grid-cols-2",
+        div { class: "grid gap-6 md:grid-cols-2",
             Field { caption: "Requirements".to_string(),
                 textarea {
-                    class: format!("{INPUT} min-h-24"),
+                    class: TEXTAREA,
                     value: "{draft.read().requirements}",
                     oninput: move |e| draft.write().requirements = e.value(),
                 }
-                span { class: "text-xs text-muted", "{draft.read().requirements.chars().count()}/{REQUIREMENTS_MAX}" }
+                span { class: "block text-sm text-muted-foreground tabular", "{draft.read().requirements.chars().count()}/{REQUIREMENTS_MAX}" }
             }
             Field { caption: "Description".to_string(),
                 textarea {
-                    class: format!("{INPUT} min-h-24"),
+                    class: TEXTAREA,
                     value: "{draft.read().description}",
                     oninput: move |e| draft.write().description = e.value(),
                 }
-                span { class: "text-xs text-muted", "{draft.read().description.chars().count()}/{DESCRIPTION_MAX}" }
+                span { class: "block text-sm text-muted-foreground tabular", "{draft.read().description.chars().count()}/{DESCRIPTION_MAX}" }
             }
         }
 
         if full {
-            div { class: "mt-6 space-y-2",
-                p { class: "text-sm font-semibold", "Credited authors" }
+            div { class: "grid gap-4",
+                span { class: LABEL, "Credited authors" }
                 for (i, a) in draft.read().authors.clone().into_iter().enumerate() {
                     div { class: "grid gap-2 sm:grid-cols-[1fr_1fr_auto]",
                         input {
@@ -563,7 +574,7 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
                         }
                         button {
                             r#type: "button",
-                            class: BTN_GHOST,
+                            class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}",
                             onclick: move |_| {
                                 let mut d = draft.write();
                                 if i < d.authors.len() {
@@ -576,7 +587,7 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
                 }
                 button {
                     r#type: "button",
-                    class: BTN_GHOST,
+                    class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} w-fit",
                     onclick: move |_| draft.write().authors.push(AuthorForm {
                         github_login: None,
                         name: String::new(),
@@ -589,12 +600,23 @@ fn PortFields(draft: Signal<FormState>, full: bool, platforms: Vec<ChoicePlatfor
     }
 }
 
-/// A labelled form row.
+/// A bordered form section: heading, then its fields.
+#[component]
+fn FormPanel(heading: String, children: Element) -> Element {
+    rsx! {
+        section { class: "{CARD_SURFACE} p-6",
+            h2 { class: "text-base font-semibold", "{heading}" }
+            div { class: "mt-4 grid gap-6", {children} }
+        }
+    }
+}
+
+/// A labelled field: caption, control and any helper text.
 #[component]
 fn Field(caption: String, children: Element) -> Element {
     rsx! {
-        label { class: "block space-y-1.5",
-            span { class: "text-sm font-semibold", "{caption}" }
+        label { class: "grid gap-2",
+            span { class: LABEL, "{caption}" }
             {children}
         }
     }
@@ -623,16 +645,16 @@ fn PreviewSummary(data: RepoPreviewData) -> Element {
         ""
     };
     rsx! {
-        div { class: "mt-4 space-y-1 rounded-xl border border-border bg-surface-2 p-4 text-sm",
-            p { class: "font-semibold", "{data.owner}/{data.name}" }
+        div { class: "space-y-1 rounded-lg border bg-muted p-4 text-sm",
+            p { class: "font-medium", "{data.owner}/{data.name}" }
             if let Some(desc) = data.description.clone() {
-                p { class: "text-muted", "{desc}" }
+                p { class: "text-muted-foreground", "{desc}" }
             }
-            p { class: "text-muted", "★ {data.stars} · {version}" }
-            p { class: "text-muted", "Detected platforms: {platforms}" }
-            p { class: "text-muted", "AI: {ai}" }
+            p { class: "text-muted-foreground", "★ {data.stars} · {version}" }
+            p { class: "text-muted-foreground", "Detected platforms: {platforms}" }
+            p { class: "text-muted-foreground", "AI: {ai}" }
             if !author_note.is_empty() {
-                p { class: "text-muted", "{author_note}" }
+                p { class: "text-muted-foreground", "{author_note}" }
             }
         }
     }
@@ -647,12 +669,12 @@ fn SubmitOutcome(result: SubmitResult) -> Element {
         "Queued for review. A moderator will look at it."
     };
     rsx! {
-        div { class: "mt-4 rounded-xl border border-success/40 bg-success/10 p-4",
-            p { class: "font-semibold", "{status}" }
+        div { class: "rounded-lg border border-success/50 bg-success/10 p-4 text-sm",
+            p { class: "font-medium", "{status}" }
             if let (Some(game_slug), Some(port_slug)) = (result.game_slug.clone(), result.port_slug.clone()) {
                 Link {
                     to: Route::PortPage { game_slug, port_slug },
-                    class: "accent-text underline",
+                    class: TEXT_LINK,
                     "View the port"
                 }
             }
@@ -713,6 +735,11 @@ fn pick_game(mut w: Wiz, choice: GameChoice) {
 }
 
 fn submit_port(mut w: Wiz) {
+    if !*w.rules_ok.read() {
+        w.error
+            .set(Some("Confirm the ground rules first.".to_string()));
+        return;
+    }
     let url = w.repo_url.read().trim().to_string();
     let draft = w.draft.read().clone();
     let target = match w.target.read().clone() {

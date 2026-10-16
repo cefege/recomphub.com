@@ -1,11 +1,20 @@
 use dioxus::prelude::*;
-use recomphub_shared::{ActivityItem, HitWindow, PlatformRef};
+use recomphub_shared::seo::home_title;
+use recomphub_shared::{ActivityItem, HitWindow, PlatformRef, PortCard};
 
 use crate::api;
-use crate::components::listing::{WINDOWS, chip_class};
-use crate::components::{GameCardView, LiveCount, Seo, keyed};
+use crate::components::listing::WINDOWS;
+use crate::components::styles::{
+    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_GHOST, BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM,
+    CARD_SURFACE, H2, INPUT, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
+};
+use crate::components::ui::version_label;
+use crate::components::{
+    GameCardView, LiveCount, Picture, PlatformCoverage, RelativeTime, Seo, initials_of, keyed,
+};
 
-/// Home page: hero, live rail, trending, just released, live activity, wanted and browse tiles.
+/// Home page: search, trending top 10, live now, just released, live activity, wanted,
+/// a pointer for creators, and browse tiles.
 #[component]
 pub fn Home(window: String) -> Element {
     let selected = window
@@ -18,142 +27,206 @@ pub fn Home(window: String) -> Element {
 fn HomeInner(selected: HitWindow) -> Element {
     let selected_key = selected.as_str();
     let data = use_loader(move || api::home(selected))?;
+    let coverage = use_loader(api::stats_coverage)?;
     let d = data();
-    let title = "RecompHub – Every Game Recompilation & Native PC Port".to_string();
-    let description = "Every recompilation and native port of console games, on Windows, Mac, Linux and in your browser.".to_string();
+    let description = "Recompilations and native ports of console and PC games, for Windows, macOS, Linux, Android, handhelds and the web.".to_string();
     let top10: Vec<_> = d.trending.iter().take(10).cloned().collect();
-    let rail_fallback: Vec<_> = d.trending.iter().take(12).cloned().collect();
-    let rail_live = !d.live_top.is_empty();
     rsx! {
-        Seo { title, description, path: "/".to_string() }
+        Seo { title: home_title().to_string(), description: description.clone(), path: "/".to_string() }
 
-        section { class: "relative -mx-4 mb-12 overflow-hidden rounded-3xl border border-border/60 px-6 py-16 text-center",
-            h1 { class: "text-4xl font-black tracking-tight md:text-6xl", "Play the classics natively." }
-            p { class: "mx-auto mt-4 max-w-2xl text-lg text-muted",
-                "Every recompilation and native port of console games, on Windows, Mac, Linux and in your browser."
+        section { class: "flex flex-col items-start gap-6 border-b pb-10",
+            div {
+                h1 { class: "max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl",
+                    "Every game recompilation and native port"
+                }
+                p { class: "mt-4 max-w-2xl text-lg {LEAD}", "{description}" }
             }
-            form { action: "/search", method: "get", class: "mx-auto mt-8 flex max-w-xl",
+            form { action: "/search", method: "get", role: "search", class: "flex w-full max-w-xl gap-2",
                 input {
                     r#type: "search",
                     name: "q",
-                    placeholder: "Search a game or port",
-                    class: "w-full rounded-2xl border border-border bg-surface px-5 py-4 text-lg",
+                    "aria-label": "Search a game or port",
+                    placeholder: "Search a game or port…",
+                    class: "{INPUT} h-10",
                 }
+                button { r#type: "submit", class: "{BUTTON} {BUTTON_PRIMARY} h-10 px-5", "Search" }
             }
-            div { class: "mt-8 flex flex-wrap justify-center gap-6 text-sm text-muted tabular",
-                span { "{d.stats.games_with_port} games with a native port" }
-                span { "{d.stats.ports} ports" }
-                span { "{d.stats.platforms_with_ports} original platforms" }
+            dl { class: "flex flex-wrap gap-x-8 gap-y-2 text-sm",
+                Stat { value: d.stats.games_with_port, label: "games with a native port" }
+                Stat { value: d.stats.ports, label: "ports and recompilations" }
+                Stat { value: d.stats.platforms_with_ports, label: "original platforms" }
             }
         }
 
-        section { class: "mb-12",
-            h2 { class: "mb-4 text-2xl font-extrabold tracking-tight",
-                if rail_live { "Live now" } else { "Trending" }
-            }
-            div { class: "rail flex snap-x gap-4 overflow-x-auto pb-2",
-                if rail_live {
-                    for g in d.live_top.iter().cloned() {
-                        div { key: "{g.game_id}", class: "w-40 shrink-0 snap-start",
-                            a { href: "/games/{g.slug}", class: "block",
-                                h3 { class: "mt-1 text-sm font-extrabold", "{g.name}" }
-                                LiveCount { game_id: g.game_id, portless: g.port_count == 0 }
+        section { class: "mt-12",
+            div { class: "mb-6 flex flex-wrap items-center justify-between gap-4",
+                h2 { class: H2, "Trending" }
+                div { class: "flex items-center gap-2",
+                    nav { class: TABS_LIST, "aria-label": "Ranking window",
+                        for (w, key, label) in WINDOWS {
+                            a {
+                                key: "{key}",
+                                href: "/?window={key}",
+                                class: if w == selected { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
+                                "aria-current": if w == selected { "page" } else { "false" },
+                                "{label}"
                             }
                         }
                     }
-                } else {
-                    for r in rail_fallback.iter().cloned() {
-                        div { key: "{r.game.id}", class: "w-40 shrink-0 snap-start",
-                            GameCardView { game: r.game }
-                        }
-                    }
-                }
-            }
-        }
-
-        section { class: "mb-12",
-            h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Trending" }
-            nav { class: "mb-6 flex flex-wrap gap-2",
-                for (w, key, label) in WINDOWS {
-                    a {
-                        key: "{key}",
-                        href: "/?window={key}",
-                        class: chip_class(w == selected),
-                        "{label}"
-                    }
+                    a { href: "/trending?window={selected_key}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "Full ranking" }
                 }
             }
             if !d.window_has_scores {
-                p { class: "mb-4 text-sm text-muted", "Not enough activity in this window yet; ordered by popularity." }
+                p { class: "mb-4 text-sm text-muted-foreground", "Not enough activity in this window yet, so these are ordered by popularity." }
             }
-            ol { class: "grid grid-cols-2 gap-6 md:grid-cols-5",
+            ol { class: "grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-5",
                 for (i, r) in top10.into_iter().enumerate() {
-                    li { key: "{r.game.id}", class: "relative",
+                    li { key: "{r.game.id}",
                         GameCardView { game: r.game, rank: Some((i + 1) as i64) }
                     }
                 }
             }
-            a { href: "/trending?window={selected_key}", class: "mt-6 inline-block font-semibold accent-text", "Full ranking" }
         }
 
-        section { class: "mb-12 grid gap-10 lg:grid-cols-2",
-            div {
-                h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Just released" }
-                ul { class: "grid grid-cols-2 gap-4 md:grid-cols-3",
-                    for p in d.just_released.iter().cloned() {
-                        li { key: "{p.id}",
-                            article { class: "card rounded-2xl border border-border bg-surface p-3",
-                                a { href: "/games/{p.game_slug}/{p.slug}", class: "block",
-                                    h3 { class: "font-extrabold leading-tight", "{p.name}" }
-                                    p { class: "text-xs text-muted", "{p.game_name}" }
-                                }
-                                if let Some(v) = p.latest_version.clone() {
-                                    span { class: "mt-2 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-xs", "{v}" }
-                                }
+        div { class: "mt-12",
+            PlatformCoverage { coverage: coverage() }
+        }
+
+        if !d.live_top.is_empty() {
+            section { class: "mt-12",
+                h2 { class: "mb-4 {H2}", "Live now" }
+                ul { class: "rail flex snap-x gap-3 overflow-x-auto pb-2",
+                    for g in d.live_top.iter().cloned() {
+                        li { key: "{g.game_id}", class: "shrink-0 snap-start",
+                            a { href: "/games/{g.slug}", class: "{CARD_SURFACE} flex w-56 flex-col gap-1 p-3 transition-colors hover:bg-accent",
+                                span { class: "truncate text-sm font-medium", "{g.name}" }
+                                LiveCount { game_id: g.game_id, portless: g.port_count == 0 }
                             }
                         }
                     }
                 }
             }
-            div {
-                h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Live activity" }
-                ol { class: "flex flex-col gap-2",
+        }
+
+        div { class: "mt-12 grid gap-12 lg:grid-cols-3",
+            section { class: "lg:col-span-2",
+                div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
+                    h2 { class: H2, "Just released" }
+                    a { href: "/new", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
+                }
+                ul { class: "{CARD_SURFACE} divide-y",
+                    for p in d.just_released.iter().cloned() {
+                        ReleaseRow { key: "{p.id}", port: p }
+                    }
+                }
+            }
+            section {
+                div { class: "mb-4 flex min-h-8 items-center",
+                    h2 { class: H2, "Activity" }
+                }
+                ol { class: "flex flex-col gap-1 text-sm",
                     for a in d.activity.iter().cloned() {
-                        li { key: "{a.id}", class: "animate-rise rounded-xl border border-border bg-surface px-4 py-2 text-sm",
-                            a { href: "/games/{a.game_slug}", class: "hover:text-foreground", "{activity_text(&a)}" }
+                        li { key: "{a.id}", class: "animate-rise",
+                            a { href: "/games/{a.game_slug}", class: "block rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                                "{activity_text(&a)}"
+                            }
                         }
                     }
                 }
             }
         }
 
-        section { class: "mb-12",
-            h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Most wanted (no port yet)" }
-            div { class: "grid grid-cols-2 gap-6 md:grid-cols-4",
+        section { class: "mt-12",
+            div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
+                h2 { class: H2, "Most wanted, no port yet" }
+                a { href: "/wanted", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
+            }
+            ul { class: "grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 lg:grid-cols-8",
                 for g in d.wanted.iter().cloned() {
-                    div { key: "{g.id}", GameCardView { game: g } }
+                    li { key: "{g.id}", GameCardView { game: g } }
                 }
             }
         }
 
-        section { class: "mb-12 grid gap-10 lg:grid-cols-2",
+        section { class: "{CARD_SURFACE} mt-12 flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between",
             div {
-                h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Where are they from?" }
-                div { class: "grid grid-cols-2 gap-4 md:grid-cols-3",
-                    for p in d.platforms.iter().cloned() {
-                        PlatformTile { platform: p }
+                h2 { class: "text-lg font-semibold tracking-tight", "Make the next one" }
+                p { class: "mt-1 text-sm text-muted-foreground",
+                    "The most wanted games without a port, ports missing platforms, and ports nobody has filmed yet."
+                }
+            }
+            a { href: "/creators", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} self-start sm:self-auto", "What to work on next" }
+        }
+
+        div { class: "mt-12 grid gap-12 lg:grid-cols-2",
+            section {
+                div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
+                    h2 { class: H2, "Original platforms" }
+                    a { href: "/platforms", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "All platforms" }
+                }
+                ul { class: "grid grid-cols-2 gap-3 sm:grid-cols-3",
+                    for p in d.platforms.iter().take(12).cloned() {
+                        PlatformTile { key: "{p.id}", platform: p }
                     }
                 }
             }
-            div {
-                h2 { class: "mb-4 text-2xl font-extrabold tracking-tight", "Where do they run?" }
-                div { class: "grid grid-cols-2 gap-4",
+            section {
+                div { class: "mb-4 flex min-h-8 items-center",
+                    h2 { class: H2, "Runs on" }
+                }
+                ul { class: "grid grid-cols-2 gap-3",
                     for t in d.runs_on.iter().cloned() {
-                        a { key: "{t.target}", href: "/runs-on/{t.target}",
-                            class: "rounded-2xl border border-border bg-surface p-6 transition hover:-translate-y-1",
-                            p { class: "text-lg font-extrabold", "{t.label}" }
-                            p { class: "text-sm text-muted tabular", "{t.port_count} ports" }
+                        li { key: "{t.target}",
+                            a { href: "/runs-on/{t.target}",
+                                class: "{CARD_SURFACE} flex flex-col gap-0.5 p-4 transition-colors hover:bg-accent",
+                                span { class: "font-medium", "{t.label}" }
+                                span { class: "text-sm text-muted-foreground tabular", "{plural(t.port_count, \"port\", \"ports\")}" }
+                            }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn Stat(value: i64, label: &'static str) -> Element {
+    rsx! {
+        div { class: "flex items-baseline gap-1.5",
+            dt { class: "sr-only", "{label}" }
+            dd { class: "font-semibold tabular", "{value}" }
+            span { class: "text-muted-foreground", "aria-hidden": "true", "{label}" }
+        }
+    }
+}
+
+/// One row of the "Just released" list: cover, port and game, version and time.
+#[component]
+fn ReleaseRow(port: PortCard) -> Element {
+    let href = format!("/games/{}/{}", port.game_slug, port.slug);
+    rsx! {
+        li {
+            a { href: "{href}", class: "flex items-center gap-3 p-3 transition-colors hover:bg-muted/50",
+                div { class: "h-12 w-9 shrink-0 overflow-hidden rounded-sm bg-muted",
+                    Picture {
+                        media: port.cover.clone(),
+                        alt: format!("{} cover art", port.game_name),
+                        initials: initials_of(&port.game_name),
+                        sizes: "36px",
+                        class: "h-full w-full object-cover text-[10px]",
+                    }
+                }
+                div { class: "min-w-0 flex-1",
+                    p { class: "truncate text-sm font-medium", "{port.name}" }
+                    p { class: "truncate text-xs text-muted-foreground", "{port.game_name}" }
+                }
+                div { class: "flex shrink-0 flex-col items-end gap-1",
+                    if let Some(v) = port.latest_version.clone() {
+                        span { class: "{BADGE} {BADGE_SECONDARY} tabular", "{version_label(&v)}" }
+                    }
+                    if let Some(at) = port.latest_release_at {
+                        span { class: "text-xs text-muted-foreground", RelativeTime { at } }
                     }
                 }
             }
@@ -164,29 +237,23 @@ fn HomeInner(selected: HitWindow) -> Element {
 #[component]
 fn PlatformTile(platform: PlatformRef) -> Element {
     let slug = platform.slug.clone().unwrap_or_default();
-    let tint = family_tint(platform.family.as_deref().unwrap_or(""));
     rsx! {
-        a { href: "/platforms/{slug}",
-            class: "rounded-2xl border border-border bg-gradient-to-br p-5 transition hover:-translate-y-1 {tint}",
-            p { class: "font-extrabold", "{platform.name}" }
-            p { class: "text-sm text-muted tabular", "{platform.ported_count} ported" }
+        li {
+            a { href: "/platforms/{slug}",
+                class: "{CARD_SURFACE} flex h-full flex-col gap-0.5 p-4 transition-colors hover:bg-accent",
+                span { class: "font-medium leading-snug", "{platform.name}" }
+                span { class: "text-sm text-muted-foreground tabular", "{platform.ported_count} ported" }
+            }
         }
     }
 }
 
-/// Gradient tint per platform family: Nintendo red, PlayStation blue, Xbox green, Sega blue-violet, PC grey.
-fn family_tint(family: &str) -> &'static str {
-    let f = family.to_ascii_lowercase();
-    if f.contains("nintendo") {
-        "from-red-500/30 to-surface"
-    } else if f.contains("playstation") {
-        "from-blue-500/30 to-surface"
-    } else if f.contains("xbox") {
-        "from-green-500/30 to-surface"
-    } else if f.contains("sega") {
-        "from-indigo-500/30 to-surface"
+/// `1 port`, `3 ports`.
+fn plural(n: i64, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
     } else {
-        "from-slate-500/30 to-surface"
+        format!("{n} {many}")
     }
 }
 

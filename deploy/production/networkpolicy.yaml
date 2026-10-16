@@ -62,6 +62,10 @@ spec:
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated
+                  - worker-sales-sync
+                  - worker-port-videos
+                  - worker-describe-ports
+                  - worker-stats-snapshot
       ports:
         - protocol: TCP
           port: 5432

@@ -1,45 +1,56 @@
 use dioxus::prelude::*;
 use recomphub_shared::GameCard;
 
-use crate::components::{LiveCount, Picture};
+use crate::components::styles::{BADGE, BADGE_OUTLINE, BADGE_SECONDARY};
+use crate::components::{LiveCount, Picture, initials_of};
 
-/// Cover-art card for one game. Links to the game page. Shows the rank numeral when given.
+/// Cover-art card for one game, in the usual media-catalog shape: cover, title, one meta line.
+/// Links to the game page. Shows a rank badge on the cover when given.
 #[component]
 pub fn GameCardView(game: GameCard, #[props(default)] rank: Option<i64>) -> Element {
     let href = format!("/games/{}", game.slug);
     let portless = game.port_count == 0;
-    let initials: String = game
-        .name
-        .split_whitespace()
-        .filter_map(|w| w.chars().next())
-        .take(2)
-        .collect();
-    let year = game.release_year.map(|y| y.to_string()).unwrap_or_default();
-    let cls = if portless { "grayscale-cover" } else { "" };
+    let initials = initials_of(&game.name);
+    let year = game.release_year.map(|y| y.to_string());
+    let ports = match game.port_count {
+        0 => None,
+        1 => Some("1 port".to_string()),
+        n => Some(format!("{n} ports")),
+    };
+    let wants = match game.want_count {
+        0 => None,
+        1 => Some("1 wants it".to_string()),
+        n => Some(format!("{n} want it")),
+    };
     rsx! {
-        article { class: "card group relative flex flex-col gap-2 rounded-2xl border border-border bg-surface p-2 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-accent-soft",
-            a { href: "{href}", class: "block",
-                div { class: "cover-tilt relative aspect-[3/4] overflow-hidden rounded-xl",
+        article { class: "group relative flex flex-col gap-2",
+            a { href: "{href}", class: "flex flex-col gap-2 rounded-lg outline-offset-4",
+                div { class: "relative aspect-[3/4] overflow-hidden rounded-lg border bg-muted",
                     Picture {
                         media: game.cover.clone(),
                         alt: format!("{} cover art", game.name),
                         initials: initials,
                         sizes: "(min-width: 1024px) 16vw, 45vw",
-                        class: "h-full w-full object-cover {cls}",
+                        class: "h-full w-full object-cover transition-opacity group-hover:opacity-90",
+                    }
+                    if let Some(r) = rank {
+                        span { class: "{BADGE} absolute left-2 top-2 min-w-7 bg-background/90 text-foreground shadow-sm tabular backdrop-blur-sm", "#{r}" }
                     }
                 }
-                if let Some(r) = rank {
-                    span { class: "pointer-events-none absolute -left-2 bottom-4 text-6xl font-black text-transparent [-webkit-text-stroke:2px_var(--color-foreground)]", "{r}" }
-                }
-                h3 { class: "mt-2 line-clamp-2 text-sm font-extrabold leading-tight tracking-tight", "{game.name}" }
+                h3 { class: "line-clamp-2 text-sm font-medium leading-snug group-hover:underline", "{game.name}" }
             }
-            p { class: "text-xs text-muted tabular", "{year}" }
-            div { class: "flex flex-wrap items-center gap-2 text-xs",
+            div { class: "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground",
+                if let Some(y) = year {
+                    span { class: "tabular", "{y}" }
+                }
+                match ports {
+                    Some(p) => rsx! { span { class: "{BADGE} {BADGE_SECONDARY}", "{p}" } },
+                    None => rsx! { span { class: "{BADGE} {BADGE_OUTLINE}", "No port yet" } },
+                }
                 if portless {
-                    span { class: "rounded-full bg-surface-2 px-2 py-0.5 text-warning", "No port yet" }
-                    span { class: "text-muted", "{game.want_count} want it" }
-                } else {
-                    span { class: "rounded-full bg-surface-2 px-2 py-0.5 text-success", "{game.port_count} port(s)" }
+                    if let Some(w) = wants {
+                        span { class: "tabular", "{w}" }
+                    }
                 }
                 LiveCount { game_id: game.id, portless: portless }
             }

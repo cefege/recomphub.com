@@ -2,7 +2,11 @@ use dioxus::prelude::*;
 use recomphub_shared::{GameCard, HitWindow, PortCard, RankedGame};
 
 use crate::components::live::use_live_watch;
-use crate::components::ui::{TrendChip, target_label, url_encode};
+use crate::components::styles::{
+    BUTTON, BUTTON_OUTLINE, BUTTON_SM, TABLE, TABLE_HEAD_ROW, TABLE_ROW, TABLE_TD, TABLE_TH,
+    TABLE_TH_NUM, TABLE_WRAP,
+};
+use crate::components::ui::{TrendChip, target_label, url_encode, version_label};
 
 /// Primary targets, in the order they appear as availability chips.
 pub const PRIMARY_TARGETS: [&str; 4] = ["windows", "macos", "linux", "web"];
@@ -42,15 +46,15 @@ pub fn query_string(pairs: &[(&str, String)]) -> String {
 #[component]
 pub fn GameListTable(games: Vec<GameCard>) -> Element {
     rsx! {
-        div { class: "overflow-x-auto rounded-2xl border border-border",
-            table { class: "w-full min-w-[36rem] text-left text-sm",
-                thead { class: "bg-surface-2 text-xs uppercase tracking-wide text-muted",
-                    tr {
-                        th { class: "px-4 py-3 font-bold", "Game" }
-                        th { class: "px-4 py-3 font-bold", "Year" }
-                        th { class: "px-4 py-3 font-bold", "Ports" }
-                        th { class: "px-4 py-3 font-bold", "Runs on" }
-                        th { class: "px-4 py-3 font-bold", "Wanted" }
+        div { class: TABLE_WRAP,
+            table { class: "{TABLE} min-w-[36rem]",
+                thead {
+                    tr { class: TABLE_HEAD_ROW,
+                        th { class: TABLE_TH, "Game" }
+                        th { class: TABLE_TH, "Year" }
+                        th { class: TABLE_TH_NUM, "Ports" }
+                        th { class: TABLE_TH, "Runs on" }
+                        th { class: TABLE_TH_NUM, "Wanted" }
                     }
                 }
                 tbody {
@@ -88,22 +92,24 @@ fn GameRow(game: GameCard) -> Element {
     let ports = game.port_count;
     let wanted = game.want_count;
     rsx! {
-        tr { class: "border-t border-border hover:bg-surface-2",
-            td { class: "px-4 py-3 font-semibold", a { href: "{href}", class: "hover:text-accent", "{name}" } }
-            td { class: "px-4 py-3 tabular text-muted", "{year}" }
-            td { class: "px-4 py-3 tabular", "{ports}" }
-            td { class: "px-4 py-3 text-muted", "{runs}" }
-            td { class: "px-4 py-3 tabular", "{wanted}" }
+        tr { class: TABLE_ROW,
+            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
+            td { class: "{TABLE_TD} tabular text-muted-foreground", "{year}" }
+            td { class: "{TABLE_TD} text-right tabular", "{ports}" }
+            td { class: "{TABLE_TD} text-muted-foreground", "{runs}" }
+            td { class: "{TABLE_TD} text-right tabular", "{wanted}" }
         }
     }
 }
 
-/// Chip classes for filter and window links.
+/// Classes for one link in a wrapping set of filter pills: filled when selected, outline otherwise.
 pub fn chip_class(on: bool) -> String {
     if on {
-        "border-accent bg-accent/15 text-foreground".to_string()
+        format!(
+            "{BUTTON} {BUTTON_SM} rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+        )
     } else {
-        "border-border text-muted hover:text-foreground".to_string()
+        format!("{BUTTON} {BUTTON_SM} rounded-full {BUTTON_OUTLINE}")
     }
 }
 
@@ -118,16 +124,16 @@ pub fn WatchVisible(ids: Vec<i64>) -> Element {
 #[component]
 pub fn RankingTable(rows: Vec<RankedGame>) -> Element {
     rsx! {
-        div { class: "overflow-x-auto rounded-2xl border border-border",
-            table { class: "w-full min-w-[36rem] text-left text-sm",
-                thead { class: "bg-surface-2 text-xs uppercase tracking-wide text-muted",
-                    tr {
-                        th { class: "px-4 py-3 font-bold", "#" }
-                        th { class: "px-4 py-3 font-bold", "Game" }
-                        th { class: "px-4 py-3 font-bold", "Score" }
-                        th { class: "px-4 py-3 font-bold", "Trend" }
-                        th { class: "px-4 py-3 font-bold", "Ports" }
-                        th { class: "px-4 py-3 font-bold", "Wanted" }
+        div { class: TABLE_WRAP,
+            table { class: "{TABLE} min-w-[36rem]",
+                thead {
+                    tr { class: TABLE_HEAD_ROW,
+                        th { class: "{TABLE_TH_NUM} w-12", "#" }
+                        th { class: TABLE_TH, "Game" }
+                        th { class: TABLE_TH_NUM, "Score" }
+                        th { class: TABLE_TH, "Trend" }
+                        th { class: TABLE_TH_NUM, "Ports" }
+                        th { class: TABLE_TH_NUM, "Wanted" }
                     }
                 }
                 tbody {
@@ -152,13 +158,13 @@ fn RankingRow(row: RankedGame) -> Element {
     let ports = row.game.port_count;
     let wanted = row.game.want_count;
     rsx! {
-        tr { class: "border-t border-border hover:bg-surface-2",
-            td { class: "px-4 py-3 tabular font-extrabold", "{rank}" }
-            td { class: "px-4 py-3 font-semibold", a { href: "{href}", class: "hover:text-accent", "{name}" } }
-            td { class: "px-4 py-3 tabular", "{score}" }
-            td { class: "px-4 py-3", TrendChip { rank: row.rank, prev_rank: row.prev_rank } }
-            td { class: "px-4 py-3 tabular", "{ports}" }
-            td { class: "px-4 py-3 tabular", "{wanted}" }
+        tr { class: TABLE_ROW,
+            td { class: "{TABLE_TD} text-right tabular text-muted-foreground", "{rank}" }
+            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
+            td { class: "{TABLE_TD} text-right tabular", "{score}" }
+            td { class: TABLE_TD, TrendChip { rank: row.rank, prev_rank: row.prev_rank } }
+            td { class: "{TABLE_TD} text-right tabular", "{ports}" }
+            td { class: "{TABLE_TD} text-right tabular", "{wanted}" }
         }
     }
 }
@@ -167,16 +173,16 @@ fn RankingRow(row: RankedGame) -> Element {
 #[component]
 pub fn PortTable(ports: Vec<PortCard>) -> Element {
     rsx! {
-        div { class: "overflow-x-auto rounded-2xl border border-border",
-            table { class: "w-full min-w-[40rem] text-left text-sm",
-                thead { class: "bg-surface-2 text-xs uppercase tracking-wide text-muted",
-                    tr {
-                        th { class: "px-4 py-3 font-bold", "Port" }
-                        th { class: "px-4 py-3 font-bold", "Game" }
-                        th { class: "px-4 py-3 font-bold", "Kind" }
-                        th { class: "px-4 py-3 font-bold", "Runs on" }
-                        th { class: "px-4 py-3 font-bold", "GitHub ★" }
-                        th { class: "px-4 py-3 font-bold", "Release" }
+        div { class: TABLE_WRAP,
+            table { class: "{TABLE} min-w-[40rem]",
+                thead {
+                    tr { class: TABLE_HEAD_ROW,
+                        th { class: TABLE_TH, "Port" }
+                        th { class: TABLE_TH, "Game" }
+                        th { class: TABLE_TH, "Kind" }
+                        th { class: TABLE_TH, "Runs on" }
+                        th { class: TABLE_TH_NUM, "GitHub stars" }
+                        th { class: TABLE_TH, "Release" }
                     }
                 }
                 tbody {
@@ -209,20 +215,21 @@ fn PortRow(port: PortCard) -> Element {
     };
     let release = port
         .latest_version
-        .clone()
+        .as_deref()
+        .map(version_label)
         .unwrap_or_else(|| port.release_state_label.clone());
     let name = port.name.clone();
     let game = port.game_name.clone();
     let kind = port.kind_label.clone();
     let stars = port.github_stars;
     rsx! {
-        tr { class: "border-t border-border hover:bg-surface-2",
-            td { class: "px-4 py-3 font-semibold", a { href: "{href}", class: "hover:text-accent", "{name}" } }
-            td { class: "px-4 py-3", a { href: "{game_href}", class: "text-muted hover:text-foreground", "{game}" } }
-            td { class: "px-4 py-3 text-muted", "{kind}" }
-            td { class: "px-4 py-3 text-muted", "{runs}" }
-            td { class: "px-4 py-3 tabular", "{stars}" }
-            td { class: "px-4 py-3 text-muted", "{release}" }
+        tr { class: TABLE_ROW,
+            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
+            td { class: TABLE_TD, a { href: "{game_href}", class: "text-muted-foreground hover:text-foreground", "{game}" } }
+            td { class: "{TABLE_TD} text-muted-foreground", "{kind}" }
+            td { class: "{TABLE_TD} text-muted-foreground", "{runs}" }
+            td { class: "{TABLE_TD} text-right tabular", "{stars}" }
+            td { class: "{TABLE_TD} text-muted-foreground", "{release}" }
         }
     }
 }

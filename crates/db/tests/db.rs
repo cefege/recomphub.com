@@ -19,14 +19,19 @@ async fn make_user(
     approved: i32,
 ) -> DbResult<i64> {
     let id = sqlx::query_scalar::<_, i64>(
-        "INSERT INTO users (github_id, login, role, approved_count) VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO users (display_name, github_login, role, approved_count) VALUES ($1, $1, $2, $3) RETURNING id",
     )
-    .bind(github_id)
     .bind(login.to_string())
     .bind(role.to_string())
     .bind(approved)
     .fetch_one(pool)
     .await?;
+    sqlx::query("INSERT INTO user_identities (provider, subject, user_id, login) VALUES ('github', $1, $2, $3)")
+        .bind(github_id.to_string())
+        .bind(id)
+        .bind(login.to_string())
+        .execute(pool)
+        .await?;
     Ok(id)
 }
 

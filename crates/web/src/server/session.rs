@@ -87,8 +87,8 @@ pub async fn require_admin() -> Result<UserRow, ServerFnError> {
 pub fn session_user(row: &UserRow, avatar: Option<MediaRef>) -> SessionUser {
     SessionUser {
         id: row.id,
-        login: row.login.clone(),
-        name: row.name.clone(),
+        display_name: row.display_name.clone(),
+        github_login: row.github_login.clone(),
         role: row.role.clone(),
         avatar,
     }
@@ -106,6 +106,7 @@ pub fn db_error(err: DbError) -> ServerFnError {
         DbError::InvalidPayload(msg) | DbError::InvalidState(msg) => {
             http_error(StatusCode::BAD_REQUEST, msg)
         }
+        DbError::Conflict(msg) => http_error(StatusCode::CONFLICT, msg),
         other => {
             tracing::error!(error = %other, "database error");
             http_error(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")

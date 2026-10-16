@@ -4,8 +4,12 @@ use dioxus::fullstack::http::StatusCode;
 use dioxus::prelude::*;
 
 use crate::api;
+use crate::components::styles::{
+    BUTTON, BUTTON_GHOST, BUTTON_ICON, BUTTON_OUTLINE, BUTTON_SM, INPUT, MENU_ITEM, POPOVER,
+};
 use crate::components::{
-    LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore, login_redirect, set_me,
+    LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore, initials_of, login_redirect,
+    set_me,
 };
 use crate::pages::RouteError;
 use crate::routes::Route;
@@ -68,67 +72,79 @@ pub fn Shell() -> Element {
         if hydrated() {
             LiveSocket {}
         }
-        div { class: "min-h-screen bg-background text-foreground",
-            header { class: "sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl",
-                div { class: "mx-auto flex max-w-7xl items-center gap-4 px-4 py-3",
-                    a { href: "/", class: "text-xl font-black tracking-tight bg-gradient-to-r from-[#8b5cf6] to-[#22d3ee] bg-clip-text text-transparent", "RecompHub" }
-                    nav { class: "hidden gap-4 text-sm font-semibold text-muted md:flex",
-                        a { href: "/trending", class: "hover:text-foreground", "Trending" }
-                        a { href: "/games", class: "hover:text-foreground", "Games" }
-                        a { href: "/platforms", class: "hover:text-foreground", "Platforms" }
-                        a { href: "/wanted", class: "hover:text-foreground", "Wanted" }
-                        a { href: "/submit", class: "hover:text-foreground", "Submit" }
-                    }
-                    form { action: "/search", method: "get", class: "ml-auto hidden flex-1 max-w-sm md:block",
-                        input {
-                            r#type: "search",
-                            name: "q",
-                            placeholder: "Search games and ports ( / )",
-                            class: "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm",
+        div { class: "flex min-h-screen flex-col bg-background text-foreground",
+            a { href: "#main", class: "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 {BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Skip to content" }
+            header { class: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                div { class: "mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8",
+                    details { class: "relative md:hidden",
+                        summary { class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} list-none", "aria-label": "Menu",
+                            MenuIcon { class: "size-5" }
+                        }
+                        nav { class: "{POPOVER} absolute left-0 mt-2 flex w-56 flex-col", "aria-label": "Main",
+                            for (href, label) in NAV {
+                                a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
+                            }
                         }
                     }
-                    div { class: "ml-auto flex items-center gap-3 md:ml-0",
+                    a { href: "/", class: "text-base font-semibold tracking-tight", "RecompHub" }
+                    nav { class: "hidden items-center gap-5 text-sm md:flex", "aria-label": "Main",
+                        for (href, label) in NAV {
+                            a { key: "{href}", href: "{href}", class: "text-muted-foreground transition-colors hover:text-foreground", "{label}" }
+                        }
+                    }
+                    div { class: "ml-auto flex items-center gap-2",
+                        form { action: "/search", method: "get", role: "search", class: "hidden lg:block",
+                            input {
+                                r#type: "search",
+                                name: "q",
+                                "aria-label": "Search games and ports",
+                                placeholder: "Search games and ports…",
+                                class: "{INPUT} h-8 w-44 xl:w-72",
+                            }
+                        }
                         OnlineCount {}
                         button {
                             r#type: "button",
-                            class: "rounded-full border border-border bg-surface px-3 py-1 text-sm",
+                            class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON}",
                             title: "Toggle light and dark theme",
+                            "aria-label": "Toggle light and dark theme",
                             onclick: move |_| {
                                 document::eval(
                                     "var d=document.documentElement;var t=d.dataset.theme==='light'?'dark':'light';d.dataset.theme=t;localStorage.setItem('theme',t);",
                                 );
                             },
-                            "Theme"
+                            ContrastIcon { class: "size-4" }
                         }
                         if let Some(me) = me {
                             details { class: "relative",
-                                summary { class: "flex cursor-pointer list-none items-center gap-2",
+                                summary { class: "flex cursor-pointer list-none items-center gap-2 rounded-full", "aria-label": "Account menu",
                                     Picture {
                                         media: me.avatar.clone(),
-                                        alt: me.login.clone(),
-                                        initials: me.login.chars().take(2).collect::<String>(),
+                                        alt: me.display_name.clone(),
+                                        initials: initials_of(&me.display_name),
                                         sizes: "32px",
-                                        class: "h-8 w-8 rounded-full",
+                                        class: "size-8 rounded-full text-xs",
                                     }
-                                    span { class: "hidden text-sm font-semibold sm:inline", "{me.login}" }
                                 }
-                                div { class: "absolute right-0 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-border bg-surface p-2 shadow-lg",
-                                    a { href: "/account", class: "rounded-lg px-3 py-2 text-sm hover:bg-surface-2", "Account" }
+                                div { class: "{POPOVER} absolute right-0 mt-2 flex w-48 flex-col",
+                                    p { class: "truncate px-2 py-1.5 text-sm font-medium", "{me.display_name}" }
+                                    div { class: "-mx-1 my-1 h-px bg-border" }
+                                    a { href: "/account", class: MENU_ITEM, "Account" }
                                     if me.role == "moderator" || me.role == "admin" {
-                                        a { href: "/moderation", class: "rounded-lg px-3 py-2 text-sm hover:bg-surface-2", "Moderation" }
+                                        a { href: "/moderation", class: MENU_ITEM, "Moderation" }
                                     }
                                     if me.role == "admin" {
-                                        a { href: "/admin", class: "rounded-lg px-3 py-2 text-sm hover:bg-surface-2", "Admin" }
+                                        a { href: "/admin", class: MENU_ITEM, "Admin" }
                                     }
                                     form { method: "post", action: "/auth/logout",
-                                        button { r#type: "submit", class: "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2", "Sign out" }
+                                        button { r#type: "submit", class: MENU_ITEM, "Sign out" }
                                     }
                                 }
                             }
                         } else {
                             button {
                                 r#type: "button",
-                                class: "rounded-full bg-surface-2 px-3 py-1 text-sm font-semibold hover:text-accent",
+                                class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
                                 onclick: move |_| login_redirect(),
                                 "Sign in"
                             }
@@ -136,7 +152,7 @@ pub fn Shell() -> Element {
                     }
                 }
             }
-            main { class: "mx-auto max-w-7xl px-4 py-8",
+            main { id: "main", class: "mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8",
                 ErrorBoundary {
                     handle_error: |errors: ErrorContext| {
                         let status = errors
@@ -148,13 +164,49 @@ pub fn Shell() -> Element {
                     Outlet::<Route> {}
                 }
             }
-            footer { class: "mt-16 border-t border-border/60 py-8 text-center text-sm text-muted",
-                div { class: "flex flex-wrap justify-center gap-4",
-                    a { href: "/about", class: "hover:text-foreground", "About" }
-                    a { href: "/feed.xml", class: "hover:text-foreground", "RSS" }
+            footer { class: "border-t",
+                div { class: "mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8",
+                    p { "RecompHub · seed data from Recompendium (MIT)" }
+                    nav { class: "flex flex-wrap gap-x-5 gap-y-2", "aria-label": "Footer",
+                        a { href: "/about", class: "transition-colors hover:text-foreground", "About" }
+                        a { href: "/about#ground-rules", class: "transition-colors hover:text-foreground", "Ground rules" }
+                        a { href: "/submit", class: "transition-colors hover:text-foreground", "Submit a port" }
+                        a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
+                    }
                 }
-                p { class: "mt-3", "Seed data: Recompendium (MIT)" }
             }
+        }
+    }
+}
+
+/// Main navigation: (href, label).
+const NAV: [(&str, &str); 7] = [
+    ("/trending", "Trending"),
+    ("/games", "Games"),
+    ("/platforms", "Platforms"),
+    ("/stats", "Stats"),
+    ("/wanted", "Wanted"),
+    ("/creators", "For creators"),
+    ("/submit", "Submit"),
+];
+
+/// Lucide "menu" icon.
+#[component]
+fn MenuIcon(#[props(default)] class: String) -> Element {
+    rsx! {
+        svg { class: "{class}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+            path { d: "M4 6h16M4 12h16M4 18h16" }
+        }
+    }
+}
+
+/// Lucide "contrast" icon, for the theme toggle.
+#[component]
+fn ContrastIcon(#[props(default)] class: String) -> Element {
+    rsx! {
+        svg { class: "{class}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+            circle { cx: "12", cy: "12", r: "10" }
+            path { d: "M12 18a6 6 0 0 0 0-12v12z" }
         }
     }
 }

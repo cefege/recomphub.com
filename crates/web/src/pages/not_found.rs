@@ -3,6 +3,7 @@ use dioxus::fullstack::http::StatusCode;
 use dioxus::prelude::*;
 
 use crate::components::Seo;
+use crate::components::styles::{BUTTON, BUTTON_MD, BUTTON_PRIMARY, H1};
 
 /// Catch-all. Commits a 404 status during SSR and renders a noindex page.
 #[component]
@@ -37,10 +38,10 @@ pub fn RouteError(status: u16) -> Element {
             path: "/404".to_string(),
             noindex: true,
         }
-        section { class: "py-24 text-center",
-            h1 { class: "text-5xl font-black", "{heading}" }
-            p { class: "mt-4 text-muted", "{text}" }
-            a { href: "/", class: "mt-8 inline-block font-semibold accent-text", "Back to the front page" }
+        section { class: "py-12 text-center",
+            h1 { class: H1, "{heading}" }
+            p { class: "mt-2 text-muted-foreground", "{text}" }
+            a { href: "/", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} mt-6", "Back to the front page" }
         }
     }
 }

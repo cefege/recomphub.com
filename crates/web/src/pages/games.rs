@@ -9,18 +9,21 @@ use super::jsonld;
 use crate::api;
 use crate::api::games::GamesQuery;
 use crate::components::cards::GameCardView;
-use crate::components::listing::{
-    GameListTable, PRIMARY_TARGETS, chip_class, parse_page, query_string,
-};
+use crate::components::listing::{GameListTable, PRIMARY_TARGETS, parse_page, query_string};
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
-use crate::components::picture::{Picture, avif_url};
+use crate::components::picture::Picture;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
+use crate::components::styles::{
+    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_MD, BUTTON_OUTLINE, CARD_SURFACE, H1, H2, LEAD, TAB,
+    TAB_ACTIVE, TABS_LIST,
+};
 use crate::components::ui::{
     Breadcrumb, CardGrid, Chip, EmptyState, Pager, PortCardView, Rail, Section, TargetIcon,
     VideoTabs, ViewToggle, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{WantButton, use_marks};
+use crate::pages::faq::game_faq;
 
 /// The `/games` filter state, parsed from the query string.
 #[derive(Clone, PartialEq)]
@@ -96,6 +99,24 @@ fn option_of(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+/// `1 game` or `3 games`.
+fn counted(n: i64, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+/// Classes for one link in a `TABS_LIST`: `TAB`, plus `TAB_ACTIVE` when selected.
+fn tab_class(on: bool) -> String {
+    if on {
+        format!("{TAB} {TAB_ACTIVE}")
+    } else {
+        TAB.to_string()
+    }
+}
+
 /// `/games` with filters, sorting, paging and the Cards / List view.
 #[component]
 pub fn GamesIndex(
@@ -132,7 +153,7 @@ fn GamesIndexInner(params: GamesParams) -> Element {
     };
     let title = "Games: Native Ports & Recompilations | RecompHub".to_string();
     let description = meta_description(
-        "Every console game with a recompilation or native PC port, and the games still waiting for one. Filter by original platform or by where they run.",
+        "Every game with a native port or recompilation, and the games still waiting for one. Filter by original platform or by where they run.",
     );
 
     let sort_links: Vec<(String, &str, bool)> = [("", "Most popular"), ("name", "A to Z")]
@@ -171,21 +192,26 @@ fn GamesIndexInner(params: GamesParams) -> Element {
     let toggle_base = params.href(1, false);
     let pager_base = params.href(1, params.list);
     let list = params.list;
+    let games_text = counted(result.total, "game", "games");
 
     rsx! {
         Seo { title, description, path: canonical, noindex }
-        section { class: "mb-12",
-            h1 { class: "text-4xl font-extrabold tracking-tight", "Games" }
-            p { class: "mt-2 tabular text-muted", "{result.total} games" }
-            div { class: "mt-6 flex flex-wrap items-center gap-3",
-                nav { class: "flex flex-wrap gap-2", "aria-label": "Status",
+        section {
+            div { class: "mb-8",
+                h1 { class: H1, "Games" }
+                if result.total > 0 {
+                    p { class: "mt-2 text-sm tabular text-muted-foreground", "{games_text}" }
+                }
+            }
+            div { class: "mb-6 flex flex-wrap items-center gap-3",
+                nav { class: TABS_LIST, "aria-label": "Status",
                     for (href, label, on) in status_links {
-                        a { href: "{href}", class: "rounded-full border px-4 py-1.5 text-sm font-semibold {chip_class(on)}", "{label}" }
+                        a { href: "{href}", class: tab_class(on), "{label}" }
                     }
                 }
-                nav { class: "flex flex-wrap gap-2", "aria-label": "Sort",
+                nav { class: TABS_LIST, "aria-label": "Sort",
                     for (href, label, on) in sort_links {
-                        a { href: "{href}", class: "rounded-full border px-4 py-1.5 text-sm font-semibold {chip_class(on)}", "{label}" }
+                        a { href: "{href}", class: tab_class(on), "{label}" }
                     }
                 }
                 ViewToggle { base: toggle_base, list }
@@ -266,7 +292,7 @@ fn tint_class(target: &str, on: bool) -> String {
         ("linux", true) => "border-linux/60 bg-linux/15 text-foreground",
         ("web", true) => "border-web/60 bg-web/15 text-foreground",
         ("macos", true) => "border-foreground/40 bg-foreground/10 text-foreground",
-        _ => "border-border text-muted line-through opacity-60",
+        _ => "border-border text-muted-foreground line-through opacity-60",
     };
     class.to_string()
 }
@@ -276,16 +302,16 @@ fn blurb(game: &GameCard, platform: &str, ports: &[PortCard], primary: &[String]
         .release_year
         .map(|y| format!(", {y}"))
         .unwrap_or_default();
-    let plural = if ports.len() == 1 { "" } else { "s" };
     let mut text = format!(
-        "{} ({platform}{year}) has {} native port{plural}.",
+        "{} ({platform}{year}) has {}.",
         game.name,
-        ports.len()
+        counted(ports.len() as i64, "native port", "native ports")
     );
     if let Some(top) = ports.iter().max_by_key(|p| p.github_stars) {
         text.push_str(&format!(
-            " The most popular is {} with {} GitHub stars.",
-            top.name, top.github_stars
+            " The most popular is {} with {}.",
+            top.name,
+            counted(i64::from(top.github_stars), "GitHub star", "GitHub stars")
         ));
     }
     if !primary.is_empty() {
@@ -412,29 +438,26 @@ fn GameBody(detail: GameDetail) -> Element {
     let path = format!("/games/{}", game.slug);
     let crumbs = game_crumbs(&detail);
     let initials = initials_of(&game.name);
-    let shot_bg = detail
-        .screenshots
-        .first()
-        .filter(|m| m.ready)
-        .and_then(|m| {
-            let w = m
-                .widths
-                .iter()
-                .copied()
-                .filter(|w| *w <= 960)
-                .max()
-                .or_else(|| m.widths.iter().copied().min())?;
-            Some(avif_url(m, w))
-        });
     let shots = detail.screenshots.clone();
     let year_text = game.release_year.map(|y| y.to_string()).unwrap_or_default();
     let developer = detail.developer.clone().unwrap_or_default();
     let summary = detail.summary.clone();
     let stars_total = detail.total_github_stars;
+    let stars_text = counted(
+        stars_total,
+        "GitHub star across ports",
+        "GitHub stars across ports",
+    );
     let blurb_text = if has_ports {
         blurb(&game, &platform_name, &list, &primary)
     } else {
         String::new()
+    };
+
+    let want_text = if want == 1 {
+        "1 person wants a port".to_string()
+    } else {
+        format!("{want} people want a port")
     };
     let target_chips: Vec<(&str, String, bool)> = PRIMARY_TARGETS
         .iter()
@@ -446,26 +469,7 @@ fn GameBody(detail: GameDetail) -> Element {
             )
         })
         .collect();
-    let answers: Vec<String> = PRIMARY_TARGETS
-        .iter()
-        .map(|t| {
-            let label = target_label(t);
-            let via: Vec<&str> = list
-                .iter()
-                .filter(|p| p.targets.iter().any(|x| x.as_str() == *t))
-                .map(|p| p.name.as_str())
-                .collect();
-            if via.is_empty() {
-                format!("Can I play {} on {label}? Not natively yet.", game.name)
-            } else {
-                format!(
-                    "Can I play {} on {label}? Yes, via {}.",
-                    game.name,
-                    via.join(", ")
-                )
-            }
-        })
-        .collect();
+    let faqs = game_faq(&detail);
     let decomps: Vec<(String, String, String)> = detail
         .decompilations
         .iter()
@@ -487,80 +491,62 @@ fn GameBody(detail: GameDetail) -> Element {
 
     rsx! {
         Seo { title, description, path, og_image, json_ld }
-        section { class: "relative -mx-4 mb-12 overflow-hidden rounded-3xl border border-border/60",
-            if let Some(src) = shot_bg {
-                img {
-                    class: "absolute inset-0 -z-10 h-full w-full scale-110 object-cover opacity-35 blur-2xl saturate-[1.4]",
-                    src: "{src}",
-                    alt: "",
-                    "aria-hidden": "true",
-                    "loading": "lazy",
-                    "decoding": "async",
+        section { class: "grid gap-8 md:grid-cols-[260px_1fr]",
+            div { class: "mx-auto w-48 md:w-full",
+                div { class: "aspect-[3/4] overflow-hidden rounded-lg border",
+                    Picture {
+                        media: game.cover.clone(),
+                        alt: format!("Cover art for {}", game.name),
+                        initials: initials.clone(),
+                        sizes: "(min-width: 768px) 260px, 60vw".to_string(),
+                        eager: true,
+                        class: "h-full w-full object-cover".to_string(),
+                    }
                 }
             }
-            div { class: "relative grid gap-8 p-6 md:grid-cols-[260px_1fr] md:p-10",
-                div { class: "perspective mx-auto w-48 md:w-full",
-                    div { class: "cover-tilt aspect-[3/4] overflow-hidden rounded-2xl shadow-2xl",
-                        Picture {
-                            media: game.cover.clone(),
-                            alt: format!("Cover art for {}", game.name),
-                            initials: initials.clone(),
-                            sizes: "(min-width: 768px) 260px, 60vw".to_string(),
-                            eager: true,
-                            class: "h-full w-full object-cover".to_string(),
+            div { class: "min-w-0",
+                Breadcrumb { items: crumbs }
+                h1 { class: "mt-4 {H1}", "{game.name}: native ports & recompilations" }
+                div { class: "mt-4 flex flex-wrap items-center gap-2",
+                    for platform in detail.platforms.iter() {
+                        if let Some(slug) = platform.slug.as_ref() {
+                            Chip { class: "hover:bg-accent".to_string(),
+                                a { href: "/platforms/{slug}", "{platform.name}" }
+                            }
+                        }
+                    }
+                    if !year_text.is_empty() {
+                        span { class: "text-sm tabular text-muted-foreground", "{year_text}" }
+                    }
+                    if !developer.is_empty() {
+                        span { class: "text-sm text-muted-foreground", "by {developer}" }
+                    }
+                }
+                div { class: "mt-4 flex flex-wrap gap-2",
+                    for (target, label, on) in target_chips.clone() {
+                        Chip { class: tint_class(target, on),
+                            TargetIcon { target: target.to_string() }
+                            span { class: "font-semibold", "{label}" }
+                            if on {
+                                span { class: "text-success", "✓" }
+                            }
                         }
                     }
                 }
-                div { class: "min-w-0",
-                    Breadcrumb { items: crumbs }
-                    h1 { class: "mt-3 text-4xl font-extrabold tracking-tight md:text-5xl", "{game.name}: PC Ports & Recompilations" }
-                    div { class: "mt-4 flex flex-wrap items-center gap-2",
-                        for platform in detail.platforms.iter() {
-                            if let Some(slug) = platform.slug.as_ref() {
-                                Chip { class: "rounded-full border border-border px-3 py-1 text-sm hover:bg-surface-2".to_string(),
-                                    a { href: "/platforms/{slug}", "{platform.name}" }
-                                }
-                            }
-                        }
-                        if !year_text.is_empty() {
-                            span { class: "text-sm tabular text-muted", "{year_text}" }
-                        }
-                        if !developer.is_empty() {
-                            span { class: "text-sm text-muted", "by {developer}" }
-                        }
+                div { class: "mt-4 flex flex-wrap items-center gap-4",
+                    LiveCount { game_id, portless: !has_ports }
+                    if stars_total > 0 {
+                        span { class: "text-sm tabular text-muted-foreground", "{stars_text}" }
                     }
-                    div { class: "mt-5 flex flex-wrap gap-2",
-                        for (target, label, on) in target_chips.clone() {
-                            Chip { class: tint_class(target, on),
-                                TargetIcon { target: target.to_string() }
-                                span { class: "font-semibold", "{label}" }
-                                if on {
-                                    span { class: "text-success", "✓" }
-                                }
-                            }
-                        }
-                    }
-                    div { class: "mt-5 flex flex-wrap items-center gap-4",
-                        LiveCount { game_id, portless: !has_ports }
-                        span { class: "text-sm tabular text-muted", "{stars_total} GitHub stars across ports" }
-                        if !has_ports {
-                            span { key: "{want}", class: "animate-bump tabular rounded-full bg-surface-2 px-3 py-1 text-sm font-bold", "{want} want this" }
-                        }
-                    }
-                    if has_ports {
-                        p { class: "mt-6 max-w-3xl text-lg leading-relaxed text-muted", "{blurb_text}" }
-                        div { class: "mt-4 space-y-1 text-sm text-muted",
-                            for answer in answers.iter() {
-                                p { "{answer}" }
-                            }
-                        }
-                    }
+                }
+                if has_ports {
+                    p { class: "mt-4 max-w-2xl {LEAD}", "{blurb_text}" }
                 }
             }
         }
 
         if has_ports {
-            Section { heading: "Native ports".to_string(),
+            Section { heading: "Native ports".to_string(), class: "mt-12".to_string(),
                 ul { class: "grid gap-4 md:grid-cols-2",
                     for port in sorted {
                         {
@@ -571,25 +557,26 @@ fn GameBody(detail: GameDetail) -> Element {
                 }
             }
         } else {
-            div { class: "mb-12 rounded-3xl border border-border bg-gradient-to-br from-accent/25 via-surface to-live/15 p-8 text-center",
-                h2 { class: "text-2xl font-extrabold", "No native port yet" }
-                p { class: "mt-2 text-muted", "Know of a recompilation or native port? Submit it and it joins the catalog." }
-                div { class: "mt-5 flex flex-wrap items-center justify-center gap-3",
-                    {keyed(rsx! { span { key: "{want}", class: "animate-bump tabular rounded-full bg-surface-2 px-3 py-1 text-sm font-bold", "{want} want this" } })}
-                    LiveCount { game_id, portless: true }
+            div { class: "{CARD_SURFACE} mt-12 p-8 text-center",
+                h2 { class: H2, "No native port yet" }
+                p { class: "mt-2 text-sm text-muted-foreground", "Know of a recompilation or native port? Submit it and it joins the catalog." }
+                div { class: "mt-6 flex flex-wrap items-center justify-center gap-3",
+                    if want > 0 {
+                        {keyed(rsx! { span { key: "{want}", class: "{BADGE} {BADGE_SECONDARY} tabular animate-bump", "{want_text}" } })}
+                    }
                     {keyed(rsx! { WantButton { key: "{game_id}-{want}", game_id, count: want } })}
                 }
-                a { href: "{submit_href}", class: "mt-5 inline-block font-bold text-accent hover:underline", "Know of one? Submit it" }
+                a { href: "{submit_href}", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} mt-4", "Know of one? Submit it" }
             }
         }
 
         if !decomps.is_empty() {
-            Section { heading: "Decompilation projects".to_string(),
-                ul { class: "grid gap-3 md:grid-cols-2",
+            Section { heading: "Decompilation projects".to_string(), class: "mt-12".to_string(),
+                ul { class: "grid gap-4 md:grid-cols-2",
                     for (href, name, kind) in decomps {
                         li { key: "{href}",
-                            a { href: "{href}", class: "flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 hover:bg-surface-2",
-                                span { class: "font-bold", "{name}" }
+                            a { href: "{href}", class: "flex items-center justify-between gap-3 {CARD_SURFACE} p-4 transition-colors hover:bg-accent",
+                                span { class: "font-medium", "{name}" }
                                 Chip { class: "text-xs".to_string(), "{kind}" }
                             }
                         }
@@ -599,19 +586,19 @@ fn GameBody(detail: GameDetail) -> Element {
         }
 
         if !videos.is_empty() {
-            Section { heading: "Gameplay videos".to_string(),
+            Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
                 VideoTabs { videos }
             }
         }
 
         if !shots.is_empty() {
-            Section { heading: "Screenshots".to_string(),
+            Section { heading: "Screenshots".to_string(), class: "mt-12".to_string(),
                 Rail {
                     for (index, shot) in shots.iter().cloned().enumerate() {
                         li { key: "{index}", class: "w-72 shrink-0 snap-start md:w-96",
                             button {
                                 r#type: "button",
-                                class: "block w-full overflow-hidden rounded-2xl border border-border",
+                                class: "block w-full overflow-hidden rounded-lg border transition-opacity hover:opacity-90",
                                 onclick: move |_| lightbox.set(Some(index)),
                                 Picture {
                                     media: Some(shot),
@@ -639,19 +626,32 @@ fn GameBody(detail: GameDetail) -> Element {
                     initials: initials.clone(),
                     sizes: "100vw".to_string(),
                     eager: true,
-                    class: "max-h-full max-w-6xl rounded-2xl".to_string(),
+                    class: "max-h-full max-w-6xl rounded-lg".to_string(),
                 }
             }
         }
 
         if let Some(text) = summary {
-            Section { heading: "About".to_string(),
+            Section { heading: "About".to_string(), class: "mt-12".to_string(),
                 p { class: "mt-2 max-w-3xl leading-relaxed", "{text}" }
             }
         }
 
+        if !faqs.is_empty() {
+            Section { heading: "Frequently asked questions".to_string(), class: "mt-12".to_string(),
+                dl {
+                    for (index, item) in faqs.iter().enumerate() {
+                        div { key: "{index}", class: "border-b py-4",
+                            dt { class: "text-sm font-medium", "{item.question}" }
+                            dd { class: "mt-2 text-sm leading-relaxed text-muted-foreground", "{item.answer}" }
+                        }
+                    }
+                }
+            }
+        }
+
         if !related.is_empty() {
-            Section { heading: "Related games".to_string(),
+            Section { heading: "Related games".to_string(), class: "mt-12".to_string(),
                 Rail {
                     for game in related {
                         {
@@ -663,7 +663,7 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        div { class: "mt-10 flex justify-end",
+        div { class: "mt-12 flex justify-end",
             ReportDialog { game_id }
         }
     }

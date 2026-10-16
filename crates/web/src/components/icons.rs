@@ -48,6 +48,11 @@ pub fn GithubIcon(#[props(default)] class: String) -> Element {
 }
 
 #[component]
+pub fn GoogleIcon(#[props(default)] class: String) -> Element {
+    rsx! { Brand { d: "M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z", class } }
+}
+
+#[component]
 pub fn YoutubeIcon(#[props(default)] class: String) -> Element {
     rsx! { Brand { d: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z", class } }
 }
@@ -73,12 +78,51 @@ pub fn GlobeIcon(#[props(default)] class: String) -> Element {
     }
 }
 
+/// Heart icon for donation and funding links, stroked like `GlobeIcon`.
+#[component]
+pub fn HeartIcon(#[props(default)] class: String) -> Element {
+    rsx! {
+        svg {
+            class: "{class}",
+            width: "14",
+            height: "14",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            "aria-hidden": "true",
+            "focusable": "false",
+            path { d: "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" }
+        }
+    }
+}
+
 /// Play triangle icon for video facades and playback buttons.
 #[component]
 pub fn PlayIcon(#[props(default)] class: String) -> Element {
     rsx! {
         svg { class: "{class}", width: "16", height: "16", view_box: "0 0 24 24", fill: "currentColor", "aria-hidden": "true", "focusable": "false",
             path { d: "M8 5v14l11-7z" }
+        }
+    }
+}
+
+/// Star for ratings. Filled when `filled`, otherwise outlined; both use `currentColor`.
+#[component]
+pub fn StarIcon(filled: bool, #[props(default)] class: String) -> Element {
+    rsx! {
+        svg {
+            class: "{class}",
+            width: "16",
+            height: "16",
+            view_box: "0 0 24 24",
+            fill: if filled { "currentColor" } else { "none" },
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            "focusable": "false",
+            path { d: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" }
         }
     }
 }

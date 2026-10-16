@@ -66,7 +66,7 @@ pub async fn upsert_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64
          ON CONFLICT (game_id, target, youtube_id) DO UPDATE
            SET title = EXCLUDED.title,
                channel = EXCLUDED.channel,
-               published_at = EXCLUDED.published_at,
+               published_at = COALESCE(EXCLUDED.published_at, videos.published_at),
                thumb_media_id = COALESCE(EXCLUDED.thumb_media_id, videos.thumb_media_id),
                port_id = COALESCE(EXCLUDED.port_id, videos.port_id),
                fetched_at = now()
@@ -151,7 +151,7 @@ pub async fn youtube_candidates(
          WHERE q.last_run_at IS NULL OR q.last_run_at < now() - interval '30 days'
          ORDER BY (SELECT COALESCE(sum(h.hits), 0)::bigint FROM game_hits_daily h
                    WHERE h.game_id = g.id AND h.day > current_date - 180) DESC,
-                  g.popularity DESC,
+                  g.importance DESC,
                   pr.game_id,
                   pr.target
          LIMIT $1",

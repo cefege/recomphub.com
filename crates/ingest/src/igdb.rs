@@ -627,7 +627,7 @@ pub async fn match_game(
          JOIN game_platforms gp ON gp.game_id = g.id
          JOIN platforms p ON p.id = gp.platform_id
          WHERE p.igdb_id = $1
-         ORDER BY g.popularity DESC, g.id",
+         ORDER BY g.importance DESC, g.id",
     )
     .bind(platform_igdb_id)
     .fetch_all(pool)
@@ -638,8 +638,24 @@ pub async fn match_game(
     {
         return Ok(MatchResult::Matched(*id));
     }
+    match_remote(pool, client, title, Some(platform_igdb_id)).await
+}
 
-    let hits = client.search(title, Some(platform_igdb_id)).await?;
+/// IGDB-only match. Searches by title (on the platform when given, unscoped otherwise), keeps
+/// exact normalized matches, and resolves them: one match is upserted and matched; several
+/// resolve to the highest-rated Main Game, and none in that case gives `Ambiguous`.
+pub async fn match_remote(
+    pool: &PgPool,
+    client: &IgdbClient,
+    title: &str,
+    platform_igdb_id: Option<i32>,
+) -> Result<MatchResult> {
+    let target = normalize_title(title);
+    if target.is_empty() {
+        return Ok(MatchResult::NotFound);
+    }
+
+    let hits = client.search(title, platform_igdb_id).await?;
     let exact: Vec<&IgdbHit> = hits
         .iter()
         .filter(|h| title_matches(&target, &h.game.name, &h.game.alt_names))

@@ -211,10 +211,10 @@ impl GameSort {
 
     fn order_by(self) -> &'static str {
         match self {
-            GameSort::Popularity => "g.popularity DESC, g.id",
+            GameSort::Popularity => "g.importance DESC, g.id",
             GameSort::Name => "g.name, g.id",
-            GameSort::Ports => "g.port_count DESC, g.popularity DESC, g.id",
-            GameSort::Wanted => "g.want_count DESC, g.popularity DESC, g.id",
+            GameSort::Ports => "g.port_count DESC, g.importance DESC, g.id",
+            GameSort::Wanted => "g.want_count DESC, g.importance DESC, g.id",
         }
     }
 }
@@ -274,7 +274,7 @@ pub async fn count(ex: impl PgExecutor<'_>, filter: &GameFilter) -> DbResult<i64
 pub async fn wanted(ex: impl PgExecutor<'_>, limit: i64, offset: i64) -> DbResult<Vec<GameRow>> {
     let rows = sqlx::query_as::<_, GameRow>(
         "SELECT * FROM games WHERE port_count = 0
-         ORDER BY want_count DESC, popularity DESC, id LIMIT $1 OFFSET $2",
+         ORDER BY want_count DESC, importance DESC, id LIMIT $1 OFFSET $2",
     )
     .bind(limit)
     .bind(offset)
@@ -304,7 +304,7 @@ pub async fn by_platform(
          JOIN game_platforms gp ON gp.game_id = g.id AND gp.platform_id = $1
          LEFT JOIN game_score_ranking r ON r.game_id = g.id AND r.window_days = 7
          ORDER BY (g.port_count > 0) DESC, COALESCE(r.score, 0) DESC,
-                  g.popularity DESC, g.want_count DESC, g.id
+                  g.importance DESC, g.want_count DESC, g.id
          LIMIT $2 OFFSET $3",
     )
     .bind(platform_id)
@@ -336,7 +336,7 @@ pub async fn related(
         "SELECT g.* FROM games g
          JOIN game_platforms gp ON gp.game_id = g.id AND gp.platform_id = $1
          WHERE g.port_count > 0 AND g.id <> $2
-         ORDER BY g.popularity DESC, g.id LIMIT $3",
+         ORDER BY g.importance DESC, g.id LIMIT $3",
     )
     .bind(platform_id)
     .bind(exclude_id)
@@ -375,7 +375,7 @@ pub async fn trending(
          FROM game_score_ranking r
          JOIN games g ON g.id = r.game_id
          WHERE r.window_days = $1
-         ORDER BY r.rank, g.popularity DESC, g.id
+         ORDER BY r.rank, g.importance DESC, g.id
          LIMIT $2 OFFSET $3",
     )
     .bind(window_days)
@@ -403,7 +403,7 @@ pub async fn search(ex: impl PgExecutor<'_>, q: &str, limit: i64) -> DbResult<Ve
         "SELECT g.* FROM games g
          WHERE g.search @@ websearch_to_tsquery('simple', $1)
             OR similarity(g.name, $1) > 0.3
-         ORDER BY similarity(g.name, $1) DESC, g.popularity DESC, g.id
+         ORDER BY similarity(g.name, $1) DESC, g.importance DESC, g.id
          LIMIT $2",
     )
     .bind(q)

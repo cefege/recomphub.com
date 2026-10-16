@@ -2,9 +2,10 @@ use dioxus::prelude::*;
 
 use crate::app::Shell;
 use crate::pages::{
-    About, AccountPage, AdminPage, AuthorPage, EditPortPage, GamePage, GamesIndex, Home,
-    ModerationLog, ModerationQueue, NewPage, NotFound, PlatformPage, PlatformTargetPage,
-    PlatformsIndex, PortPage, RunsOnPage, SearchPage, SubmitPage, TrendingPage, WantedPage,
+    About, AccountPage, AdminPage, AuthorPage, CreatorsHub, CreatorsPlatforms, CreatorsRecompile,
+    CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, ModerationLog, ModerationQueue,
+    NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage, RunsOnPage,
+    SearchPage, SignInPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
 };
 
 #[derive(Routable, Clone, PartialEq)]
@@ -45,12 +46,24 @@ pub enum Route {
     EditPortPage { port_id: i64 },
     #[route("/account")]
     AccountPage {},
+    #[route("/signin?:next")]
+    SignInPage { next: String },
     #[route("/moderation")]
     ModerationQueue {},
     #[route("/moderation/log?:page")]
     ModerationLog { page: String },
     #[route("/admin")]
     AdminPage {},
+    #[route("/creators")]
+    CreatorsHub {},
+    #[route("/creators/recompile?:page")]
+    CreatorsRecompile { page: String },
+    #[route("/creators/platforms?:missing&:page")]
+    CreatorsPlatforms { missing: String, page: String },
+    #[route("/creators/videos?:target&:page")]
+    CreatorsVideos { target: String, page: String },
+    #[route("/stats")]
+    StatsPage {},
     #[route("/:..segments")]
     NotFound { segments: Vec<String> },
 }

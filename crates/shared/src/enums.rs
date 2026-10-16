@@ -170,6 +170,28 @@ impl Playability {
 }
 
 string_enum!(
+    /// A donation or funding platform linked from a GitHub author's profile (FUNDING.yml keys,
+    /// GitHub Sponsors, or a PayPal link in `custom`). Stored as `text` with a CHECK constraint.
+    FundingPlatform, "funding platform" {
+        Github => ("github", "GitHub Sponsors"),
+        Patreon => ("patreon", "Patreon"),
+        OpenCollective => ("open_collective", "Open Collective"),
+        KoFi => ("ko_fi", "Ko-fi"),
+        Tidelift => ("tidelift", "Tidelift"),
+        CommunityBridge => ("community_bridge", "Community Bridge"),
+        Liberapay => ("liberapay", "Liberapay"),
+        Issuehunt => ("issuehunt", "IssueHunt"),
+        Polar => ("polar", "Polar"),
+        BuyMeACoffee => ("buy_me_a_coffee", "Buy Me a Coffee"),
+        ThanksDev => ("thanks_dev", "thanks.dev"),
+        Paypal => ("paypal", "PayPal"),
+        Boosty => ("boosty", "Boosty"),
+        Fanbox => ("fanbox", "pixiv Fanbox"),
+        Custom => ("custom", "Website"),
+    }
+);
+
+string_enum!(
     /// AI usage of a port's project.
     AiUsage, "ai usage" {
         None => ("none", "Human-made"),

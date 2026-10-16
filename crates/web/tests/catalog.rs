@@ -82,7 +82,7 @@ async fn catalog_endpoints_return_expected_status_and_order() {
 
     // Trusted submitter (approved_count >= threshold), so the port applies at once.
     let user: i64 = sqlx::query_scalar(
-        "INSERT INTO users (github_id, login, approved_count) VALUES (1, 'tester', 3) RETURNING id",
+        "INSERT INTO users (display_name, github_login, approved_count) VALUES ('tester', 'tester', 3) RETURNING id",
     )
     .fetch_one(&pool)
     .await

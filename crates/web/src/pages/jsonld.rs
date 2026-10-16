@@ -1,5 +1,6 @@
-//! JSON-LD for game and port pages. Stars are never emitted as ratings, so there is no `aggregateRating`.
+//! JSON-LD for game and port pages. Port ratings come from RecompHub users only, never from GitHub stars; `aggregateRating` is emitted once a port has at least three ratings.
 
+use recomphub_shared::dto::RatingSummary;
 use recomphub_shared::{GameDetail, PortCard, PortDetail};
 use serde_json::{Value, json};
 
@@ -52,7 +53,8 @@ fn software_application(site: &str, port: &PortCard) -> Value {
     app
 }
 
-/// `VideoGame`, `BreadcrumbList` and, when there are ports, an `ItemList` of `SoftwareApplication`s.
+/// `VideoGame`, `BreadcrumbList`, `FAQPage` and, when there are ports, an `ItemList` of
+/// `SoftwareApplication`s.
 pub fn game_json_ld(site: &str, detail: &GameDetail) -> Vec<String> {
     let game = &detail.game;
     let platforms: Vec<String> = detail.platforms.iter().map(|p| p.name.clone()).collect();
@@ -107,11 +109,36 @@ pub fn game_json_ld(site: &str, detail: &GameDetail) -> Vec<String> {
             .to_string(),
         );
     }
+    out.push(faq_page(&super::faq::game_faq(detail)).to_string());
     out
 }
 
+/// `FAQPage` with one `Question`/`Answer` pair per entry, matching the visible FAQ.
+fn faq_page(faq: &[super::faq::Faq]) -> Value {
+    let entities: Vec<Value> = faq
+        .iter()
+        .map(|f| {
+            json!({
+                "@type": "Question",
+                "name": f.question,
+                "acceptedAnswer": {"@type": "Answer", "text": f.answer},
+            })
+        })
+        .collect();
+    json!({
+        "@context": CONTEXT,
+        "@type": "FAQPage",
+        "mainEntity": entities,
+    })
+}
+
 /// `SoftwareApplication`, `SoftwareSourceCode` and `BreadcrumbList` for a port page.
-pub fn port_json_ld(site: &str, detail: &PortDetail, crumbs: &[(String, String)]) -> Vec<String> {
+pub fn port_json_ld(
+    site: &str,
+    detail: &PortDetail,
+    crumbs: &[(String, String)],
+    ratings: &RatingSummary,
+) -> Vec<String> {
     let port = &detail.port;
     let mut app = software_application(site, port);
     app["@context"] = json!(CONTEXT);
@@ -129,6 +156,15 @@ pub fn port_json_ld(site: &str, detail: &PortDetail, crumbs: &[(String, String)]
     });
     if let Some(license) = &detail.license {
         source["license"] = json!(license);
+    }
+    if let (true, Some(average)) = (ratings.count >= 3, ratings.average) {
+        app["aggregateRating"] = json!({
+            "@type": "AggregateRating",
+            "ratingValue": (average * 10.0).round() / 10.0,
+            "ratingCount": ratings.count,
+            "bestRating": 5,
+            "worstRating": 1,
+        });
     }
     vec![
         app.to_string(),

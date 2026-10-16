@@ -54,7 +54,7 @@ impl SubmissionRow {
 pub struct PendingRow {
     #[sqlx(flatten)]
     pub sub: SubmissionRow,
-    pub submitter_login: Option<String>,
+    pub submitter_name: Option<String>,
     pub submitter_approved: Option<i64>,
 }
 
@@ -468,7 +468,7 @@ pub async fn get(conn: &mut PgConnection, id: i64) -> DbResult<SubmissionRow> {
 /// Pending submissions, oldest first.
 pub async fn list_pending(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Vec<PendingRow>> {
     let rows = sqlx::query_as::<_, PendingRow>(
-        "SELECT s.*, u.login AS submitter_login, u.approved_count::bigint AS submitter_approved
+        "SELECT s.*, u.display_name AS submitter_name, u.approved_count::bigint AS submitter_approved
          FROM submissions s
          LEFT JOIN users u ON u.id = s.submitter_id
          WHERE s.status = 'pending'

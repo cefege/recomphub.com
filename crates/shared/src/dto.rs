@@ -1,5 +1,7 @@
 //! Serde DTOs shared by the server functions and the Dioxus pages.
 
+use crate::enums::FundingPlatform;
+use crate::maintenance::MaintenanceLevel;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +56,13 @@ pub struct PlatformRef {
     pub ported_count: i64,
 }
 
+/// One donation/funding link for a GitHub author.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FundingLink {
+    pub platform: FundingPlatform,
+    pub url: String,
+}
+
 /// A port's author row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthorDto {
@@ -62,6 +71,9 @@ pub struct AuthorDto {
     pub role: String,
     pub avatar: Option<MediaRef>,
     pub commits: Option<i32>,
+    /// Donation links for a GitHub author; empty when none are known.
+    #[serde(default)]
+    pub funding: Vec<FundingLink>,
 }
 
 /// One AI evidence line.
@@ -97,6 +109,21 @@ pub struct PortCard {
     pub star_count: i32,
     pub repo_url: String,
     pub cover: Option<MediaRef>,
+    /// `None` until the port has been through a GitHub sync that computed maintenance signals.
+    pub maintenance: Option<MaintenanceDto>,
+}
+
+/// Maintenance signals for a port. Counts are over the default branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaintenanceDto {
+    pub level: MaintenanceLevel,
+    pub score: i32,
+    pub last_commit_at: Option<DateTime<Utc>>,
+    pub commits_30d: i32,
+    pub commits_90d: i32,
+    pub commits_365d: i32,
+    pub committers_180d: i32,
+    pub releases_365d: i32,
 }
 
 /// A gameplay video.
@@ -132,6 +159,38 @@ pub struct GameDetail {
     pub live_viewers: u32,
 }
 
+/// Technique slugs a generated port description may use, with their labels.
+pub const PORT_TECHNIQUES: &[(&str, &str)] = &[
+    ("static_recompilation", "Static recompilation"),
+    ("decompilation_port", "Decompilation port"),
+    ("source_port", "Source port"),
+    ("engine_reimplementation", "Engine reimplementation"),
+    ("emulator_wrapper", "Emulator wrapper"),
+    ("other", "Other"),
+];
+
+/// Display label for a technique slug. Unknown slugs read as "Other".
+pub fn technique_label(slug: &str) -> &'static str {
+    PORT_TECHNIQUES
+        .iter()
+        .find(|(s, _)| *s == slug)
+        .map_or("Other", |(_, label)| label)
+}
+
+/// Generated description of a port, built from its GitHub repository. Shown on the port page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PortAbout {
+    pub summary: String,
+    pub technique: String,
+    pub technique_label: String,
+    pub technique_note: String,
+    pub features: Vec<String>,
+    pub requirements: Vec<String>,
+    pub limitations: Vec<String>,
+    pub setup: Vec<String>,
+    pub generated_at: DateTime<Utc>,
+}
+
 /// Full port page data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PortDetail {
@@ -140,6 +199,7 @@ pub struct PortDetail {
     pub source_platform: Option<PlatformRef>,
     pub homepage_url: Option<String>,
     pub description: Option<String>,
+    pub about: Option<PortAbout>,
     pub requirements: Option<String>,
     pub toolchain: Option<String>,
     pub license: Option<String>,
@@ -148,6 +208,8 @@ pub struct PortDetail {
     pub ai_source: Option<String>,
     pub other_ports: Vec<PortCard>,
     pub videos: Vec<VideoDto>,
+    /// Commits per week for the last 12 weeks, oldest first. Empty until GitHub's stats are fetched.
+    pub weekly_commits: Vec<i32>,
 }
 
 /// One page of a listing.
@@ -163,10 +225,37 @@ pub struct Page<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionUser {
     pub id: i64,
-    pub login: String,
-    pub name: Option<String>,
+    /// Name shown for the member, whichever provider it came from.
+    pub display_name: String,
+    /// GitHub login, while a GitHub account is connected. Used for author links.
+    pub github_login: Option<String>,
     pub role: String,
     pub avatar: Option<MediaRef>,
+}
+
+/// A sign-in provider connected to the signed-in account.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConnectedAccount {
+    /// "github" or "google".
+    pub provider: String,
+    /// The GitHub login, or the verified Google email. None when the provider sent neither.
+    pub handle: Option<String>,
+}
+
+/// Which sign-in providers are configured on this server, so the UI can hide the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthProviders {
+    pub github: bool,
+    pub google: bool,
+}
+
+/// Display name for a stored provider key ("github", "google").
+pub fn provider_label(provider: &str) -> &'static str {
+    match provider {
+        "github" => "GitHub",
+        "google" => "Google",
+        _ => "Unknown provider",
+    }
 }
 
 /// The viewer's own stars and wants for a set of ids.
@@ -382,7 +471,7 @@ pub struct QueueItem {
     pub kind: String,
     pub status: String,
     pub source: String,
-    pub submitter_login: Option<String>,
+    pub submitter_name: Option<String>,
     pub submitter_approved: Option<i64>,
     pub payload_json: String,
     pub before_json: Option<String>,
@@ -407,8 +496,10 @@ pub struct LogItem {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserAdminRow {
     pub id: i64,
-    pub login: String,
-    pub name: Option<String>,
+    pub display_name: String,
+    pub github_login: Option<String>,
+    /// Connected sign-in providers, such as "github" and "google".
+    pub providers: Vec<String>,
     pub role: String,
     pub banned: bool,
     pub approved_count: i32,
@@ -457,6 +548,316 @@ pub struct AuthorProfile {
     pub name: String,
     pub avatar: Option<MediaRef>,
     pub ports: Vec<PortCard>,
+    #[serde(default)]
+    pub funding: Vec<FundingLink>,
+    #[serde(default)]
+    pub achievements: Vec<AchievementDto>,
+}
+
+/// An achievement an author has earned, computed from their ports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AchievementDto {
+    pub key: String,
+    pub title: String,
+    pub description: String,
+}
+
+/// A platform reference used as a link target in stats lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetRefDto {
+    pub slug: String,
+    pub label: String,
+}
+
+/// One platform on the parity board.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParityTargetDto {
+    pub slug: String,
+    pub label: String,
+    /// Ported games with a native port on this platform.
+    pub games: i64,
+    /// Published ports that run on this platform.
+    pub ports: i64,
+    /// `games / ported_games` as a percentage.
+    pub pct: f64,
+    /// 1-based rank by `pct`, ties broken by label.
+    pub rank: i64,
+    pub pct_30d: Option<f64>,
+    pub rank_30d: Option<i64>,
+    /// Whether `/creators/platforms?missing=<slug>` accepts this platform.
+    pub gap_link: bool,
+}
+
+/// An author ranked by the platform slots their ports added.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContributorDto {
+    pub login: String,
+    pub name: String,
+    pub count: i64,
+}
+
+/// Platform parity headline numbers for `/stats` and the home teaser.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParityDto {
+    /// Covered (game, major platform) slots as a percentage of all slots.
+    pub pct: f64,
+    pub pct_30d: Option<f64>,
+    pub slots_covered: i64,
+    pub slots_total: i64,
+    pub ported_games: i64,
+    pub catalog_games: i64,
+    /// Share of catalog games with any native port.
+    pub catalog_pct: f64,
+    pub catalog_pct_30d: Option<f64>,
+    pub ports: i64,
+    pub period_days: i64,
+    pub ports_in_period: i64,
+    pub slots_in_period: i64,
+    /// Next parity milestone percentage above `pct`, if any.
+    pub next_parity: Option<i64>,
+    /// Major platforms, ranked by parity.
+    pub targets: Vec<ParityTargetDto>,
+    /// Authors whose ports added the most platform slots in the period.
+    pub contributors: Vec<ContributorDto>,
+}
+
+/// One day of parity history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryPointDto {
+    pub day: NaiveDate,
+    pub pct: f64,
+    pub slots: i64,
+    pub ported_games: i64,
+}
+
+/// A milestone crossed on a day, for one platform or for all platforms.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MilestoneDto {
+    pub day: NaiveDate,
+    /// Platform the milestone belongs to; `None` means all platforms.
+    pub target: Option<TargetRefDto>,
+    /// `"ports"` or `"slots"`.
+    pub kind: String,
+    pub threshold: i64,
+}
+
+/// The next milestone for one counter, with how far away it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnlockDto {
+    pub target: Option<TargetRefDto>,
+    /// `"ports"` or `"slots"`.
+    pub kind: String,
+    pub current: i64,
+    pub next: i64,
+    pub to_go: i64,
+}
+
+/// A ported game that is missing one or more major platforms.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameGapDto {
+    pub slug: String,
+    pub name: String,
+    pub ports: i64,
+    pub missing: Vec<TargetRefDto>,
+}
+
+/// A catalog game with no native port yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnportedGameDto {
+    pub slug: String,
+    pub name: String,
+}
+
+/// A ported game ranked by how many major platforms it covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MostCoveredDto {
+    pub slug: String,
+    pub name: String,
+    pub ports: i64,
+    pub covered: i64,
+}
+
+/// An original platform ranked by the share of its games that are ported.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OriginDto {
+    pub slug: String,
+    pub name: String,
+    pub game_count: i64,
+    pub ported_count: i64,
+    pub pct: f64,
+}
+
+/// An author ranked by ports or by platform slots.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthorRankDto {
+    pub login: String,
+    pub name: String,
+    pub ports: i64,
+    pub platforms: i64,
+}
+
+/// Everything on `/stats`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatsPageDto {
+    pub parity: ParityDto,
+    pub history: Vec<HistoryPointDto>,
+    pub milestones: Vec<MilestoneDto>,
+    pub unlocks: Vec<UnlockDto>,
+    pub top_authors: Vec<AuthorRankDto>,
+    pub top_platform_authors: Vec<AuthorRankDto>,
+    pub most_covered: Vec<MostCoveredDto>,
+    pub gaps: Vec<GameGapDto>,
+    pub wanted: Vec<UnportedGameDto>,
+    pub origins: Vec<OriginDto>,
+}
+
+/// The best-selling entry for a game: the one with the most units sold. Shown as the strongest
+/// fact on the creator lists.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SalesSignal {
+    pub units_sold_millions: f64,
+    /// `platform`, `overall`, or `year`.
+    pub scope: String,
+    /// Platform abbreviation (e.g. `PS2`) when the scope is `platform`.
+    pub platform: Option<String>,
+    /// Calendar year when the scope is `year`.
+    pub sales_year: Option<i32>,
+    /// Position within its list, when the list ranks entries.
+    pub rank: Option<i32>,
+}
+
+/// One game with no port, for the creators "what to recompile" list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecompileItem {
+    pub game_id: i64,
+    pub game_slug: String,
+    pub game_name: String,
+    pub release_year: Option<i32>,
+    pub original_platforms: Vec<String>,
+    pub want_count: i32,
+    pub has_decompilation: bool,
+    /// IGDB rating count (`games.popularity`).
+    pub popularity: i32,
+    /// Strongest best-seller entry for the game, if any.
+    pub sales: Option<SalesSignal>,
+}
+
+/// A port missing major platforms, for the creators "ports missing platforms" list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PortGapItem {
+    pub port_id: i64,
+    pub port_slug: String,
+    pub port_name: String,
+    pub game_slug: String,
+    pub game_name: String,
+    pub repo_url: String,
+    pub github_stars: i32,
+    /// Target slugs the port already runs on.
+    pub targets: Vec<String>,
+    /// Major target slugs the port lacks.
+    pub missing: Vec<String>,
+    /// IGDB rating count (`games.popularity`).
+    pub popularity: i32,
+    /// Strongest best-seller entry for the game, if any.
+    pub sales: Option<SalesSignal>,
+}
+
+/// A port with few gameplay videos, for the creators "videos to make" list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VideoGapItem {
+    pub port_id: i64,
+    pub port_slug: String,
+    pub port_name: String,
+    pub game_slug: String,
+    pub game_name: String,
+    pub repo_url: String,
+    pub github_stars: i32,
+    /// Target slugs the port runs on.
+    pub targets: Vec<String>,
+    /// Visible gameplay videos counted for this view (overall, or for the chosen target).
+    pub video_count: i64,
+    /// IGDB rating count (`games.popularity`).
+    pub popularity: i32,
+    /// Strongest best-seller entry for the game, if any.
+    pub sales: Option<SalesSignal>,
+}
+
+/// Top rows of each creator list for the hub page, with totals for "View all".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CreatorsHub {
+    pub recompile: Vec<RecompileItem>,
+    pub recompile_total: i64,
+    pub ports: Vec<PortGapItem>,
+    pub ports_total: i64,
+    pub videos: Vec<VideoGapItem>,
+    pub videos_total: i64,
+}
+
+/// Comment order on a port page.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommentSort {
+    #[default]
+    Newest,
+    Highest,
+    Lowest,
+}
+
+/// One page of a port's comments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommentQuery {
+    pub port_id: i64,
+    pub page: i64,
+    pub sort: CommentSort,
+    /// Only comments whose author gave the port this many stars.
+    pub stars: Option<i16>,
+    /// Moderators only: include hidden comments.
+    pub include_hidden: bool,
+}
+
+/// A comment as shown on a port page. `rating` is the author's current rating of the port.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommentDto {
+    pub id: i64,
+    pub author_id: i64,
+    /// Name shown for the author.
+    pub name: String,
+    /// GitHub handle, when the author has linked GitHub. Used for profile links.
+    pub github_login: Option<String>,
+    pub avatar: Option<MediaRef>,
+    pub body: String,
+    /// URL slug of the platform the author tested on.
+    pub tested_target: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub edited_at: Option<DateTime<Utc>>,
+    pub hidden: bool,
+    pub hidden_reason: Option<String>,
+    pub rating: Option<i16>,
+}
+
+/// Star ratings for a port. `distribution[0]` counts 1-star ratings.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RatingSummary {
+    pub count: i64,
+    pub distribution: [i64; 5],
+    pub average: Option<f64>,
+}
+
+impl RatingSummary {
+    pub fn from_distribution(distribution: [i64; 5]) -> Self {
+        let count: i64 = distribution.iter().sum();
+        let total: i64 = distribution
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (i as i64 + 1) * n)
+            .sum();
+        let average = (count > 0).then(|| total as f64 / count as f64);
+        Self {
+            count,
+            distribution,
+            average,
+        }
+    }
 }
 
 #[cfg(test)]

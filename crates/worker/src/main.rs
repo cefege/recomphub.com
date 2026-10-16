@@ -3,12 +3,14 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use recomphub_db::PgPool;
 use recomphub_ingest::github::{self, GithubClient};
 use recomphub_ingest::igdb::{self, IgdbClient};
-use recomphub_ingest::{discover, media, youtube};
+use recomphub_ingest::{
+    best_sellers, describe, discover, importance, media, port_videos, youtube, ytdlp::YtDlp,
+};
 use recomphub_worker::imports;
 use sqlx::postgres::PgPoolOptions;
 use tracing::{error, info};
@@ -42,6 +44,22 @@ enum Command {
     Discover,
     /// Fetch YouTube gameplay videos per game and platform, within the daily search budget.
     YoutubeSync,
+    /// Find videos of people playing each port, from README links and yt-dlp search (no API quota).
+    PortVideos,
+    /// Match Wikipedia best-selling lists to games and refresh `games.sales_score`.
+    SalesSync {
+        /// Fetch and parse the lists, print a sample of each, and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Generate descriptions for ports from their stored GitHub text, using the Anthropic Messages API.
+    DescribePorts {
+        /// Print the request the next run would send for the first port needing a description, and call nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Record today's platform parity snapshot and backfill earlier days missing from `stats_daily`.
+    StatsSnapshot,
 }
 
 #[tokio::main]
@@ -116,6 +134,72 @@ async fn run(command: Command) -> Result<()> {
             let pool = pool().await?;
             let report = youtube::run_youtube_sync(&pool, &api_key).await?;
             info!(?report, "youtube-sync finished");
+        }
+        Command::PortVideos => {
+            let pool = pool().await?;
+            let yt = YtDlp::from_env().await?;
+            let report = port_videos::run_port_video_sync(&pool, &yt).await?;
+            info!(?report, "port-videos finished");
+        }
+        Command::DescribePorts { dry_run } => {
+            let pool = pool().await?;
+            let model = optional_env("DESCRIPTION_MODEL")
+                .unwrap_or_else(|| describe::DEFAULT_MODEL.to_string());
+            if dry_run {
+                match describe::preview_request(&pool, &model).await? {
+                    Some((port_id, body)) => {
+                        println!("port {port_id}:");
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    }
+                    None => println!("no port needs a description"),
+                }
+            } else if let Some(api_key) = optional_env("ANTHROPIC_API_KEY") {
+                let http = imports::http_client()?;
+                let report =
+                    describe::describe_ports(&pool, &http, &api_key, &model, describe::RUN_LIMIT)
+                        .await?;
+                info!(?report, model, "describe-ports finished");
+            } else {
+                info!("ANTHROPIC_API_KEY is not set; describe-ports skipped");
+            }
+        }
+        Command::StatsSnapshot => {
+            let pool = pool().await?;
+            let report = recomphub_db::stats::run_snapshot_now(&pool).await?;
+            info!(?report, "stats-snapshot finished");
+        }
+        Command::SalesSync { dry_run } => {
+            if dry_run {
+                let http = best_sellers::http_client()?;
+                for fetched in best_sellers::fetch_all(&http).await {
+                    match fetched.entries {
+                        Ok(entries) => {
+                            println!(
+                                "{} ({:?}): {} entries",
+                                fetched.list.title,
+                                fetched.list.scope,
+                                entries.len()
+                            );
+                            for entry in entries.iter().take(5) {
+                                println!("  {entry:?}");
+                            }
+                        }
+                        Err(err) => println!("{} FAILED: {err:#}", fetched.list.title),
+                    }
+                }
+            } else {
+                let pool = pool().await?;
+                let client = IgdbClient::from_env()?;
+                let report = importance::sales_sync(&pool, &client).await?;
+                info!(?report, "sales-sync finished");
+                if !report.failed.is_empty() {
+                    bail!(
+                        "sales-sync failed for {} list(s): {}",
+                        report.failed.len(),
+                        report.failed.join("; ")
+                    );
+                }
+            }
         }
     }
     Ok(())

@@ -1,13 +1,20 @@
 use dioxus::prelude::*;
+use recomphub_shared::dto::{PortAbout, RatingSummary};
 use recomphub_shared::seo::{meta_description, port_title};
 use recomphub_shared::{PortDetail, TargetPlatform};
 
 use super::jsonld;
 use crate::api;
+use crate::components::comments::PortComments;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
-use crate::components::picture::{Picture, avif_url};
+use crate::components::maintenance::MaintenancePanel;
+use crate::components::picture::Picture;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
+use crate::components::styles::{
+    BADGE, BADGE_OUTLINE, BUTTON, BUTTON_GHOST, BUTTON_MD, BUTTON_OUTLINE, BUTTON_PRIMARY,
+    CARD_SURFACE, H1, TEXT_LINK,
+};
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
     AiBadge, Breadcrumb, PlayabilityMeter, PortCardView, ReleaseChip, Section, TargetIcon,
@@ -27,7 +34,12 @@ fn PortPageInner(game_slug: String, port_slug: String) -> Element {
     let (lookup_game, lookup_port) = (game_slug.clone(), port_slug.clone());
     let data = use_loader(move || api::port_detail(lookup_game.clone(), lookup_port.clone()))?;
     let detail = data();
-    rsx! { PortBody { detail } }
+    let port_id = detail.port.id;
+    // The summary is non-essential: fall back to no ratings instead of failing the whole page.
+    let ratings_data = use_loader(move || async move {
+        Ok::<RatingSummary, ServerFnError>(api::port_ratings(port_id).await.unwrap_or_default())
+    })?;
+    rsx! { PortBody { detail, ratings: ratings_data() } }
 }
 
 fn port_crumbs(detail: &PortDetail) -> Vec<(String, String)> {
@@ -46,15 +58,77 @@ fn port_crumbs(detail: &PortDetail) -> Vec<(String, String)> {
 #[component]
 fn Fact(label: String, children: Element) -> Element {
     rsx! {
-        div { class: "rounded-2xl border border-border bg-surface p-4",
-            dt { class: "text-xs font-bold uppercase tracking-wide text-muted", "{label}" }
+        div { class: "{CARD_SURFACE} p-4",
+            dt { class: "text-xs font-medium text-muted-foreground", "{label}" }
             dd { class: "mt-2 text-sm", {children} }
         }
     }
 }
 
+/// Generated description of the port, from its GitHub README and release notes.
 #[component]
-fn PortBody(detail: PortDetail) -> Element {
+fn AboutPort(about: PortAbout, repo_url: String) -> Element {
+    let has_lists = !(about.features.is_empty()
+        && about.requirements.is_empty()
+        && about.limitations.is_empty()
+        && about.setup.is_empty());
+    rsx! {
+        Section { heading: "About this port".to_string(), class: "mt-12".to_string(),
+            div { class: "flex flex-col gap-6",
+                p { class: "text-lg leading-relaxed", "{about.summary}" }
+                div { class: "flex flex-col gap-2",
+                    span { class: "{BADGE} {BADGE_OUTLINE}", "{about.technique_label}" }
+                    p { class: "leading-relaxed text-muted-foreground", "{about.technique_note}" }
+                }
+                if has_lists {
+                    div { class: "grid gap-4 md:grid-cols-2",
+                        if !about.features.is_empty() {
+                            AboutList { heading: "Features".to_string(), items: about.features.clone(), numbered: false }
+                        }
+                        if !about.requirements.is_empty() {
+                            AboutList { heading: "Requirements".to_string(), items: about.requirements.clone(), numbered: false }
+                        }
+                        if !about.limitations.is_empty() {
+                            AboutList { heading: "Known limitations".to_string(), items: about.limitations.clone(), numbered: false }
+                        }
+                        if !about.setup.is_empty() {
+                            AboutList { heading: "Setup".to_string(), items: about.setup.clone(), numbered: true }
+                        }
+                    }
+                }
+                p { class: "text-sm text-muted-foreground",
+                    "Generated from the repository's README and release notes "
+                    RelativeTime { at: about.generated_at }
+                    ". Check the "
+                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "repository" }
+                    " for the latest details."
+                }
+            }
+        }
+    }
+}
+
+/// One titled list inside the About section. Empty lists are not rendered by the caller.
+#[component]
+fn AboutList(heading: String, items: Vec<String>, numbered: bool) -> Element {
+    rsx! {
+        div { class: "{CARD_SURFACE} p-4",
+            h3 { class: "text-sm font-medium", "{heading}" }
+            if numbered {
+                ol { class: "mt-2 flex list-decimal flex-col gap-2 pl-5 text-sm",
+                    for item in items { li { "{item}" } }
+                }
+            } else {
+                ul { class: "mt-2 flex list-disc flex-col gap-2 pl-5 text-sm",
+                    for item in items { li { "{item}" } }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let site = use_context::<SiteUrl>().0;
     let live = use_context::<LiveStore>();
     let port_id = detail.port.id;
@@ -122,23 +196,22 @@ fn PortBody(detail: PortDetail) -> Element {
         .collect();
     let targets_text: Vec<String> = port.targets.iter().map(|t| target_label(t)).collect();
     let title = port_title(&port.name, &game.name, &port.kind_label, &primary);
-    let description = meta_description(&format!(
-        "{} is a {} of {}. It runs on {}. Compare GitHub stars, releases, AI usage and gameplay videos.",
-        port.name,
-        port.kind_label,
-        game.name,
-        targets_text.join(", ")
-    ));
+    let description = match d.about.as_ref() {
+        Some(about) => meta_description(&about.summary),
+        None => meta_description(&format!(
+            "{} is a {} of {}. It runs on {}. Compare GitHub stars, releases, AI usage and gameplay videos.",
+            port.name,
+            port.kind_label,
+            game.name,
+            targets_text.join(", ")
+        )),
+    };
     let crumbs = port_crumbs(&d);
-    let json_ld = jsonld::port_json_ld(&site, &d, &crumbs);
+    let json_ld = jsonld::port_json_ld(&site, &d, &crumbs, &ratings);
     let path = format!("/games/{}/{}", game.slug, port.slug);
-    let h1 = format!("{}: {} {}", port.name, game.name, port.kind_label);
+    let subtitle = format!("{} of", article_kind(&port.kind_label));
+    let game_href = format!("/games/{}", game.slug);
     let initials = initials_of(&game.name);
-    let bg_src = port
-        .cover
-        .as_ref()
-        .filter(|m| m.ready)
-        .and_then(|m| m.widths.iter().max().map(|w| avif_url(m, *w)));
     let source_name = d
         .source_platform
         .as_ref()
@@ -183,69 +256,66 @@ fn PortBody(detail: PortDetail) -> Element {
     let last_commit = d.last_commit_at;
     let ai_tools = port.ai_tools.clone();
     let ai_evidence = port.ai_evidence.clone();
+    let about = d.about.clone();
 
     rsx! {
         Seo { title, description, path, json_ld }
-        section { class: "relative -mx-4 mb-12 overflow-hidden rounded-3xl border border-border/60",
-            if let Some(src) = bg_src {
-                img {
-                    class: "absolute inset-0 -z-10 h-full w-full scale-110 object-cover opacity-30 blur-2xl saturate-[1.4]",
-                    src: "{src}",
-                    alt: "",
-                    "aria-hidden": "true",
-                    "loading": "lazy",
-                    "decoding": "async",
+        section { class: "grid gap-8 md:grid-cols-[220px_1fr]",
+            div { class: "mx-auto w-40 md:w-full",
+                div { class: "aspect-[3/4] overflow-hidden rounded-lg border",
+                    Picture {
+                        media: port.cover.clone(),
+                        alt: format!("Cover art for {}", game.name),
+                        initials: initials.clone(),
+                        sizes: "(min-width: 768px) 220px, 50vw".to_string(),
+                        eager: true,
+                        class: "h-full w-full object-cover".to_string(),
+                    }
                 }
             }
-            div { class: "relative grid gap-8 p-6 md:grid-cols-[220px_1fr] md:p-10",
-                div { class: "perspective mx-auto w-40 md:w-full",
-                    div { class: "cover-tilt aspect-[3/4] overflow-hidden rounded-2xl shadow-2xl",
-                        Picture {
-                            media: port.cover.clone(),
-                            alt: format!("Cover art for {}", game.name),
-                            initials: initials.clone(),
-                            sizes: "(min-width: 768px) 220px, 50vw".to_string(),
-                            eager: true,
-                            class: "h-full w-full object-cover".to_string(),
-                        }
-                    }
+            div { class: "min-w-0",
+                Breadcrumb { items: crumbs.clone() }
+                h1 { class: "mt-4 {H1}", "{port.name}" }
+                p { class: "mt-2 text-muted-foreground",
+                    "{subtitle} "
+                    a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
                 }
-                div { class: "min-w-0",
-                    Breadcrumb { items: crumbs.clone() }
-                    h1 { class: "mt-3 text-4xl font-extrabold tracking-tight md:text-5xl", "{h1}" }
-                    div { class: "mt-4 flex flex-wrap items-center gap-4",
-                        LiveCount { game_id }
-                        {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
+                div { class: "mt-4 flex flex-wrap items-center gap-4",
+                    LiveCount { game_id }
+                    {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
+                }
+                div { class: "mt-6 flex flex-wrap gap-2",
+                    if let Some(url) = download.clone() {
+                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "Download latest release" }
                     }
-                    div { class: "mt-6 flex flex-wrap gap-3",
-                        if let Some(url) = download.clone() {
-                            a { href: "{url}", target: "_blank", rel: "noopener", class: "rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-white hover:opacity-90", "Download latest release" }
-                        }
-                        a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "rounded-full border border-border px-5 py-2.5 text-sm font-bold hover:bg-surface-2", "Repository" }
-                        if let Some(url) = homepage.clone() {
-                            a { href: "{url}", target: "_blank", rel: "noopener", class: "rounded-full border border-border px-5 py-2.5 text-sm font-bold hover:bg-surface-2", "Website" }
-                        }
-                        a { href: "{edit_href}", class: "rounded-full border border-border px-5 py-2.5 text-sm font-bold hover:bg-surface-2", "Suggest an edit" }
+                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Repository" }
+                    if let Some(url) = homepage.clone() {
+                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Website" }
                     }
+                    a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
                 }
             }
         }
 
-        Section { heading: "Facts".to_string(),
+        if let Some(about) = about {
+            AboutPort { about, repo_url: port.repo_url.clone() }
+        }
+
+        Section { heading: "Facts".to_string(), class: "mt-12".to_string(),
             dl { class: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
                 Fact { label: "Kind".to_string(), "{port.kind_label}" }
                 Fact { label: "Original version".to_string(), "{source_name}" }
                 Fact { label: "Runs on".to_string(),
                     div { class: "flex flex-wrap gap-2",
                         for (target, label) in runs.clone() {
-                            span { class: "inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1",
+                            span { class: "{BADGE} {BADGE_OUTLINE}",
                                 TargetIcon { target }
                                 "{label}"
                             }
                         }
                     }
                 }
-                Fact { label: "Author(s)".to_string(),
+                Fact { label: "Authors".to_string(),
                     ul { class: "flex flex-col gap-2",
                         for (href, name, avatar) in authors.clone() {
                             li { class: "flex items-center gap-2",
@@ -254,12 +324,12 @@ fn PortBody(detail: PortDetail) -> Element {
                                     alt: name.clone(),
                                     initials: initials_of(&name),
                                     sizes: "24px".to_string(),
-                                    class: "h-6 w-6 rounded-full".to_string(),
+                                    class: "size-6 rounded-full text-[9px]".to_string(),
                                 }
                                 if let Some(href) = href {
-                                    a { href: "{href}", class: "font-semibold hover:text-accent", "{name}" }
+                                    a { href: "{href}", class: "font-medium hover:underline", "{name}" }
                                 } else {
-                                    span { class: "font-semibold", "{name}" }
+                                    span { class: "font-medium", "{name}" }
                                 }
                             }
                         }
@@ -291,26 +361,32 @@ fn PortBody(detail: PortDetail) -> Element {
             }
         }
 
+        if let Some(m) = port.maintenance {
+            Section { heading: "Maintenance".to_string(), class: "mt-12".to_string(),
+                MaintenancePanel { maintenance: m, weekly_commits: d.weekly_commits.clone() }
+            }
+        }
+
         if let Some(text) = requirements {
-            Section { heading: "What you need".to_string(),
-                p { class: "whitespace-pre-line leading-relaxed text-muted", "{text}" }
+            Section { heading: "What you need".to_string(), class: "mt-12".to_string(),
+                p { class: "whitespace-pre-line leading-relaxed text-muted-foreground", "{text}" }
             }
         }
 
         if let Some(text) = description_text {
-            Section { heading: "About this port".to_string(),
+            Section { heading: "Repository description".to_string(), class: "mt-12".to_string(),
                 p { class: "whitespace-pre-line leading-relaxed", "{text}" }
             }
         }
 
         if !videos.is_empty() {
-            Section { heading: "Gameplay videos".to_string(),
+            Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
                 VideoTabs { videos }
             }
         }
 
         if !other_ports.is_empty() {
-            Section { heading: other_title,
+            Section { heading: other_title, class: "mt-12".to_string(),
                 ul { class: "grid gap-4 md:grid-cols-2",
                     for other in other_ports {
                         {
@@ -322,8 +398,21 @@ fn PortBody(detail: PortDetail) -> Element {
             }
         }
 
-        div { class: "mt-10 flex justify-end",
+        div { class: "mt-12",
+            PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }
+        }
+        div { class: "mt-12 flex justify-end",
             ReportDialog { game_id, port_id }
         }
     }
+}
+
+/// "A static recompilation", "An unofficial port": the kind label as a sentence start.
+fn article_kind(kind_label: &str) -> String {
+    let lower = kind_label.to_lowercase();
+    let article = match lower.chars().next() {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "An",
+        _ => "A",
+    };
+    format!("{article} {lower}")
 }

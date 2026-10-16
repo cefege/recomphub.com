@@ -22,20 +22,23 @@ pub fn meta_description(text: &str) -> String {
     truncate_description(text, DESCRIPTION_MAX)
 }
 
-/// Title for a game page with at least one port: `{Game} PC Port & Recomp – {targets} | RecompHub`.
+/// Title for a game page with at least one port: `{Game} Native Port & Recomp – {targets} | RecompHub`.
 /// `targets` holds up to three primary target labels.
 pub fn game_with_ports_title(game: &str, targets: &[&str]) -> String {
     let shown: Vec<&str> = targets.iter().copied().take(3).collect();
     if shown.is_empty() {
-        format!("{game} PC Port & Recomp | RecompHub")
+        format!("{game} Native Port & Recomp | RecompHub")
     } else {
-        format!("{game} PC Port & Recomp – {} | RecompHub", shown.join(", "))
+        format!(
+            "{game} Native Port & Recomp – {} | RecompHub",
+            shown.join(", ")
+        )
     }
 }
 
 /// Title for a game page with no port.
 pub fn game_without_port_title(game: &str) -> String {
-    format!("{game} PC Port? Recomp & Decomp Status | RecompHub")
+    format!("{game} Native Port? Recomp & Decomp Status | RecompHub")
 }
 
 /// Title for a port page.
@@ -50,7 +53,7 @@ pub fn port_title(port: &str, game: &str, kind_label: &str, targets: &[&str]) ->
 
 /// Title for a platform hub.
 pub fn platform_title(platform: &str, games: i64) -> String {
-    format!("{platform} PC Ports & Recompilations ({games} games) | RecompHub")
+    format!("{platform} Game Ports & Recompilations ({games} games) | RecompHub")
 }
 
 /// Title for a platform-target hub.
@@ -60,7 +63,7 @@ pub fn platform_target_title(platform: &str, target: &str) -> String {
 
 /// Title for a runs-on hub.
 pub fn runs_on_title(target: &str) -> String {
-    format!("Console Games Running Natively on {target} | RecompHub")
+    format!("Games Running Natively on {target} | RecompHub")
 }
 
 /// Title for an author page.
@@ -70,7 +73,7 @@ pub fn author_title(name: &str, login: &str) -> String {
 
 /// Title for the home page.
 pub fn home_title() -> &'static str {
-    "RecompHub – Every Game Recompilation & Native PC Port"
+    "RecompHub – Every Game Recompilation & Native Port"
 }
 
 /// Description for a game that has ports.
@@ -85,13 +88,13 @@ pub fn game_with_ports_description(
     let n = port_names.len();
     let plural = if n == 1 { "port" } else { "ports" };
     let names = port_names.join(", ");
-    let targets = if targets.is_empty() {
-        "PC".to_string()
+    let runs_on = if targets.is_empty() {
+        String::new()
     } else {
-        targets.join(", ")
+        format!(" Runs on {}.", targets.join(", "))
     };
     let text = format!(
-        "{game} ({platform}{year}) has {n} native {plural}: {names}. Runs on {targets}. Compare GitHub stars, releases, AI usage and gameplay videos."
+        "{game} ({platform}{year}) has {n} native {plural}: {names}.{runs_on} Compare GitHub stars, releases, AI usage and gameplay videos."
     );
     meta_description(&text)
 }
@@ -185,7 +188,7 @@ mod tests {
         );
         assert_eq!(
             t,
-            "Majora's Mask PC Port & Recomp – Windows, macOS, Linux | RecompHub"
+            "Majora's Mask Native Port & Recomp – Windows, macOS, Linux | RecompHub"
         );
     }
 

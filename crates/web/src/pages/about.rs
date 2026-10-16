@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use recomphub_shared::seo::meta_description;
 
-use crate::components::{Section, Seo};
+use crate::components::styles::{H1, LEAD};
+use crate::components::{GroundRules, Section, Seo};
 
 /// `/about`: how the score, live counts, stars, AI detection and data sources work.
 #[component]
@@ -14,10 +15,12 @@ pub fn About() -> Element {
             ),
             path: "/about",
         }
-        div { class: "mx-auto max-w-3xl px-4 py-10 leading-relaxed",
-            h1 { class: "text-4xl font-black tracking-tight", "About RecompHub" }
-            p { class: "mt-4 text-lg text-muted",
-                "RecompHub is a database of console and PC game recompilations and native ports. Every game has its own page listing its known ports, the platforms each one runs on, its authors, any AI tools used to make it, GitHub stars, release status and gameplay videos."
+        div { class: "mx-auto max-w-3xl space-y-12 leading-relaxed",
+            header { class: "space-y-2",
+                h1 { class: H1, "About RecompHub" }
+                p { class: "{LEAD} max-w-2xl",
+                    "RecompHub is a database of game recompilations and native ports across consoles, PCs, handhelds, mobile and the web. Every game has its own page listing its known ports, the platforms each one runs on, its authors, any AI tools used to make it, GitHub stars, release status and gameplay videos."
+                }
             }
             Section { heading: "How the popularity score works".to_string(),
                 p {
@@ -71,6 +74,7 @@ pub fn About() -> Element {
                     "RecompHub never hosts or links to game ROMs, disc images or other copyrighted game files. Download buttons link only to the ports' own GitHub release pages. Moderators reject any submission that links to ROMs."
                 }
             }
+            GroundRules { class: "mt-12" }
         }
     }
 }

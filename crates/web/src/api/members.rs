@@ -267,9 +267,13 @@ fn port_form_from(full: PortFull) -> PortForm {
     }
 }
 
-/// True when `login` owns the repo or is listed among the port's authors.
+/// True when `github_login` owns the repo or is listed among the port's authors.
+/// Display names never count: they are not verified against GitHub.
 #[cfg(feature = "server")]
-fn is_author_of(login: &str, port: &PortFull) -> bool {
+fn is_author_of(github_login: Option<&str>, port: &PortFull) -> bool {
+    let Some(login) = github_login else {
+        return false;
+    };
     let owner = port
         .input
         .repo_url
@@ -421,15 +425,18 @@ pub async fn preview_repo(url: String) -> Result<RepoPreview, ServerFnError> {
             role: a.role.to_string(),
             avatar: None,
             commits: a.commits,
+            funding: Vec::new(),
         })
         .collect();
     let submitter_is_author = viewer.as_ref().is_some_and(|v| {
-        v.login.eq_ignore_ascii_case(&prev.owner)
-            || authors.iter().any(|a| {
-                a.github_login
-                    .as_deref()
-                    .is_some_and(|l| l.eq_ignore_ascii_case(&v.login))
-            })
+        v.github_login.as_deref().is_some_and(|login| {
+            login.eq_ignore_ascii_case(&prev.owner)
+                || authors.iter().any(|a| {
+                    a.github_login
+                        .as_deref()
+                        .is_some_and(|l| l.eq_ignore_ascii_case(login))
+                })
+        })
     });
     let ai = &prev.ai;
     Ok(RepoPreview::Preview(Box::new(RepoPreviewData {
@@ -475,7 +482,7 @@ pub async fn submit(input: SubmitInput) -> Result<SubmitResult, ServerFnError> {
     } = input;
     let (game_id, new_game) = resolve_game(pool, game_id, igdb_id).await?;
     let full = port_from_form(port)?;
-    let submitter_is_author = is_author_of(&viewer.login, &full);
+    let submitter_is_author = is_author_of(viewer.github_login.as_deref(), &full);
     let repo_url = full.input.repo_url.clone();
     let ps = PortSubmission {
         game_id,

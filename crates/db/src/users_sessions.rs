@@ -1,4 +1,4 @@
-//! Accounts, roles, bans and cookie-backed sessions.
+//! Accounts, roles, bans and cookie-backed sessions. Sign-in identities live in `identities`.
 
 use crate::{DbError, DbResult};
 use chrono::{DateTime, Utc};
@@ -10,9 +10,10 @@ use sqlx::PgExecutor;
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserRow {
     pub id: i64,
-    pub github_id: i64,
-    pub login: String,
-    pub name: Option<String>,
+    /// The name shown for this member, whichever provider it came from.
+    pub display_name: String,
+    /// The GitHub login, while a GitHub identity is connected. Used for author links.
+    pub github_login: Option<String>,
     pub avatar_media_id: Option<i64>,
     pub role: String,
     pub approved_count: i32,
@@ -27,47 +28,17 @@ impl UserRow {
     }
 }
 
-/// Profile fields taken from GitHub at login.
-#[derive(Debug, Clone)]
-pub struct GithubProfile {
-    pub github_id: i64,
-    pub login: String,
-    pub name: Option<String>,
-    pub avatar_media_id: Option<i64>,
+/// A user row plus the providers connected to it, for the admin user list.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct UserListRow {
+    #[sqlx(flatten)]
+    pub user: UserRow,
+    pub providers: Vec<String>,
 }
 
 /// SHA-256 of a session token. Only this hash is stored.
 pub fn session_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
-}
-
-/// Creates or refreshes the user for a GitHub identity. `is_admin` promotes
-/// the account to admin; otherwise the existing role is kept.
-pub async fn upsert_github_user(
-    ex: impl PgExecutor<'_>,
-    profile: &GithubProfile,
-    is_admin: bool,
-) -> DbResult<UserRow> {
-    let role = if is_admin { "admin" } else { "user" };
-    let row = sqlx::query_as::<_, UserRow>(
-        "INSERT INTO users (github_id, login, name, avatar_media_id, role)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (github_id) DO UPDATE SET
-            login = EXCLUDED.login,
-            name = EXCLUDED.name,
-            avatar_media_id = EXCLUDED.avatar_media_id,
-            role = CASE WHEN $6 THEN 'admin' ELSE users.role END
-         RETURNING *",
-    )
-    .bind(profile.github_id)
-    .bind(profile.login.clone())
-    .bind(profile.name.clone())
-    .bind(profile.avatar_media_id)
-    .bind(role)
-    .bind(is_admin)
-    .fetch_one(ex)
-    .await?;
-    Ok(row)
 }
 
 /// Stores a session keyed by the hash of `token`.
@@ -132,20 +103,16 @@ pub async fn get_by_id(ex: impl PgExecutor<'_>, id: i64) -> DbResult<UserRow> {
         .ok_or_else(|| DbError::NotFound(format!("user {id}")))
 }
 
-/// A user by GitHub login, compared case-insensitively.
-pub async fn get_by_login(ex: impl PgExecutor<'_>, login: &str) -> DbResult<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE lower(login) = lower($1)")
-        .bind(login)
-        .fetch_optional(ex)
-        .await?;
-    Ok(row)
-}
-
-/// Users whose login contains `q` (case-insensitive), at most `limit` rows.
-pub async fn search(ex: impl PgExecutor<'_>, q: &str, limit: i64) -> DbResult<Vec<UserRow>> {
+/// Users whose display name or GitHub login contains `q` (case-insensitive), at most `limit` rows.
+pub async fn search(ex: impl PgExecutor<'_>, q: &str, limit: i64) -> DbResult<Vec<UserListRow>> {
     let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
-    let rows = sqlx::query_as::<_, UserRow>(
-        "SELECT * FROM users WHERE login ILIKE $1 ORDER BY login LIMIT $2",
+    let rows = sqlx::query_as::<_, UserListRow>(
+        "SELECT u.*,
+            ARRAY(SELECT i.provider FROM user_identities i WHERE i.user_id = u.id ORDER BY i.provider) AS providers
+         FROM users u
+         WHERE u.display_name ILIKE $1 OR u.github_login ILIKE $1
+         ORDER BY u.display_name, u.id
+         LIMIT $2",
     )
     .bind(pattern)
     .bind(limit)

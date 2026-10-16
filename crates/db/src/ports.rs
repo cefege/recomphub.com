@@ -5,7 +5,9 @@
 
 use crate::{DbError, DbResult, activity, games};
 use chrono::{DateTime, Utc};
-use recomphub_shared::{AiSource, AiUsage, Playability, PortKind, TargetPlatform, slugify};
+use recomphub_shared::{
+    AiSource, AiUsage, MaintenanceLevel, Playability, PortKind, TargetPlatform, slugify,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgConnection, PgExecutor};
@@ -126,6 +128,16 @@ pub struct PortRow {
     pub ai_scanned_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub last_commit_at: Option<DateTime<Utc>>,
+    pub commits_30d: i32,
+    pub commits_90d: i32,
+    pub commits_365d: i32,
+    pub committers_180d: i32,
+    pub releases_365d: i32,
+    pub weekly_commits: Vec<i32>,
+    pub maintenance_level: Option<String>,
+    pub maintenance_score: Option<i16>,
+    pub maintenance_computed_at: Option<DateTime<Utc>>,
 }
 
 impl PortRow {
@@ -788,6 +800,8 @@ pub struct GithubSync {
     pub github_stars: i32,
     pub github_forks: i32,
     pub pushed_at: Option<DateTime<Utc>>,
+    /// When the GitHub repository was created. `None` keeps the stored date.
+    pub repo_created_at: Option<DateTime<Utc>>,
     pub archived: bool,
     pub latest_version: Option<String>,
     pub latest_release_url: Option<String>,
@@ -897,6 +911,7 @@ pub async fn update_github(
             latest_is_prerelease = $13, detected_platforms = $14,
             ai_usage = $15, ai_tools = $16, ai_evidence = $17, ai_source = $18,
             ai_scanned_at = CASE WHEN $19::bool THEN now() ELSE ai_scanned_at END,
+            repo_created_at = COALESCE($20, repo_created_at),
             github_synced_at = now(), updated_at = now()
          WHERE id = $1",
     )
@@ -919,9 +934,60 @@ pub async fn update_github(
     .bind(ai_evidence)
     .bind(ai_source)
     .bind(stamp_ai)
+    .bind(sync.repo_created_at)
     .execute(&mut *conn)
     .await?;
     games::refresh_rollup(&mut *conn, cur.game_id).await?;
+    Ok(())
+}
+
+/// Maintenance signals computed by `github-sync`, written to the maintenance columns of a port.
+#[derive(Debug, Clone)]
+pub struct MaintenanceSync {
+    pub last_commit_at: Option<DateTime<Utc>>,
+    pub commits_30d: i32,
+    pub commits_90d: i32,
+    pub commits_365d: i32,
+    pub committers_180d: i32,
+    pub releases_365d: i32,
+    /// `None` keeps the stored weeks, for when GitHub has not finished computing its stats.
+    pub weekly_commits: Option<Vec<i32>>,
+    pub level: MaintenanceLevel,
+    pub score: u8,
+}
+
+/// Writes the maintenance columns of a port. Does not touch `github_synced_at` or the locks.
+pub async fn update_maintenance(
+    conn: &mut PgConnection,
+    port_id: i64,
+    maintenance: &MaintenanceSync,
+) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE ports SET
+            last_commit_at = $2,
+            commits_30d = $3,
+            commits_90d = $4,
+            commits_365d = $5,
+            committers_180d = $6,
+            releases_365d = $7,
+            weekly_commits = COALESCE($8, weekly_commits),
+            maintenance_level = $9,
+            maintenance_score = $10,
+            maintenance_computed_at = now()
+         WHERE id = $1",
+    )
+    .bind(port_id)
+    .bind(maintenance.last_commit_at)
+    .bind(maintenance.commits_30d)
+    .bind(maintenance.commits_90d)
+    .bind(maintenance.commits_365d)
+    .bind(maintenance.committers_180d)
+    .bind(maintenance.releases_365d)
+    .bind(maintenance.weekly_commits.clone())
+    .bind(maintenance.level.key())
+    .bind(i16::from(maintenance.score))
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 

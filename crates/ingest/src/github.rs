@@ -14,6 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use recomphub_db::PgPool;
 use recomphub_db::media;
+use recomphub_db::port_videos as port_video_store;
 use recomphub_db::ports::{
     self, AiEvidence as DbAiEvidence, AiSync, AuthorInput, GithubSync, PortRow,
 };
@@ -24,6 +25,8 @@ use serde_json::{Value, json};
 
 use crate::detect::{self, AiDetection, CommitInfo};
 use crate::github_links;
+use crate::maintenance::{self, maintenance_query, parse_maintenance_batch};
+use crate::video_links;
 
 const API: &str = "https://api.github.com";
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
@@ -97,6 +100,10 @@ pub struct RepoPreview {
     pub release_assets: Vec<String>,
     pub detected_platforms: Vec<TargetPlatform>,
     pub ai: AiDetection,
+    /// YouTube video IDs linked from the README, in first-appearance order.
+    pub readme_youtube_ids: Vec<String>,
+    /// Text the generated port description is built from. See `describe`.
+    pub source: crate::describe::RawSource,
     pub contributors: Vec<Contributor>,
 }
 
@@ -154,7 +161,7 @@ impl GithubClient {
     }
 
     /// GET a REST path and return the body text. Returns `None` for any status in `absent`.
-    async fn rest_raw(
+    pub(crate) async fn rest_raw(
         &self,
         path: &str,
         accept: &str,
@@ -198,7 +205,7 @@ impl GithubClient {
     }
 
     /// POST one GraphQL query and return its `data`. Errors other than `NOT_FOUND` fail.
-    async fn graphql(&self, query: &str) -> Result<Value> {
+    pub(crate) async fn graphql(&self, query: &str) -> Result<Value> {
         let token = self.graphql_token()?;
         let resp = self
             .http
@@ -237,21 +244,31 @@ impl GithubClient {
             .ok_or_else(|| anyhow!("GitHub GraphQL response has no data"))
     }
 
-    /// Latest published release, including prereleases. Drafts are skipped.
-    async fn latest_release(&self, base: &str) -> Result<Option<ReleaseInfo>> {
+    /// Latest published release, including prereleases. Drafts are skipped. The release name
+    /// and notes come along for generated descriptions.
+    async fn latest_release(
+        &self,
+        base: &str,
+    ) -> Result<Option<(ReleaseInfo, crate::describe::RawRelease)>> {
         let list: Vec<ReleaseJson> = self
             .rest_json(&format!("{base}/releases?per_page=10"), ABSENT)
             .await?
             .unwrap_or_default();
         match list.into_iter().find(|r| !r.draft) {
             None => Ok(None),
-            Some(r) => Ok(Some(ReleaseInfo {
-                tag: r.tag_name,
-                url: r.html_url,
-                published_at: r.published_at.as_deref().map(parse_ts).transpose()?,
-                prerelease: r.prerelease,
-                assets: r.assets.into_iter().map(|a| a.name).collect(),
-            })),
+            Some(r) => Ok(Some((
+                ReleaseInfo {
+                    tag: r.tag_name,
+                    url: r.html_url,
+                    published_at: r.published_at.as_deref().map(parse_ts).transpose()?,
+                    prerelease: r.prerelease,
+                    assets: r.assets.into_iter().map(|a| a.name).collect(),
+                },
+                crate::describe::RawRelease {
+                    name: r.name,
+                    body: r.body,
+                },
+            ))),
         }
     }
 
@@ -279,13 +296,34 @@ impl GithubClient {
         Ok(list.iter().any(|r| !r.draft))
     }
 
+    /// Last 12 weeks of commit totals from `stats/participation`, oldest first. GitHub computes
+    /// this lazily: 202 means "not ready" and 404 means "no stats", both `None`, so the stored
+    /// sparkline is kept.
+    pub async fn weekly_commits(&self, full_name: &str) -> Result<Option<Vec<i32>>> {
+        let stats: Option<ParticipationJson> = self
+            .rest_json(
+                &format!("/repos/{full_name}/stats/participation"),
+                &[
+                    StatusCode::NOT_FOUND,
+                    StatusCode::ACCEPTED,
+                    StatusCode::NO_CONTENT,
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                ],
+            )
+            .await?;
+        Ok(stats.map(|s| maintenance::sparkline(&s.all)))
+    }
+
     /// Full REST snapshot of one repository. `None` when the repository does not exist.
     pub async fn fetch_preview(&self, owner: &str, repo: &str) -> Result<Option<RepoPreview>> {
         let base = format!("/repos/{owner}/{repo}");
         let Some(r): Option<RepoJson> = self.rest_json(&base, ABSENT).await? else {
             return Ok(None);
         };
-        let release = self.latest_release(&base).await?;
+        let (release, release_text) = match self.latest_release(&base).await? {
+            Some((info, text)) => (Some(info), text),
+            None => (None, crate::describe::RawRelease::default()),
+        };
         let root: Vec<ContentEntry> = self
             .rest_json(&format!("{base}/contents/"), ABSENT_LIST)
             .await?
@@ -315,6 +353,10 @@ impl GithubClient {
             })
             .collect();
         let ai = detect::detect_ai(&root_refs, copilot, readme.as_deref(), &commit_infos);
+        let readme_youtube_ids = readme
+            .as_deref()
+            .map(video_links::youtube_ids_in_markdown)
+            .unwrap_or_default();
         let owner_is_org = r.owner.kind.eq_ignore_ascii_case("Organization");
         let owner_name = if owner_is_org {
             None
@@ -369,7 +411,13 @@ impl GithubClient {
             release_assets: asset_names,
             detected_platforms,
             ai,
+            readme_youtube_ids,
             contributors,
+            source: crate::describe::RawSource {
+                topics: r.topics,
+                readme,
+                release: release_text,
+            },
         }))
     }
 }
@@ -498,6 +546,7 @@ fn sync_row(
         github_stars: stars,
         github_forks: forks,
         pushed_at,
+        repo_created_at: None,
         archived,
         latest_version: release.map(|r| r.tag.clone()),
         latest_release_url: release.map(|r| r.url.clone()),
@@ -545,9 +594,15 @@ pub fn ai_sync(ai: &AiDetection) -> AiSync {
     }
 }
 
+/// Participation counts for the sparkline. `all` is 52 weeks of commit totals, oldest first.
+#[derive(Deserialize)]
+struct ParticipationJson {
+    all: Vec<i32>,
+}
+
 /// GraphQL query that fetches `repos` by alias `r0..rN`. Owner and name are JSON-escaped.
 pub fn batch_query(repos: &[(String, String)]) -> String {
-    let fields = "databaseId nameWithOwner stargazerCount forkCount pushedAt isArchived homepageUrl \
+    let fields = "databaseId nameWithOwner stargazerCount forkCount pushedAt createdAt isArchived homepageUrl \
         licenseInfo { spdxId } \
         releases(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { tagName url publishedAt isPrerelease \
         releaseAssets(first: 50) { nodes { name } } } }";
@@ -592,6 +647,7 @@ pub struct GqlRepo {
     pub stargazer_count: i32,
     pub fork_count: i32,
     pub pushed_at: Option<String>,
+    pub created_at: Option<String>,
     pub is_archived: bool,
     pub homepage_url: Option<String>,
     pub license_info: Option<GqlLicense>,
@@ -657,7 +713,7 @@ impl GqlRepo {
                     .collect(),
             }),
         };
-        Ok(sync_row(
+        let mut sync = sync_row(
             self.database_id,
             repo_url,
             non_empty(self.homepage_url.clone()),
@@ -671,7 +727,9 @@ impl GqlRepo {
             self.pushed_at.as_deref().map(parse_ts).transpose()?,
             self.is_archived,
             release.as_ref(),
-        ))
+        );
+        sync.repo_created_at = self.created_at.as_deref().map(parse_ts).transpose()?;
+        Ok(sync)
     }
 }
 
@@ -689,31 +747,7 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
         if due.is_empty() {
             break;
         }
-        let keys = due
-            .iter()
-            .map(|p| parse_repo(&p.repo_url))
-            .collect::<Result<Vec<_>>>()?;
-        let data = client.graphql(&batch_query(&keys)).await?;
-        let repos = parse_batch(&data, due.len())?;
-        for (port, repo) in due.iter().zip(repos) {
-            match repo {
-                None => {
-                    hide_port(pool, port).await?;
-                    report.hidden += 1;
-                }
-                Some(r) => {
-                    let sync = r.to_sync()?;
-                    if hide_if_duplicate(pool, port, &sync).await? {
-                        report.hidden += 1;
-                        continue;
-                    }
-                    let mut tx = pool.begin().await?;
-                    ports::update_github(&mut tx, port.id, &sync, None).await?;
-                    tx.commit().await?;
-                    report.synced += 1;
-                }
-            }
-        }
+        sync_batch(pool, client, &due, Utc::now(), &mut report).await?;
     }
 
     let scan = ports::due_ai_scan(pool, SCAN_LIMIT_PER_RUN).await?;
@@ -745,11 +779,108 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                 ports::update_github(&mut tx, port.id, &sync, Some(&ai)).await?;
                 ports::replace_github_authors(&mut tx, port.id, &authors).await?;
                 tx.commit().await?;
+                if let Err(e) =
+                    port_video_store::record_readme_videos(pool, port.id, &prev.readme_youtube_ids)
+                        .await
+                {
+                    tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README video IDs not recorded");
+                }
+                if let Err(e) = crate::describe::record_sources(
+                    pool,
+                    port.id,
+                    prev.description.as_deref(),
+                    &prev.source,
+                )
+                .await
+                {
+                    tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "port description sources not recorded");
+                }
                 report.scanned += 1;
             }
         }
     }
+    // Funding is best-effort: a failed lookup must not fail the port sync.
+    if let Err(e) = crate::funding::refresh_due(pool, client).await {
+        tracing::warn!(error = %format!("{e:#}"), "author funding refresh failed");
+    }
     Ok(report)
+}
+
+/// Repos per maintenance GraphQL query. Each repo costs a few hundred nodes, so chunks stay small.
+const MAINTENANCE_CHUNK: usize = 10;
+
+/// Syncs a batch of due ports. Repo metadata comes from one GraphQL batch; gone or duplicate repos
+/// are hidden. Maintenance signals follow in chunks, with one REST call per port for the sparkline.
+/// A failed chunk keeps its stored signals and does not stop the rest.
+pub async fn sync_batch(
+    pool: &PgPool,
+    client: &GithubClient,
+    due: &[PortRow],
+    now: DateTime<Utc>,
+    report: &mut GithubSyncReport,
+) -> Result<()> {
+    let keys = due
+        .iter()
+        .map(|p| parse_repo(&p.repo_url))
+        .collect::<Result<Vec<_>>>()?;
+    let data = client.graphql(&batch_query(&keys)).await?;
+    let repos = parse_batch(&data, due.len())?;
+    let mut live: Vec<(&PortRow, (String, String), String)> = Vec::new();
+    for ((port, key), repo) in due.iter().zip(keys).zip(repos) {
+        match repo {
+            None => {
+                hide_port(pool, port).await?;
+                report.hidden += 1;
+            }
+            Some(r) => {
+                let sync = r.to_sync()?;
+                if hide_if_duplicate(pool, port, &sync).await? {
+                    report.hidden += 1;
+                    continue;
+                }
+                let mut tx = pool.begin().await?;
+                ports::update_github(&mut tx, port.id, &sync, None).await?;
+                tx.commit().await?;
+                live.push((port, key, r.name_with_owner));
+                report.synced += 1;
+            }
+        }
+    }
+    for chunk in live.chunks(MAINTENANCE_CHUNK) {
+        let keys: Vec<(String, String)> = chunk.iter().map(|(_, key, _)| key.clone()).collect();
+        let data = match client.graphql(&maintenance_query(&keys, now)).await {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "maintenance query failed; keeping stored signals");
+                continue;
+            }
+        };
+        let repos = match parse_maintenance_batch(&data, chunk.len()) {
+            Ok(repos) => repos,
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "maintenance response unreadable; keeping stored signals");
+                continue;
+            }
+        };
+        for ((port, _, name), repo) in chunk.iter().zip(repos) {
+            let Some(repo) = repo else {
+                tracing::warn!(port_id = port.id, repo = %port.repo_url, "maintenance query returned no repository");
+                continue;
+            };
+            let weekly = match client.weekly_commits(name).await {
+                Ok(weekly) => weekly,
+                Err(e) => {
+                    tracing::warn!(port_id = port.id, repo = %port.repo_url, error = %format!("{e:#}"), "weekly commits not fetched; keeping the stored sparkline");
+                    None
+                }
+            };
+            let signals = maintenance::summarize(&maintenance::facts_from_repo(&repo), weekly, now);
+            let mut tx = pool.begin().await?;
+            ports::update_maintenance(&mut tx, port.id, &signals).await?;
+            tx.commit().await?;
+        }
+    }
+    Ok(())
 }
 
 async fn hide_port(pool: &PgPool, port: &PortRow) -> Result<()> {
@@ -809,6 +940,8 @@ struct RepoJson {
     default_branch: String,
     license: Option<LicenseJson>,
     owner: OwnerJson,
+    #[serde(default)]
+    topics: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -827,6 +960,8 @@ struct OwnerJson {
 #[derive(Deserialize)]
 struct ReleaseJson {
     tag_name: String,
+    name: Option<String>,
+    body: Option<String>,
     html_url: String,
     published_at: Option<String>,
     prerelease: bool,

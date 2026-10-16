@@ -77,7 +77,7 @@ fn queue_item(row: PendingRow) -> Result<QueueItem, ServerFnError> {
         kind: row.sub.kind.clone(),
         status: row.sub.status.clone(),
         source: row.sub.source.clone(),
-        submitter_login: row.submitter_login,
+        submitter_name: row.submitter_name,
         submitter_approved: row.submitter_approved,
         payload_json,
         before_json,
@@ -213,7 +213,7 @@ pub async fn hide_video(video_id: i64) -> Result<(), ServerFnError> {
     Ok(())
 }
 
-/// Users whose login or name matches the term, for the admin search.
+/// Users whose display name or GitHub login matches the term, for the admin search.
 #[get("/api/admin/users")]
 pub async fn admin_users(term: String) -> Result<Vec<UserAdminRow>, ServerFnError> {
     require_admin().await?;
@@ -222,13 +222,14 @@ pub async fn admin_users(term: String) -> Result<Vec<UserAdminRow>, ServerFnErro
         .map_err(db_error)?;
     Ok(rows
         .into_iter()
-        .map(|u| UserAdminRow {
-            id: u.id,
-            login: u.login,
-            name: u.name,
-            role: u.role,
-            banned: u.banned,
-            approved_count: u.approved_count,
+        .map(|row| UserAdminRow {
+            id: row.user.id,
+            display_name: row.user.display_name,
+            github_login: row.user.github_login,
+            providers: row.providers,
+            role: row.user.role,
+            banned: row.user.banned,
+            approved_count: row.user.approved_count,
         })
         .collect())
 }

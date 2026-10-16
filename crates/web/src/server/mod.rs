@@ -2,6 +2,7 @@
 
 pub mod bootstrap;
 pub mod config;
+pub mod google;
 pub mod http;
 pub mod live;
 pub mod oauth;

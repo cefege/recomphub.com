@@ -3,7 +3,8 @@ use recomphub_shared::HitWindow;
 use recomphub_shared::seo::meta_description;
 
 use crate::api;
-use crate::components::listing::{RankingTable, WINDOWS, WatchVisible, chip_class, parse_page};
+use crate::components::listing::{RankingTable, WINDOWS, WatchVisible, parse_page};
+use crate::components::styles::{H1, TAB, TAB_ACTIVE, TABS_LIST};
 use crate::components::{
     Breadcrumb, CardGrid, EmptyState, GameCardView, Pager, Seo, TrendChip, ViewToggle, keyed,
     with_query,
@@ -16,6 +17,15 @@ fn window_label(key: &str) -> &'static str {
         .find(|(_, k, _)| *k == key)
         .map(|(_, _, label)| *label)
         .unwrap_or("This week")
+}
+
+/// Class for a window switch: a segmented tab, active when it is the selected window.
+fn window_tab_class(on: bool) -> String {
+    if on {
+        format!("{TAB} {TAB_ACTIVE}")
+    } else {
+        TAB.to_string()
+    }
 }
 
 /// `/trending`: the top 100 games for a window, 50 per page, as cards or a table.
@@ -51,8 +61,7 @@ fn TrendingInner(window: HitWindow, page: i64, list: bool) -> Element {
     let noindex = list || !is_default;
     let title = format!("Trending Game Ports & Recomps, {label} | RecompHub");
     let description = meta_description(&format!(
-        "The most popular console game recompilations and native PC ports, ranked by visits and live viewing ({label}). {} ranked games on this page.",
-        data.items.len()
+        "The most popular game recompilations and native ports, ranked by visits and live viewing ({label})."
     ));
     let visible: Vec<i64> = data.items.iter().map(|r| r.game.id).collect();
     let scored: Vec<(recomphub_shared::RankedGame, String)> = data
@@ -69,22 +78,26 @@ fn TrendingInner(window: HitWindow, page: i64, list: bool) -> Element {
     rsx! {
         Seo { title, description, path, noindex }
         WatchVisible { ids: visible }
-        div { class: "mx-auto max-w-7xl px-4 py-8",
-            Breadcrumb { items: vec![
-                ("Home".to_string(), "/".to_string()),
-                ("Trending".to_string(), "/trending".to_string()),
-            ] }
-            h1 { class: "mb-6 text-3xl font-black tracking-tight md:text-4xl", "Trending games" }
-            nav { class: "mb-6 flex flex-wrap items-center gap-2", "aria-label": "Ranking window",
-                for (_, key, chip) in WINDOWS {
-                    a {
-                        key: "{key}",
-                        href: "/trending?window={key}",
-                        class: chip_class(key == window.as_str()),
-                        "{chip}"
+        div { class: "space-y-8",
+            div { class: "space-y-4",
+                Breadcrumb { items: vec![
+                    ("Home".to_string(), "/".to_string()),
+                    ("Trending".to_string(), "/trending".to_string()),
+                ] }
+                h1 { class: H1, "Trending games" }
+            }
+            div { class: "flex flex-wrap items-center justify-between gap-4",
+                nav { class: TABS_LIST, "aria-label": "Ranking window",
+                    for (_, key, chip) in WINDOWS {
+                        a {
+                            key: "{key}",
+                            href: "/trending?window={key}",
+                            class: window_tab_class(key == window.as_str()),
+                            "{chip}"
+                        }
                     }
                 }
-                div { class: "ml-auto", ViewToggle { base: base.clone(), list } }
+                ViewToggle { base: base.clone(), list }
             }
             if data.items.is_empty() {
                 EmptyState { text: "No ranked games in this window yet.".to_string() }
@@ -95,8 +108,10 @@ fn TrendingInner(window: HitWindow, page: i64, list: bool) -> Element {
                     for (r, score) in scored {
                         li { key: "{r.game.id}", class: "flex flex-col gap-2",
                             GameCardView { game: r.game.clone(), rank: Some(r.rank) }
-                            div { class: "flex items-center justify-between px-1 text-xs text-muted",
-                                span { class: "tabular", "{score} pts" }
+                            div { class: "flex items-center justify-between px-1 text-xs text-muted-foreground",
+                                if r.score > 0.0 {
+                                    span { class: "tabular", "{score} pts" }
+                                }
                                 TrendChip { rank: r.rank, prev_rank: r.prev_rank }
                             }
                         }

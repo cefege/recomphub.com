@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use recomphub_shared::{ActivityItem, ClientMsg, LiveGame, ServerMsg};
 
 use crate::components::keyed;
+use crate::components::styles::{BADGE, BADGE_SECONDARY};
 
 /// What the current page wants the socket to report: its game (if any) and the cards on screen.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -185,7 +186,7 @@ pub fn LiveCount(game_id: i64, #[props(default)] portless: bool) -> Element {
         format!("{n} here now")
     };
     rsx! {
-        span { class: "inline-flex items-center gap-1.5 text-sm font-medium text-live tabular",
+        span { class: "{BADGE} overflow-visible! tabular text-live",
             span { class: "relative flex h-2 w-2",
                 span { class: "absolute inline-flex h-full w-full rounded-full bg-live live-ping" }
                 span { class: "relative inline-flex h-2 w-2 rounded-full bg-live" }
@@ -202,7 +203,7 @@ pub fn OnlineCount() -> Element {
     let store = use_context::<LiveStore>();
     let n = *store.online.read();
     rsx! {
-        span { class: "inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-sm font-medium tabular",
+        span { class: "{BADGE} {BADGE_SECONDARY} overflow-visible! tabular",
             span { class: "relative flex h-2 w-2",
                 span { class: "absolute inline-flex h-full w-full rounded-full bg-live live-ping" }
                 span { class: "relative inline-flex h-2 w-2 rounded-full bg-live" }

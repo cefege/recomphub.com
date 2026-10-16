@@ -3,8 +3,9 @@ use recomphub_shared::seo::meta_description;
 
 use crate::api;
 use crate::components::listing::WatchVisible;
+use crate::components::styles::{BUTTON, BUTTON_MD, BUTTON_PRIMARY, H1, INPUT};
 use crate::components::{EmptyState, Section, Seo};
-use crate::pages::browse::{GameGrid, PortGrid};
+use crate::pages::browse::{GameGrid, PortGrid, count_label};
 
 /// `/search?q=`: games and ports matching a term. Plain GET form, so it works without JavaScript.
 #[component]
@@ -16,29 +17,31 @@ pub fn SearchPage(q: String) -> Element {
         format!("Search: {term} | RecompHub")
     };
     let description = meta_description(
-        "Search RecompHub for console game recompilations and native PC ports by game or port name.",
+        "Search RecompHub for game recompilations and native ports by game or port name.",
     );
 
     rsx! {
         Seo { title, description, path: "/search", noindex: true }
-        div { class: "mx-auto max-w-7xl px-4 py-8",
-            h1 { class: "text-3xl font-black tracking-tight md:text-4xl", "Search" }
-            form {
-                method: "get",
-                action: "/search",
-                role: "search",
-                class: "mt-6 flex max-w-2xl gap-2",
-                input {
-                    r#type: "search",
-                    name: "q",
-                    value: "{term}",
-                    placeholder: "Game or port name",
-                    class: "min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3 text-base outline-none focus:border-accent",
-                }
-                button {
-                    r#type: "submit",
-                    class: "rounded-xl accent-bg px-5 py-3 font-semibold text-white",
-                    "Search"
+        div { class: "space-y-8",
+            div { class: "space-y-4",
+                h1 { class: H1, "Search" }
+                form {
+                    method: "get",
+                    action: "/search",
+                    role: "search",
+                    class: "flex max-w-2xl gap-2",
+                    input {
+                        r#type: "search",
+                        name: "q",
+                        value: "{term}",
+                        placeholder: "Game or port name",
+                        class: "{INPUT} flex-1",
+                    }
+                    button {
+                        r#type: "submit",
+                        class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}",
+                        "Search"
+                    }
                 }
             }
             if term.is_empty() {
@@ -65,10 +68,18 @@ fn SearchInner(term: String) -> Element {
         .map(|g| g.id)
         .chain(ports.iter().map(|p| p.game_id))
         .collect();
+    let summary = (total > 0).then(|| {
+        format!(
+            "{} for '{term}'",
+            count_label(total as i64, "result", "results")
+        )
+    });
 
     rsx! {
         WatchVisible { ids: visible }
-        p { class: "mt-4 text-sm text-muted tabular", "{total} results for '{term}'" }
+        if let Some(summary) = summary {
+            p { class: "text-sm text-muted-foreground tabular", "{summary}" }
+        }
         if total == 0 {
             EmptyState { text: "No games or ports match this search.".to_string() }
         }

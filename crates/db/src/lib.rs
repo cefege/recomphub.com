@@ -2,13 +2,21 @@
 //! the submission apply/revert logic.
 
 pub mod activity;
+pub mod author_funding;
+pub mod comments;
+pub mod creators;
 pub mod games;
 pub mod hits;
+pub mod identities;
 pub mod live;
 pub mod media;
+pub mod port_descriptions;
+pub mod port_videos;
 pub mod ports;
+pub mod sales;
 pub mod settings;
 pub mod stars;
+pub mod stats;
 pub mod submissions;
 pub mod users_sessions;
 pub mod videos;
@@ -28,6 +36,9 @@ pub enum DbError {
     NotFound(String),
     #[error("invalid state: {0}")]
     InvalidState(String),
+    /// A user-facing refusal, such as an account that is already connected elsewhere.
+    #[error("{0}")]
+    Conflict(String),
     #[error("invalid payload: {0}")]
     InvalidPayload(String),
     #[error("account is banned")]

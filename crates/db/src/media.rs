@@ -46,13 +46,13 @@ pub async fn enqueue(ex: impl PgExecutor<'_>, kind: &str, source_url: &str) -> D
 
 /// Up to `limit` rows still to process: pending, or failed with fewer than 3 attempts.
 /// Visible kinds come first (covers, avatars, video thumbnails, screenshots, then og images).
-/// Covers of games with a port go first, since every listing shows them, then by popularity.
+/// Covers of games with a port go first, since every listing shows them, then by importance.
 pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<MediaRow>> {
     let rows = sqlx::query_as::<_, MediaRow>(
         "SELECT m.* FROM media m
          LEFT JOIN (
              SELECT cover_media_id, bool_or(port_count > 0) AS ported,
-                    max(popularity) AS popularity
+                    max(importance) AS importance
              FROM games WHERE cover_media_id IS NOT NULL GROUP BY cover_media_id
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending' OR (m.status = 'failed' AND m.attempts < 3)
@@ -64,7 +64,7 @@ pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<M
                       ELSE 4
                   END,
                   g.ported DESC NULLS LAST,
-                  g.popularity DESC NULLS LAST,
+                  g.importance DESC NULLS LAST,
                   m.id
          LIMIT $1",
     )

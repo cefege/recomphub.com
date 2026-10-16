@@ -2,14 +2,12 @@
 //! Admin-only, so everything loads after hydration and never enters the SSR HTML.
 
 use dioxus::prelude::*;
+use recomphub_shared::dto::provider_label;
 use recomphub_shared::{SettingRow, UserAdminRow};
 
 use crate::api;
+use crate::components::styles::*;
 use crate::components::{Breadcrumb, EmptyState, RoleGate, Seo};
-
-const INPUT: &str = "rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent";
-const BTN: &str = "rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm font-semibold hover:border-accent";
-const BTN_DANGER: &str = "rounded-xl border border-error bg-surface-2 px-3 py-2 text-sm font-semibold text-error hover:bg-surface";
 
 /// Smallest value the database accepts for a setting (mirrors `recomphub_db::settings::validate`).
 fn min_for(key: &str) -> i64 {
@@ -31,14 +29,16 @@ pub fn AdminPage() -> Element {
             path: "/admin".to_string(),
             noindex: true,
         }
-        div { class: "mx-auto max-w-5xl px-4 py-10",
-            Breadcrumb { items: vec![
-                ("Home".to_string(), "/".to_string()),
-                ("Admin".to_string(), "/admin".to_string()),
-            ] }
-            h1 { class: "mt-4 text-3xl font-extrabold tracking-tight", "Admin" }
+        div { class: "mx-auto max-w-5xl",
+            header {
+                Breadcrumb { items: vec![
+                    ("Home".to_string(), "/".to_string()),
+                    ("Admin".to_string(), "/admin".to_string()),
+                ] }
+                h1 { class: "{H1} mt-4", "Admin" }
+            }
             RoleGate { admin_only: true,
-                div { class: "mt-8 grid gap-10",
+                div { class: "mt-8 space-y-12",
                     UsersPanel {}
                     SettingsPanel {}
                 }
@@ -66,23 +66,23 @@ fn UsersPanel() -> Element {
     let state = users.read().clone();
     let body = match state {
         None => rsx! {
-            div { class: "skeleton h-40 rounded-2xl", "aria-hidden": "true" }
+            div { class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
         },
         Some(Err(message)) => rsx! {
-            p { class: "text-sm text-error", "Could not load users: {message}" }
+            p { class: "text-sm text-destructive", "Could not load users: {message}" }
         },
         Some(Ok(rows)) if rows.is_empty() => rsx! {
             EmptyState { text: "No users match that search.".to_string() }
         },
         Some(Ok(rows)) => rsx! {
-            div { class: "overflow-x-auto",
-                table { class: "w-full text-left text-sm",
+            div { class: TABLE_WRAP,
+                table { class: TABLE,
                     thead {
-                        tr { class: "text-muted",
-                            th { scope: "col", class: "py-2 pr-4 font-semibold", "User" }
-                            th { scope: "col", class: "py-2 pr-4 font-semibold", "Approved" }
-                            th { scope: "col", class: "py-2 pr-4 font-semibold", "Role" }
-                            th { scope: "col", class: "py-2 font-semibold", "Access" }
+                        tr { class: TABLE_HEAD_ROW,
+                            th { scope: "col", class: TABLE_TH, "User" }
+                            th { scope: "col", class: TABLE_TH, "Approved" }
+                            th { scope: "col", class: TABLE_TH, "Role" }
+                            th { scope: "col", class: TABLE_TH, "Access" }
                         }
                     }
                     tbody {
@@ -101,7 +101,7 @@ fn UsersPanel() -> Element {
 
     rsx! {
         section { aria_labelledby: "admin-users",
-            h2 { id: "admin-users", class: "text-xl font-bold", "Users" }
+            h2 { id: "admin-users", class: H2, "Users" }
             form {
                 class: "mt-4 flex flex-wrap gap-2",
                 onsubmit: move |e| {
@@ -116,7 +116,7 @@ fn UsersPanel() -> Element {
                     value: "{query_text}",
                     oninput: move |e| query.set(e.value()),
                 }
-                button { r#type: "submit", class: BTN, "Search" }
+                button { r#type: "submit", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "Search" }
             }
             div { class: "mt-4", {body} }
         }
@@ -129,8 +129,14 @@ fn UserRow(row: UserAdminRow, on_changed: EventHandler<()>) -> Element {
     let user_id = row.id;
     let banned = row.banned;
     let role = row.role.clone();
-    let display = row.name.clone().unwrap_or_else(|| row.login.clone());
-    let aria_role = format!("Role for {}", row.login);
+    let display = row.display_name.clone();
+    let github = row.github_login.clone();
+    let providers: Vec<(String, &'static str)> = row
+        .providers
+        .iter()
+        .map(|p| (p.clone(), provider_label(p)))
+        .collect();
+    let aria_role = format!("Role for {display}");
     let ban_label = if banned { "Unban" } else { "Ban" };
 
     let set_role = move |value: String| {
@@ -155,19 +161,26 @@ fn UserRow(row: UserAdminRow, on_changed: EventHandler<()>) -> Element {
     let error_text = error().unwrap_or_default();
 
     rsx! {
-        tr { class: "border-t border-border",
-            td { class: "py-3 pr-4",
-                p { class: "font-semibold", "{display}" }
-                p { class: "text-xs text-muted", "@{row.login}" }
+        tr { class: TABLE_ROW,
+            td { class: TABLE_TD,
+                p { class: "font-medium", "{display}" }
+                if let Some(login) = github {
+                    p { class: "text-xs text-muted-foreground", "@{login}" }
+                }
+                div { class: "mt-1 flex flex-wrap gap-1",
+                    for (key, label) in providers {
+                        span { key: "{key}", class: "{BADGE} {BADGE_OUTLINE}", "{label}" }
+                    }
+                }
                 if banned {
-                    p { class: "text-xs font-semibold text-error", "Banned" }
+                    p { class: "text-xs font-medium text-destructive", "Banned" }
                 }
                 if !error_text.is_empty() {
-                    p { class: "text-xs text-error", "{error_text}" }
+                    p { class: "text-xs text-destructive", "{error_text}" }
                 }
             }
-            td { class: "py-3 pr-4", "{row.approved_count}" }
-            td { class: "py-3 pr-4",
+            td { class: "{TABLE_TD} tabular", "{row.approved_count}" }
+            td { class: TABLE_TD,
                 select {
                     class: INPUT,
                     "aria-label": "{aria_role}",
@@ -182,10 +195,14 @@ fn UserRow(row: UserAdminRow, on_changed: EventHandler<()>) -> Element {
                     }
                 }
             }
-            td { class: "py-3",
+            td { class: TABLE_TD,
                 button {
                     r#type: "button",
-                    class: if banned { BTN } else { BTN_DANGER },
+                    class: if banned {
+                        "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}"
+                    } else {
+                        "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} text-destructive"
+                    },
                     onclick: move |_| toggle_ban(),
                     "{ban_label}"
                 }
@@ -207,10 +224,10 @@ fn SettingsPanel() -> Element {
     let state = settings.read().clone();
     let body = match state {
         None => rsx! {
-            div { class: "skeleton h-40 rounded-2xl", "aria-hidden": "true" }
+            div { class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
         },
         Some(Err(message)) => rsx! {
-            p { class: "text-sm text-error", "Could not load settings: {message}" }
+            p { class: "text-sm text-destructive", "Could not load settings: {message}" }
         },
         Some(Ok(rows)) => rsx! {
             ul { class: "grid gap-4 sm:grid-cols-2",
@@ -225,8 +242,8 @@ fn SettingsPanel() -> Element {
 
     rsx! {
         section { aria_labelledby: "admin-settings",
-            h2 { id: "admin-settings", class: "text-xl font-bold", "Settings" }
-            p { class: "mt-1 text-sm text-muted", "Whole numbers. Zero is allowed, except live minutes per point, which needs at least 1." }
+            h2 { id: "admin-settings", class: H2, "Settings" }
+            p { class: "mt-2 text-sm text-muted-foreground", "Whole numbers. Zero is allowed, except live minutes per point, which needs at least 1." }
             div { class: "mt-4", {body} }
         }
     }
@@ -263,9 +280,9 @@ fn SettingField(row: SettingRow) -> Element {
     let status_now = status();
 
     rsx! {
-        div { class: "rounded-2xl border border-border bg-surface p-4",
-            label { class: "block space-y-2 text-sm font-semibold",
-                "{label}"
+        div { class: "{CARD_SURFACE} grid gap-4 p-4",
+            label { class: "grid gap-2",
+                span { class: LABEL, "{label}" }
                 div { class: "flex gap-2",
                     input {
                         r#type: "number",
@@ -275,16 +292,21 @@ fn SettingField(row: SettingRow) -> Element {
                         value: "{text_now}",
                         oninput: move |e| text.set(e.value()),
                     }
-                    button { r#type: "button", class: BTN, onclick: move |_| save(), "Save" }
+                    button {
+                        r#type: "button",
+                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
+                        onclick: move |_| save(),
+                        "Save"
+                    }
                 }
             }
             match status_now {
                 None => rsx! {},
                 Some(Ok(message)) => rsx! {
-                    p { class: "mt-2 text-xs text-success", "{message}" }
+                    p { class: "text-sm text-success", "{message}" }
                 },
                 Some(Err(message)) => rsx! {
-                    p { class: "mt-2 text-xs text-error", "{message}" }
+                    p { class: "text-sm text-destructive", "{message}" }
                 },
             }
         }

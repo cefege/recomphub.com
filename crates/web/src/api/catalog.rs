@@ -28,6 +28,8 @@ use dioxus::server::axum::http::StatusCode;
 #[cfg(feature = "server")]
 use recomphub_db::activity::{self, ActivityRow};
 #[cfg(feature = "server")]
+use recomphub_db::author_funding;
+#[cfg(feature = "server")]
 use recomphub_db::games::{
     self, GameFilter, GameRow, GameSort, PlatformRow, RankedGame as RankedRow,
 };
@@ -36,15 +38,22 @@ use recomphub_db::hits;
 #[cfg(feature = "server")]
 use recomphub_db::media::{self, MediaRow};
 #[cfg(feature = "server")]
+use recomphub_db::port_descriptions;
+#[cfg(feature = "server")]
 use recomphub_db::ports::{self, AuthorRow, PortRow, PortWithGame};
+#[cfg(feature = "server")]
+use recomphub_db::stats;
 #[cfg(feature = "server")]
 use recomphub_db::videos::{self, VideoRow};
 #[cfg(feature = "server")]
 use recomphub_shared::dto::{
-    AiEvidenceDto, AuthorDto, MediaRef, RunsOnTile, SiteStatsDto, VideoDto,
+    AiEvidenceDto, AuthorDto, FundingLink, MaintenanceDto, MediaRef, RunsOnTile, SiteStatsDto,
+    VideoDto,
 };
 #[cfg(feature = "server")]
-use recomphub_shared::enums::{PortKind, TargetPlatform};
+use recomphub_shared::enums::{FundingPlatform, PortKind, TargetPlatform};
+#[cfg(feature = "server")]
+use recomphub_shared::maintenance::MaintenanceLevel;
 #[cfg(feature = "server")]
 use recomphub_shared::release::{ReleaseInput, ReleaseState, release_state};
 
@@ -361,11 +370,21 @@ pub async fn author(login: String) -> Result<AuthorProfile, ServerFnError> {
             .map(media_ref),
         None => None,
     };
+    let key = login.to_ascii_lowercase();
+    let funding = funding_map(pool, std::slice::from_ref(&key))
+        .await?
+        .remove(&key)
+        .unwrap_or_default();
+    let achievements = stats::author_achievements(pool, &login)
+        .await
+        .map_err(db_error)?;
     Ok(AuthorProfile {
         login,
         name,
         avatar,
         ports: port_cards(pool, rows).await?,
+        funding,
+        achievements,
     })
 }
 
@@ -488,6 +507,22 @@ pub async fn just_released(page: i64) -> Result<Page<PortCard>, ServerFnError> {
     })
 }
 
+/// Wire form of a stored port description.
+#[cfg(feature = "server")]
+fn about_dto(row: port_descriptions::PortDescriptionRow) -> recomphub_shared::dto::PortAbout {
+    recomphub_shared::dto::PortAbout {
+        technique_label: recomphub_shared::dto::technique_label(&row.technique).to_string(),
+        summary: row.summary,
+        technique: row.technique,
+        technique_note: row.technique_note,
+        features: row.features,
+        requirements: row.requirements,
+        limitations: row.limitations,
+        setup: row.setup,
+        generated_at: row.generated_at,
+    }
+}
+
 /// One published port of a game, with its facts, other ports and the game's videos.
 /// Unknown game or port slug returns 404.
 #[post("/api/port")]
@@ -516,8 +551,12 @@ pub async fn port_detail(
     let toolchain = p.toolchain.clone();
     let license = p.license.clone();
     let latest_version_label = p.latest_version.clone();
-    let last_commit_at = p.pushed_at;
+    let last_commit_at = p.last_commit_at.or(p.pushed_at);
     let ai_source = p.ai_source.clone();
+    let about = port_descriptions::get(pool, port_id)
+        .await
+        .map_err(db_error)?
+        .map(about_dto);
 
     let platform_rows = games::platforms_for_game(pool, game.id)
         .await
@@ -527,6 +566,7 @@ pub async fn port_detail(
         .and_then(|sid| platform_rows.iter().find(|row| row.id == sid))
         .map(|row| platform_dto_counted(row, &counts));
 
+    let weekly_commits = found.port.weekly_commits.clone();
     let port = port_cards(pool, vec![found]).await?.remove(0);
 
     let other_rows: Vec<PortRow> = ports::list_for_game(pool, game.id)
@@ -537,9 +577,11 @@ pub async fn port_detail(
         .collect();
     let other_ports = port_cards(pool, with_game(other_rows, &game)).await?;
 
-    let video_rows = videos::list_for_game(pool, game.id, false)
+    let mut video_rows = videos::list_for_game(pool, game.id, false)
         .await
         .map_err(db_error)?;
+    // Videos attributed to this port first; the stable sort keeps the list order within each group.
+    video_rows.sort_by_key(|v| v.port_id != Some(port_id));
     let videos = video_dtos(pool, video_rows).await?;
 
     Ok(PortDetail {
@@ -548,6 +590,7 @@ pub async fn port_detail(
         source_platform,
         homepage_url,
         description,
+        about,
         requirements,
         toolchain,
         license,
@@ -556,6 +599,7 @@ pub async fn port_detail(
         ai_source,
         other_ports,
         videos,
+        weekly_commits,
     })
 }
 
@@ -753,6 +797,22 @@ async fn ranked_cards(
         .collect())
 }
 
+/// Maintenance signals for a card. `None` until a GitHub sync has computed the level.
+#[cfg(feature = "server")]
+fn maintenance_dto(p: &PortRow) -> Option<MaintenanceDto> {
+    let level = MaintenanceLevel::from_key(p.maintenance_level.as_deref()?)?;
+    Some(MaintenanceDto {
+        level,
+        score: i32::from(p.maintenance_score.unwrap_or(0)),
+        last_commit_at: p.last_commit_at,
+        commits_30d: p.commits_30d,
+        commits_90d: p.commits_90d,
+        commits_365d: p.commits_365d,
+        committers_180d: p.committers_180d,
+        releases_365d: p.releases_365d,
+    })
+}
+
 #[cfg(feature = "server")]
 fn with_game(ports: Vec<PortRow>, game: &GameRow) -> Vec<PortWithGame> {
     ports
@@ -777,6 +837,31 @@ fn release_key(state: ReleaseState) -> &'static str {
     }
 }
 
+/// Stored funding links for the given lowercase logins, keyed by login. Unknown platforms are
+/// dropped.
+#[cfg(feature = "server")]
+async fn funding_map(
+    pool: &sqlx::PgPool,
+    logins: &[String],
+) -> Result<HashMap<String, Vec<FundingLink>>, ServerFnError> {
+    let mut map: HashMap<String, Vec<FundingLink>> = HashMap::new();
+    if logins.is_empty() {
+        return Ok(map);
+    }
+    for row in author_funding::for_logins(pool, logins)
+        .await
+        .map_err(db_error)?
+    {
+        if let Ok(platform) = FundingPlatform::from_str(&row.platform) {
+            map.entry(row.login).or_default().push(FundingLink {
+                platform,
+                url: row.url,
+            });
+        }
+    }
+    Ok(map)
+}
+
 /// Builds cards for ports, batching authors' avatars and covers into one media query.
 /// A port with no push date counts as 0 days since its last push.
 #[cfg(feature = "server")]
@@ -796,6 +881,15 @@ async fn port_cards(
             .filter_map(|a| a.avatar_media_id),
     );
     let media = media_map(pool, media_ids).await?;
+    let mut logins: Vec<String> = authors_by_port
+        .iter()
+        .flatten()
+        .filter_map(|a| a.github_login.as_deref())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    logins.sort_unstable();
+    logins.dedup();
+    let funding = funding_map(pool, &logins).await?;
 
     let mut cards = Vec::with_capacity(items.len());
     for (item, authors) in items.into_iter().zip(authors_by_port) {
@@ -808,6 +902,7 @@ async fn port_cards(
         });
         let kind_label =
             PortKind::from_str(&p.kind).map_or_else(|_| p.kind.clone(), |k| k.label().to_string());
+        let maintenance = maintenance_dto(&p);
         cards.push(PortCard {
             id: p.id,
             slug: p.slug.clone(),
@@ -826,6 +921,12 @@ async fn port_cards(
                     role: a.role.clone(),
                     avatar: a.avatar_media_id.and_then(|id| media.get(&id).cloned()),
                     commits: a.commits,
+                    funding: a
+                        .github_login
+                        .as_deref()
+                        .and_then(|l| funding.get(&l.to_ascii_lowercase()))
+                        .cloned()
+                        .unwrap_or_default(),
                 })
                 .collect(),
             ai_usage: p.ai_usage.clone(),
@@ -849,6 +950,7 @@ async fn port_cards(
             cover: item
                 .game_cover_media_id
                 .and_then(|id| media.get(&id).cloned()),
+            maintenance,
         });
     }
     Ok(cards)

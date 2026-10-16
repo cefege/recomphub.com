@@ -6,10 +6,24 @@ use recomphub_shared::seo::{meta_description, platform_target_title, platform_ti
 
 use crate::api;
 use crate::components::listing::{PRIMARY_TARGETS, WatchVisible, chip_class, parse_page};
+use crate::components::styles::{H1, H2, LEAD};
 use crate::components::{
     Breadcrumb, EmptyState, Pager, Seo, ViewToggle, keyed, target_label, with_query,
 };
-use crate::pages::browse::{GameGrid, PortGrid};
+use crate::pages::browse::{GameGrid, PortGrid, count_label};
+
+/// "3 games with a port · 24 games". The port part is hidden while no game has one.
+fn port_and_game_counts(ported: i64, games: i64) -> String {
+    let games = count_label(games, "game", "games");
+    if ported == 0 {
+        games
+    } else {
+        format!(
+            "{} · {games}",
+            count_label(ported, "game with a port", "games with a port")
+        )
+    }
+}
 
 /// `/platforms`: every original platform that has at least one game, grouped by family.
 #[component]
@@ -27,34 +41,41 @@ pub fn PlatformsIndex() -> Element {
     }
     let groups: Vec<(String, Vec<(String, PlatformRef)>)> = families.into_iter().collect();
 
-    let title = "Game Platforms: Ports & Recompilations by Console | RecompHub".to_string();
+    let title = "Game Platforms: Ports & Recompilations by Platform | RecompHub".to_string();
     let description = meta_description(
-        "Browse every console platform with recompilations and native PC ports, from Nintendo 64 and PlayStation to Xbox, Sega and Game Boy.",
+        "Browse every platform with native ports and recompilations, from Nintendo 64 and PlayStation to Xbox, Sega, Game Boy and PC.",
     );
 
     rsx! {
         Seo { title, description, path: "/platforms".to_string() }
-        div { class: "mx-auto max-w-7xl px-4 py-8",
-            Breadcrumb { items: vec![
-                ("Home".to_string(), "/".to_string()),
-                ("Platforms".to_string(), "/platforms".to_string()),
-            ] }
-            h1 { class: "mb-8 text-3xl font-black tracking-tight md:text-4xl", "Platforms" }
+        div { class: "space-y-8",
+            div { class: "space-y-4",
+                Breadcrumb { items: vec![
+                    ("Home".to_string(), "/".to_string()),
+                    ("Platforms".to_string(), "/platforms".to_string()),
+                ] }
+                div { class: "space-y-2",
+                    h1 { class: H1, "Platforms" }
+                    p { class: "{LEAD} max-w-2xl", "Every platform with games in the catalog, grouped by family." }
+                }
+            }
             if groups.is_empty() {
                 EmptyState { text: "No platforms have games yet.".to_string() }
             }
-            for (family, items) in groups {
-                section { key: "{family}", class: "mb-10",
-                    h2 { class: "mb-4 text-xl font-extrabold tracking-tight", "{family}" }
-                    ul { class: "grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6",
-                        for (slug, p) in items {
-                            li { key: "{p.id}",
-                                a {
-                                    href: "/platforms/{slug}",
-                                    class: "block rounded-2xl border border-border bg-surface p-4 transition hover:-translate-y-1 hover:border-accent hover:shadow-lg",
-                                    span { class: "block text-sm font-extrabold leading-tight", "{p.name}" }
-                                    span { class: "mt-2 block text-xs text-muted tabular",
-                                        "{p.ported_count} with a port · {p.game_count} games"
+            div { class: "space-y-12",
+                for (family, items) in groups {
+                    section { key: "{family}", class: "space-y-4",
+                        h2 { class: H2, "{family}" }
+                        ul { class: "grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6",
+                            for (slug, p) in items {
+                                li { key: "{p.id}",
+                                    a {
+                                        href: "/platforms/{slug}",
+                                        class: "block rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-accent",
+                                        span { class: "block text-sm font-semibold leading-snug", "{p.name}" }
+                                        span { class: "mt-2 block text-xs text-muted-foreground tabular",
+                                            "{port_and_game_counts(p.ported_count, p.game_count)}"
+                                        }
                                     }
                                 }
                             }
@@ -95,30 +116,32 @@ fn PlatformInner(slug: String, page: i64, list: bool) -> Element {
     };
     let title = platform_title(&platform.name, platform.game_count);
     let description = meta_description(&format!(
-        "{} {} games have a native PC port or recompilation, out of {} in total. Pick a target to see ports that run on Windows, Mac, Linux or the web.",
-        platform.ported_count, platform.name, platform.game_count
+        "{} of {} {} games have a native port or recompilation. Pick a target to see which ones run on Windows, macOS, Linux or the web.",
+        platform.ported_count, platform.game_count, platform.name
     ));
     let visible: Vec<i64> = data.items.iter().map(|g| g.id).collect();
 
     rsx! {
         Seo { title, description, path: path.clone(), noindex: list }
         WatchVisible { ids: visible }
-        div { class: "mx-auto max-w-7xl px-4 py-8",
-            Breadcrumb { items: vec![
-                ("Home".to_string(), "/".to_string()),
-                ("Platforms".to_string(), "/platforms".to_string()),
-                (platform.name.clone(), path.clone()),
-            ] }
-            div { class: "mb-6 flex flex-wrap items-end justify-between gap-4",
-                div {
-                    h1 { class: "text-3xl font-black tracking-tight md:text-4xl", "{platform.name} games" }
-                    p { class: "mt-2 text-sm text-muted tabular",
-                        "{platform.ported_count} with a port · {platform.game_count} games"
+        div { class: "space-y-8",
+            div { class: "space-y-4",
+                Breadcrumb { items: vec![
+                    ("Home".to_string(), "/".to_string()),
+                    ("Platforms".to_string(), "/platforms".to_string()),
+                    (platform.name.clone(), path.clone()),
+                ] }
+                div { class: "flex flex-wrap items-end justify-between gap-4",
+                    div { class: "space-y-2",
+                        h1 { class: H1, "{platform.name} games" }
+                        p { class: "text-sm text-muted-foreground tabular",
+                            "{port_and_game_counts(platform.ported_count, platform.game_count)}"
+                        }
                     }
+                    ViewToggle { base: path.clone(), list }
                 }
-                ViewToggle { base: path.clone(), list }
             }
-            nav { class: "mb-8 flex flex-wrap gap-2", "aria-label": "Runs on",
+            nav { class: "flex flex-wrap gap-2", "aria-label": "Runs on",
                 for t in PRIMARY_TARGETS {
                     a {
                         key: "{t}",
@@ -167,29 +190,33 @@ fn PlatformTargetInner(slug: String, target: String, page: i64, list: bool) -> E
     };
     let title = platform_target_title(&platform.name, &label);
     let description = meta_description(&format!(
-        "{} ports of {} games that run natively on {label}. Compare GitHub stars, releases, AI usage and gameplay videos for each port.",
-        data.total, platform.name
+        "{} games running natively on {label}, {}. Compare GitHub stars, releases, AI usage and gameplay videos for each port.",
+        platform.name,
+        count_label(data.total, "port", "ports")
     ));
     let noindex = list || data.total < 3;
     let total = data.total;
+    let count = (total > 0).then(|| count_label(total, "port", "ports"));
 
     rsx! {
         Seo { title, description, path: path.clone(), noindex }
-        div { class: "mx-auto max-w-7xl px-4 py-8",
-            Breadcrumb { items: vec![
-                ("Home".to_string(), "/".to_string()),
-                ("Platforms".to_string(), "/platforms".to_string()),
-                (platform.name.clone(), format!("/platforms/{slug}")),
-                (label.clone(), path.clone()),
-            ] }
-            div { class: "mb-6 flex flex-wrap items-end justify-between gap-4",
-                div {
-                    h1 { class: "text-3xl font-black tracking-tight md:text-4xl",
-                        "{platform.name} games on {label}"
+        div { class: "space-y-8",
+            div { class: "space-y-4",
+                Breadcrumb { items: vec![
+                    ("Home".to_string(), "/".to_string()),
+                    ("Platforms".to_string(), "/platforms".to_string()),
+                    (platform.name.clone(), format!("/platforms/{slug}")),
+                    (label.clone(), path.clone()),
+                ] }
+                div { class: "flex flex-wrap items-end justify-between gap-4",
+                    div { class: "space-y-2",
+                        h1 { class: H1, "{platform.name} games on {label}" }
+                        if let Some(count) = count {
+                            p { class: "text-sm text-muted-foreground tabular", "{count}" }
+                        }
                     }
-                    p { class: "mt-2 text-sm text-muted tabular", "{total} ports" }
+                    ViewToggle { base: path.clone(), list }
                 }
-                ViewToggle { base: path.clone(), list }
             }
             PortGrid { ports: data.items.clone(), list }
             Pager { base: pager_base, page, pages: data.pages }

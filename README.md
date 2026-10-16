@@ -30,6 +30,10 @@ cargo run -p recomphub-worker -- github-sync
 cargo run -p recomphub-worker -- media-sync
 cargo run -p recomphub-worker -- youtube-sync
 cargo run -p recomphub-worker -- discover
+cargo run -p recomphub-worker -- port-videos
+cargo run -p recomphub-worker -- describe-ports --dry-run
+cargo run -p recomphub-worker -- stats-snapshot
+cargo run -p recomphub-worker -- sales-sync
 ```
 
 Tests:
@@ -49,11 +53,18 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `MEDIA_DIR` | `./data/media` |
 | `GITHUB_OAUTH_CLIENT_ID` | |
 | `GITHUB_OAUTH_CLIENT_SECRET` | |
+| `GOOGLE_OAUTH_CLIENT_ID` | |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | |
 | `GITHUB_TOKEN` | |
 | `TWITCH_CLIENT_ID` | |
 | `TWITCH_CLIENT_SECRET` | |
 | `YOUTUBE_API_KEY` | |
+| `ANTHROPIC_API_KEY` | |
+| `DESCRIPTION_MODEL` | `claude-haiku-5-5` |
+| `YTDLP_BIN` | `yt-dlp` |
+| `YTDLP_COOKIES` | optional path to a Netscape cookies.txt; copied to a temp file, never logged |
 | `ADMIN_GITHUB_LOGINS` | comma-separated |
+| `ADMIN_GOOGLE_EMAILS` | comma-separated, verified Google emails only |
 | `RUST_LOG` | |
 | `IP` and `PORT` | set by the Dockerfile; dx reads them |
 
@@ -61,6 +72,10 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 
 - `Dockerfile` builds the site with `dx bundle --web --release --package recomphub` and the worker with `cargo build --release -p recomphub-worker`. The runtime image puts the bundle in `/usr/local/app/` (entrypoint `server`) and the worker at `/usr/local/app/worker`. If the bundle path printed by `dx bundle` differs from `target/dx/recomphub/release/web/`, update the `COPY` line in the Dockerfile.
 - CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests against a `postgres:17-alpine` service.
+- `port-videos` (CronJob `port-videos`, daily 04:30 UTC) finds gameplay videos for each port with yt-dlp, not the YouTube Data API. Sources: YouTube links in each port's README (IDs recorded by `github-sync`) and relevance-filtered `ytsearch` results per port. Searches are throttled and capped per run. The optional Secret `recomphub-ytdlp-cookies` (key `cookies.txt`) is mounted read-only at `/secrets/ytdlp`; it is only needed when YouTube blocks anonymous requests. Upgrade the pinned `YTDLP_VERSION` in the Dockerfile when YouTube breaks extraction.
+- `sales-sync` (CronJob `sales-sync`, Mondays 04:00 UTC) matches Wikipedia's best-selling game lists (per platform, overall, and per year) to catalog games. Each game's `sales_score` is `round(300 * log2(1 + best units in millions))` across its matches, so a million-seller sits near the 90th percentile of IGDB popularity. `games.importance` is the generated column `popularity + sales_score`, and all catalog ordering uses it. A list that fails to fetch or parse keeps its previous matches and fails the run. `cargo run -p recomphub-worker -- sales-sync --dry-run` prints the parsed rows without writing.
+- `describe-ports` (CronJob `describe-ports`, daily 06:30 UTC) writes a short description of each port from the repository text that `github-sync` stores: README, topics and latest release notes. It calls the Anthropic Messages API with model `DESCRIPTION_MODEL` (default `claude-haiku-5-5`) and accepts only output that matches the schema and names no ROM download site. Each run makes at most 200 calls, least recently attempted first, and regenerates a description only when its stored text or port facts change. Without `ANTHROPIC_API_KEY` the job logs and exits. `describe-ports --dry-run` prints the next request and calls nothing.
+- `stats-snapshot` (CronJob `stats-snapshot`, daily 03:30 UTC) stores today's platform parity counters in `stats_daily` (source `snapshot`, one row per day, rewritten if the job runs again that day). It then rebuilds every earlier day from each project's GitHub repository creation date, or the day it was added when GitHub has no date (source `backfill`, replaced on each run). The `/stats` page reads these rows.
 - `.github/workflows/image.yml` builds and pushes `ghcr.io/cefege/recomphub.com:sha-<12>` on each push to `main`, then pins the tag in `deploy/production/kustomization.yaml`.
 - Flux applies `deploy/production/` on the `ovh1` k3s cluster through `deploy/flux/bootstrap.yaml`.
 
@@ -75,7 +90,7 @@ These need your Cloudflare, cluster and GitHub access.
    - `cloudflared tunnel route dns recomphub recomphub.com`
    - `cloudflared tunnel route dns recomphub www.recomphub.com`
    - Put the tunnel ID in `deploy/production/cloudflared.yaml` (currently tunnel `recomphub`, `152ceebc-cbe8-442d-9b03-54bf2f37e4e0`).
-3. Create a GitHub OAuth app with the callback `https://recomphub.com/auth/github/callback`.
+3. Create a GitHub OAuth app with the callback `https://recomphub.com/auth/github/callback`. Create a Google OAuth client (type: Web application) with the redirect URI `https://recomphub.com/auth/google/callback`.
 4. Create the application secret:
 
    ```sh
@@ -84,16 +99,20 @@ These need your Cloudflare, cluster and GitHub access.
      --from-literal=DATABASE_URL="postgres://recomphub:<same password>@postgres:5432/recomphub" \
      --from-literal=GITHUB_OAUTH_CLIENT_ID=... \
      --from-literal=GITHUB_OAUTH_CLIENT_SECRET=... \
+     --from-literal=GOOGLE_OAUTH_CLIENT_ID=... \
+     --from-literal=GOOGLE_OAUTH_CLIENT_SECRET=... \
      --from-literal=GITHUB_TOKEN=... \
      --from-literal=TWITCH_CLIENT_ID=... \
      --from-literal=TWITCH_CLIENT_SECRET=... \
      --from-literal=YOUTUBE_API_KEY=... \
-     --from-literal=ADMIN_GITHUB_LOGINS=cefege
+     --from-literal=ANTHROPIC_API_KEY=... \
+     --from-literal=ADMIN_GITHUB_LOGINS=cefege \
+     --from-literal=ADMIN_GOOGLE_EMAILS=...
    ```
 
    The namespace is created by Flux, so run `kubectl create namespace recomphub` first if you create the secret before the first sync.
 5. On `ovh1`, apply the Flux bootstrap: `kubectl apply -f deploy/flux/bootstrap.yaml`. Then run `kubectl -n recomphub create job --from=cronjob/postgres-backup postgres-backup-init` once: the `local-path` backup volume binds only when a pod first uses it, and Flux reports the Kustomization unhealthy until it is bound.
-6. Run each worker once, in this order, with `kubectl -n recomphub create job --from=cronjob/<name> <name>-init`: `catalog-sync`, `import-recompendium`, `import-portsdr`, `github-sync`, `media-sync`.
+6. Run each worker once, in this order, with `kubectl -n recomphub create job --from=cronjob/<name> <name>-init`: `catalog-sync`, `import-recompendium`, `import-portsdr`, `github-sync`, `sales-sync`, `media-sync`.
 7. Check `curl -s https://recomphub.com/healthz`; it should return `ok`.
 
 ## Attribution

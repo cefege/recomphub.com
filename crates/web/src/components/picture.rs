@@ -28,7 +28,7 @@ pub fn intrinsic_size(media: &MediaRef) -> Option<(i32, i32)> {
 }
 
 /// AVIF image with `srcset`, `sizes`, explicit dimensions and lazy loading.
-/// Media that is not ready renders a gradient placeholder with the initials.
+/// Media that is not ready renders a neutral placeholder with the initials.
 #[component]
 pub fn Picture(
     media: Option<MediaRef>,
@@ -60,7 +60,7 @@ pub fn Picture(
         }
         None => rsx! {
             div {
-                class: "{class} flex items-center justify-center bg-gradient-to-br from-[#8b5cf6]/40 to-[#22d3ee]/30 text-3xl font-extrabold text-white/80",
+                class: "{class} flex items-center justify-center bg-muted text-lg font-medium text-muted-foreground select-none",
                 role: "img",
                 "aria-label": "{alt}",
                 "{initials}"

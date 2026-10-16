@@ -37,8 +37,10 @@ pub fn with_site_routes(router: Router) -> Router {
         .route("/sitemap.xml", get(sitemap_index))
         .route("/sitemaps/{name}", get(sitemap_file))
         .route("/feed.xml", get(feed))
-        .route("/auth/github/login", get(oauth::login))
-        .route("/auth/github/callback", get(oauth::callback))
+        .route("/auth/github/login", get(oauth::github_login))
+        .route("/auth/github/callback", get(oauth::github_callback))
+        .route("/auth/google/login", get(oauth::google_login))
+        .route("/auth/google/callback", get(oauth::google_callback))
         .route("/auth/logout", post(oauth::logout))
         .nest_service("/media", ServeDir::new(&config::get().media_dir));
 
@@ -166,7 +168,7 @@ async fn feed() -> Response {
     let body = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\"><channel>\n\
          <title>RecompHub</title>\n<link>{}</link>\n\
-         <description>New native ports and releases of console games</description>\n{items}\
+         <description>New native ports, recompilations and releases of games</description>\n{items}\
          </channel></rss>\n",
         xml_escape(site),
     );
@@ -261,10 +263,15 @@ async fn port_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
 async fn hub_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
     let mut entries = vec![
         static_entry("/platforms"),
+        static_entry("/stats"),
         static_entry("/trending"),
         static_entry("/wanted"),
         static_entry("/new"),
         static_entry("/about"),
+        static_entry("/creators"),
+        static_entry("/creators/recompile"),
+        static_entry("/creators/platforms"),
+        static_entry("/creators/videos"),
     ];
 
     let platforms: Vec<(String,)> = sqlx::query_as("SELECT slug FROM platforms ORDER BY slug")
