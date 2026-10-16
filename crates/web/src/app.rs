@@ -154,10 +154,15 @@ pub fn Shell() -> Element {
                                 }
                             }
                         } else {
-                            button {
-                                r#type: "button",
+                            // A real link, so it works before hydration; once hydrated it also
+                            // carries the current page as `next`.
+                            a {
+                                href: "/sign-in",
                                 class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
-                                onclick: move |_| login_redirect(),
+                                onclick: move |e| {
+                                    e.prevent_default();
+                                    login_redirect();
+                                },
                                 "Sign in"
                             }
                         }
@@ -184,6 +189,7 @@ pub fn Shell() -> Element {
                         a { href: "/about#ground-rules", class: "transition-colors hover:text-foreground", "Ground rules" }
                         a { href: "/submit", class: "transition-colors hover:text-foreground", "Submit a port" }
                         a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
+                        a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
                     }
                 }
             }

@@ -4,8 +4,8 @@ use crate::app::Shell;
 use crate::pages::{
     About, AccountPage, AdminPage, AuthorPage, CreatorsHub, CreatorsPlatforms, CreatorsRecompile,
     CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, ModerationLog, ModerationQueue,
-    NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage, RunsOnPage,
-    SearchPage, SignInPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
+    NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage, PrivacyPage,
+    RunsOnPage, SearchPage, SignInPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
 };
 
 #[derive(Routable, Clone, PartialEq)]
@@ -40,6 +40,8 @@ pub enum Route {
     SearchPage { q: String },
     #[route("/about")]
     About {},
+    #[route("/privacy")]
+    PrivacyPage {},
     #[route("/submit?:game&:repo")]
     SubmitPage { game: String, repo: String },
     #[route("/submit/edit/:port_id")]
