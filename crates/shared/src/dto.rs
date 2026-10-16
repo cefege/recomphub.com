@@ -157,6 +157,17 @@ pub struct GameDetail {
     pub related: Vec<GameCard>,
     pub total_github_stars: i64,
     pub live_viewers: u32,
+    /// Generated FAQ for the game. Empty when none has been generated; the page then shows the
+    /// deterministic one.
+    #[serde(default)]
+    pub faq: Vec<FaqItem>,
+}
+
+/// One question and the answer shown under it on a game page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaqItem {
+    pub question: String,
+    pub answer: String,
 }
 
 /// Technique slugs a generated port description may use, with their labels.

@@ -6,6 +6,7 @@ pub mod ai_providers;
 pub mod author_funding;
 pub mod comments;
 pub mod creators;
+pub mod game_faqs;
 pub mod games;
 pub mod hits;
 pub mod identities;

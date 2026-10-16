@@ -114,7 +114,7 @@ pub fn game_json_ld(site: &str, detail: &GameDetail) -> Vec<String> {
 }
 
 /// `FAQPage` with one `Question`/`Answer` pair per entry, matching the visible FAQ.
-fn faq_page(faq: &[super::faq::Faq]) -> Value {
+fn faq_page(faq: &[recomphub_shared::FaqItem]) -> Value {
     let entities: Vec<Value> = faq
         .iter()
         .map(|f| {

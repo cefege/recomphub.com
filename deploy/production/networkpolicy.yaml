@@ -65,6 +65,7 @@ spec:
                   - worker-sales-sync
                   - worker-port-videos
                   - worker-describe-ports
+                  - worker-describe-games
                   - worker-stats-snapshot
       ports:
         - protocol: TCP

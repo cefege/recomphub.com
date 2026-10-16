@@ -4,6 +4,7 @@ pub mod detect;
 pub mod discover;
 pub mod display_name;
 pub mod funding;
+pub mod game_faqs;
 pub mod github;
 pub mod github_links;
 pub mod igdb;

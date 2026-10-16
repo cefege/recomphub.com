@@ -30,6 +30,8 @@ use recomphub_db::activity::{self, ActivityRow};
 #[cfg(feature = "server")]
 use recomphub_db::author_funding;
 #[cfg(feature = "server")]
+use recomphub_db::game_faqs;
+#[cfg(feature = "server")]
 use recomphub_db::games::{
     self, GameFilter, GameRow, GameSort, PlatformRow, RankedGame as RankedRow,
 };
@@ -307,6 +309,7 @@ pub async fn game_detail(lookup: String) -> Result<GameDetail, ServerFnError> {
         related,
         total_github_stars,
         live_viewers: crate::api::live::live_viewers(game.id),
+        faq: game_faqs::items(pool, game.id).await.map_err(db_error)?,
     })
 }
 

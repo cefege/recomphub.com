@@ -47,7 +47,7 @@ const MAX_LIMITATIONS: usize = 6;
 const MAX_SETUP: usize = 5;
 
 /// Lowercase phrases that mark output naming a ROM download site or a request for one.
-const BLOCKED_TERMS: &[&str] = &[
+pub(crate) const BLOCKED_TERMS: &[&str] = &[
     "romsmania",
     "emuparadise",
     "coolrom",
@@ -176,7 +176,7 @@ pub fn snapshot(description: Option<&str>, source: &RawSource) -> SourceSnapshot
 }
 
 /// Length-prefixed SHA-256 over the parts, so different part lists never hash alike.
-fn digest(parts: &[&str]) -> String {
+pub(crate) fn digest(parts: &[&str]) -> String {
     let mut hasher = Sha256::new();
     for part in parts {
         hasher.update((part.len() as u64).to_be_bytes());

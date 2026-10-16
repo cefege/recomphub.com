@@ -10,7 +10,8 @@ use recomphub_db::secrets::Sealer;
 use recomphub_ingest::github::{self, GithubClient};
 use recomphub_ingest::igdb::{self, IgdbClient};
 use recomphub_ingest::{
-    best_sellers, describe, discover, importance, media, port_videos, youtube, ytdlp::YtDlp,
+    best_sellers, describe, discover, game_faqs, importance, media, port_videos, youtube,
+    ytdlp::YtDlp,
 };
 use recomphub_worker::imports;
 use sqlx::postgres::PgPoolOptions;
@@ -58,6 +59,15 @@ enum Command {
         /// Print the request the next run would send for the first port needing a description, and call nothing.
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Generate FAQs for game pages from their ports, using the AI providers configured at /admin.
+    DescribeGames {
+        /// Print the prompt and schema for one game (the first needing a FAQ, or --game), and call nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Game slug to preview with --dry-run.
+        #[arg(long)]
+        game: Option<String>,
     },
     /// Record today's platform parity snapshot and backfill earlier days missing from `stats_daily`.
     StatsSnapshot,
@@ -163,6 +173,31 @@ async fn run(command: Command) -> Result<()> {
                         info!(?report, "describe-ports finished");
                     }
                     Err(e) => warn!(error = %e, "describe-ports skipped"),
+                }
+            }
+        }
+        Command::DescribeGames { dry_run, game } => {
+            let pool = pool().await?;
+            if dry_run {
+                match game_faqs::preview(&pool, game.as_deref()).await? {
+                    Some(p) => {
+                        println!("game {}", p.game_id);
+                        println!("system:\n{}", p.system);
+                        println!("user:\n{}", p.user);
+                        println!("schema:\n{}", p.schema);
+                    }
+                    None => println!("no game has a port or decompilation"),
+                }
+            } else {
+                match Sealer::from_env() {
+                    Ok(sealer) => {
+                        let http = imports::http_client()?;
+                        let report =
+                            game_faqs::describe_games(&pool, &http, &sealer, game_faqs::RUN_LIMIT)
+                                .await?;
+                        info!(?report, "describe-games finished");
+                    }
+                    Err(e) => warn!(error = %e, "describe-games skipped"),
                 }
             }
         }
