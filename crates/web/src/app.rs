@@ -5,7 +5,8 @@ use dioxus::prelude::*;
 
 use crate::api;
 use crate::components::styles::{
-    BUTTON, BUTTON_GHOST, BUTTON_ICON, BUTTON_OUTLINE, BUTTON_SM, INPUT, MENU_ITEM, POPOVER,
+    BADGE, BADGE_PRIMARY, BUTTON, BUTTON_GHOST, BUTTON_ICON, BUTTON_OUTLINE, BUTTON_SM, INPUT,
+    MENU_ITEM, POPOVER,
 };
 use crate::components::{
     LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore, initials_of, login_redirect,
@@ -143,7 +144,10 @@ pub fn Shell() -> Element {
                                     div { class: "-mx-1 my-1 h-px bg-border" }
                                     a { href: "/account", class: MENU_ITEM, "Account" }
                                     if me.role == "moderator" || me.role == "admin" {
-                                        a { href: "/moderation", class: MENU_ITEM, "Moderation" }
+                                        a { href: "/moderation", class: "{MENU_ITEM} flex items-center justify-between gap-2",
+                                            "Moderation"
+                                            PendingBadge {}
+                                        }
                                     }
                                     if me.role == "admin" {
                                         a { href: "/admin", class: MENU_ITEM, "Admin" }
@@ -207,6 +211,19 @@ const NAV: [(&str, &str); 7] = [
     ("/creators", "For creators"),
     ("/submit", "Submit"),
 ];
+
+/// Count of pending member submissions, shown next to the Moderation link. Loads once per
+/// mount and is silent on any error or an empty count, so the menu never looks broken.
+#[component]
+fn PendingBadge() -> Element {
+    let count = use_resource(api::pending_submission_count);
+    match &*count.read() {
+        Some(Ok(n)) if *n > 0 => rsx! {
+            span { class: "{BADGE} {BADGE_PRIMARY}", "{n}" }
+        },
+        _ => rsx! {},
+    }
+}
 
 /// Lucide "menu" icon.
 #[component]

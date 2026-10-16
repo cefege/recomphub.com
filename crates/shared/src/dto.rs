@@ -486,6 +486,23 @@ pub struct LogItem {
     pub reviewed_at: Option<DateTime<Utc>>,
 }
 
+/// A submitter's own submission, for the account page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MySubmissionDto {
+    pub id: i64,
+    pub kind: String,
+    pub status: String,
+    /// What it was about: a port or game name, or the start of a report's text.
+    pub subject: String,
+    /// Set once the port exists: after approval, or at once for a trusted submitter.
+    pub game_slug: Option<String>,
+    pub port_slug: Option<String>,
+    /// The moderator's note, shown only once the submission has been reviewed.
+    pub review_note: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+}
+
 /// A user row in the admin search.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserAdminRow {

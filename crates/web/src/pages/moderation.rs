@@ -42,6 +42,7 @@ pub fn ModerationQueue() -> Element {
 fn QueueList() -> Element {
     let mut queue = use_signal(|| None::<Result<Vec<QueueItem>, String>>);
     let mut reload = use_signal(|| 0u32);
+    let mut tab = use_signal(|| "member".to_string());
     use_effect(move || {
         let _ = reload();
         spawn(async move {
@@ -67,15 +68,42 @@ fn QueueList() -> Element {
                 EmptyState { text: "Nothing is waiting for review.".to_string() }
             }
         },
-        Some(Ok(items)) => rsx! {
-            ul { class: "mt-8 space-y-4",
-                for item in items {
-                    li { key: "{item.id}",
-                        QueueCard { item, on_done: move |_| reload.set(reload() + 1) }
+        Some(Ok(items)) => {
+            let member_count = items.iter().filter(|i| i.source == "user").count();
+            let found_count = items.len() - member_count;
+            let active = tab();
+            let visible: Vec<QueueItem> = items
+                .into_iter()
+                .filter(|i| (i.source == "user") == (active == "member"))
+                .collect();
+            rsx! {
+                div { role: "tablist", class: "{TABS_LIST} mt-8",
+                    button { r#type: "button", role: "tab", "aria-selected": if active == "member" { "true" } else { "false" },
+                        class: if active == "member" { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
+                        onclick: move |_| tab.set("member".to_string()),
+                        "Member submissions ({member_count})"
+                    }
+                    button { r#type: "button", role: "tab", "aria-selected": if active == "found" { "true" } else { "false" },
+                        class: if active == "found" { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
+                        onclick: move |_| tab.set("found".to_string()),
+                        "Found automatically ({found_count})"
+                    }
+                }
+                if visible.is_empty() {
+                    div { class: "mt-6",
+                        EmptyState { text: "Nothing here right now.".to_string() }
+                    }
+                } else {
+                    ul { class: "mt-6 space-y-4",
+                        for item in visible {
+                            li { key: "{item.id}",
+                                QueueCard { item, on_done: move |_| reload.set(reload() + 1) }
+                            }
+                        }
                     }
                 }
             }
-        },
+        }
     }
 }
 

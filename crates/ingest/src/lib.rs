@@ -1,6 +1,7 @@
 pub mod best_sellers;
 pub mod describe;
 pub mod detect;
+pub mod digest;
 pub mod discover;
 pub mod display_name;
 pub mod funding;

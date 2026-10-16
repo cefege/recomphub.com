@@ -3,9 +3,13 @@
 
 use dioxus::prelude::*;
 use recomphub_shared::Role;
+use recomphub_shared::dto::MySubmissionDto;
 
+use crate::api;
 use crate::components::styles::*;
-use crate::components::{Breadcrumb, Chip, EmptyState, Picture, Seo, SignedIn, ViewerStore};
+use crate::components::{
+    Breadcrumb, Chip, EmptyState, Picture, RelativeTime, Seo, SignedIn, ViewerStore,
+};
 use crate::routes::Route;
 
 #[component]
@@ -110,6 +114,76 @@ fn AccountDetails() -> Element {
                     }
                 }
             }
+            MySubmissions {}
+        }
+    }
+}
+
+/// The signed-in viewer's own submissions and their current status.
+#[component]
+fn MySubmissions() -> Element {
+    let mut items = use_signal(|| None::<Result<Vec<MySubmissionDto>, String>>);
+    use_effect(move || {
+        spawn(async move {
+            let result = api::my_submissions().await.map_err(|e| e.to_string());
+            items.set(Some(result));
+        });
+    });
+    let state = items.read().clone();
+    rsx! {
+        section { class: "{CARD_SURFACE} p-6", id: "my-submissions",
+            h2 { class: "text-base font-semibold", "My submissions" }
+            match state {
+                None => rsx! {
+                    div { class: "mt-4 skeleton h-20 rounded-lg", "aria-hidden": "true" }
+                },
+                Some(Err(message)) => rsx! {
+                    p { class: "mt-2 text-sm text-destructive", "Could not load your submissions: {message}" }
+                },
+                Some(Ok(rows)) if rows.is_empty() => rsx! {
+                    p { class: "mt-2 text-sm text-muted-foreground", "Nothing yet. Port and edit submissions you send show up here." }
+                },
+                Some(Ok(rows)) => rsx! {
+                    ul { class: "mt-4 divide-y divide-border",
+                        for row in rows {
+                            li { key: "{row.id}", class: "py-3", MySubmissionItem { row } }
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+#[component]
+fn MySubmissionItem(row: MySubmissionDto) -> Element {
+    let (label, chip) = match row.status.as_str() {
+        "pending" => ("Waiting for review", BADGE_SECONDARY),
+        "approved" | "auto_approved" => ("Published", BADGE_SUCCESS),
+        "rejected" => ("Declined", BADGE_DESTRUCTIVE),
+        "reverted" => ("Reverted", BADGE_WARNING),
+        _ => (row.status.as_str(), BADGE_SECONDARY),
+    };
+    rsx! {
+        div { class: "flex flex-wrap items-start justify-between gap-x-4 gap-y-1",
+            div { class: "min-w-0",
+                if let (Some(game_slug), Some(port_slug)) = (row.game_slug.clone(), row.port_slug.clone()) {
+                    Link {
+                        to: Route::PortPage { game_slug, port_slug },
+                        class: "text-sm font-medium hover:underline",
+                        "{row.subject}"
+                    }
+                } else {
+                    p { class: "text-sm font-medium", "{row.subject}" }
+                }
+                p { class: "mt-0.5 text-xs text-muted-foreground",
+                    RelativeTime { at: row.created_at }
+                }
+                if let Some(note) = row.review_note.filter(|n| !n.is_empty()) {
+                    p { class: "mt-1 text-xs text-muted-foreground", "Moderator note: {note}" }
+                }
+            }
+            span { class: "{BADGE} {chip} shrink-0", "{label}" }
         }
     }
 }

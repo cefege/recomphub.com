@@ -93,7 +93,8 @@ pub struct PortSubmission {
 }
 
 /// True when a submitter's submissions apply immediately: moderators, or accounts with enough
-/// approvals.
+/// approvals. Only covers *new* content (`new_port`, `new_game`); see [`create`] for why edits
+/// to an existing port need more than account trust.
 pub fn is_trusted(role: Role, approved_count: i64, threshold: i64) -> bool {
     role.is_moderator() || approved_count >= threshold
 }
@@ -122,8 +123,12 @@ pub fn merge_changes(
     Ok((full, before))
 }
 
-/// Creates a submission. Trusted submitters' `new_port`, `edit_port` and `new_game` apply at once
-/// and are marked `auto_approved`. Enforces the banned check and the daily limit.
+/// Creates a submission. Trusted submitters' `new_port` and `new_game` apply at once and are
+/// marked `auto_approved`: creating something new only adds to the catalog, so a few good
+/// submissions earning that is a reasonable bar. An `edit_port` changes a listing that may be
+/// someone else's work, and RecompHub cannot yet tell who that is (sign-in no longer carries a
+/// verified GitHub login), so edits always go to the moderation queue unless the submitter is a
+/// moderator. Enforces the banned check and the daily limit.
 pub async fn create(pool: &PgPool, new: &NewSubmission) -> DbResult<SubmissionRow> {
     if !SOURCES.contains(&new.source.as_str()) {
         return Err(DbError::InvalidPayload(format!(
@@ -147,8 +152,13 @@ pub async fn create(pool: &PgPool, new: &NewSubmission) -> DbResult<SubmissionRo
             if used >= limit {
                 return Err(DbError::RateLimited(limit));
             }
-            let threshold = settings::get_i64(&mut *tx, "trust_threshold", 3).await?;
-            is_trusted(user.role()?, user.approved_count as i64, threshold)
+            let role = user.role()?;
+            if new.kind == SubmissionKind::EditPort {
+                role.is_moderator()
+            } else {
+                let threshold = settings::get_i64(&mut *tx, "trust_threshold", 3).await?;
+                is_trusted(role, user.approved_count as i64, threshold)
+            }
         }
     };
 
@@ -465,14 +475,16 @@ pub async fn get(conn: &mut PgConnection, id: i64) -> DbResult<SubmissionRow> {
         .ok_or_else(|| DbError::NotFound(format!("submission {id}")))
 }
 
-/// Pending submissions, oldest first.
+/// Pending submissions: a real member's submission first (oldest first within that group), then
+/// anything found by discovery or import (oldest first). A crawler backlog of thousands never
+/// buries the handful of things a person is waiting on.
 pub async fn list_pending(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Vec<PendingRow>> {
     let rows = sqlx::query_as::<_, PendingRow>(
         "SELECT s.*, u.display_name AS submitter_name, u.approved_count::bigint AS submitter_approved
          FROM submissions s
          LEFT JOIN users u ON u.id = s.submitter_id
          WHERE s.status = 'pending'
-         ORDER BY s.created_at, s.id
+         ORDER BY (s.source <> 'user'), s.created_at, s.id
          LIMIT $1 OFFSET $2",
     )
     .bind(limit)
@@ -480,6 +492,15 @@ pub async fn list_pending(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Ve
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+/// Count of pending submissions from real members (not discovery/import), for the admin nav badge.
+pub async fn pending_member_count(pool: &PgPool) -> DbResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        "SELECT count(*)::bigint FROM submissions WHERE status = 'pending' AND source = 'user'",
+    )
+    .fetch_one(pool)
+    .await?)
 }
 
 /// Applied and reverted submissions, newest first.
@@ -490,6 +511,26 @@ pub async fn list_log(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Vec<Su
          ORDER BY COALESCE(reviewed_at, created_at) DESC, id DESC
          LIMIT $1 OFFSET $2",
     )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// A submitter's own submissions, newest first, for the "My submissions" account section.
+pub async fn list_by_submitter(
+    pool: &PgPool,
+    submitter_id: i64,
+    limit: i64,
+    offset: i64,
+) -> DbResult<Vec<SubmissionRow>> {
+    let rows = sqlx::query_as::<_, SubmissionRow>(
+        "SELECT * FROM submissions WHERE submitter_id = $1
+         ORDER BY created_at DESC, id DESC
+         LIMIT $2 OFFSET $3",
+    )
+    .bind(submitter_id)
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)

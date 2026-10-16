@@ -12,6 +12,7 @@ path = "src/main.rs"
 recomphub-shared = { path = "../shared" }
 recomphub-db = { path = "../db" }
 recomphub-ingest = { path = "../ingest" }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"

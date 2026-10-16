@@ -97,6 +97,18 @@ pub async fn moderation_queue() -> Result<Vec<QueueItem>, ServerFnError> {
     rows.into_iter().map(queue_item).collect()
 }
 
+/// Count of pending member submissions, for the Admin nav badge. Zero (not an error) for
+/// anyone who isn't a moderator, so the badge quietly disappears instead of failing.
+#[get("/api/moderation/pending-count")]
+pub async fn pending_submission_count() -> Result<i64, ServerFnError> {
+    if require_moderator().await.is_err() {
+        return Ok(0);
+    }
+    recomphub_db::submissions::pending_member_count(pool()?)
+        .await
+        .map_err(db_error)
+}
+
 /// Approve a pending submission, optionally assigning its game or creating it from IGDB.
 #[post("/api/moderation/approve")]
 pub async fn approve(item_id: i64, overrides: ReviewOverrides) -> Result<(), ServerFnError> {

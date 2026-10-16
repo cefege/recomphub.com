@@ -10,7 +10,7 @@ use recomphub_shared::{
 
 use crate::api;
 use crate::components::styles::*;
-use crate::components::{GroundRules, Seo, SignedIn, ai_text};
+use crate::components::{GroundRules, Seo, SignedIn, ViewerStore, ai_text};
 use crate::routes::Route;
 
 const DESCRIPTION_MAX: usize = 2000;
@@ -347,7 +347,7 @@ fn EditForm(data: EditPortForm) -> Element {
             header {
                 h1 { class: H1, "{heading}" }
                 p { class: "{LEAD} mt-2 max-w-2xl",
-                    "Change only what is wrong. Changes from trusted accounts are applied at once, and everyone else's go to the moderation queue."
+                    "Changes are checked before they go live, unless you're a moderator. A moderator usually looks within a day."
                 }
                 if let Some(msg) = error.read().clone() {
                     p { class: "mt-6 rounded-lg border border-destructive/50 p-4 text-sm text-destructive", "{msg}" }
@@ -660,22 +660,50 @@ fn PreviewSummary(data: RepoPreviewData) -> Element {
     }
 }
 
-/// Result of a submission, or of an edit.
+/// Result of a submission, or of an edit. Greets the submitter by name when known and tells
+/// them where to check on it, rather than leaving them with one flat status line.
 #[component]
 fn SubmitOutcome(result: SubmitResult) -> Element {
-    let status = if result.published {
-        "Published. It is live now."
+    let viewer = use_context::<ViewerStore>();
+    let greeting = viewer
+        .me
+        .read()
+        .as_ref()
+        .map(|u| {
+            let first = u
+                .display_name
+                .split_whitespace()
+                .next()
+                .unwrap_or(&u.display_name);
+            format!("Thanks, {first}! ")
+        })
+        .unwrap_or_default();
+    let (status, detail) = if result.published {
+        ("Published. It is live now.", None)
     } else {
-        "Queued for review. A moderator will look at it."
+        (
+            "Got it, queued for review.",
+            Some(
+                "A moderator usually looks within a day. You can check on it from your account page.",
+            ),
+        )
     };
     rsx! {
         div { class: "rounded-lg border border-success/50 bg-success/10 p-4 text-sm",
-            p { class: "font-medium", "{status}" }
-            if let (Some(game_slug), Some(port_slug)) = (result.game_slug.clone(), result.port_slug.clone()) {
-                Link {
-                    to: Route::PortPage { game_slug, port_slug },
-                    class: TEXT_LINK,
-                    "View the port"
+            p { class: "font-medium", "{greeting}{status}" }
+            if let Some(detail) = detail {
+                p { class: "mt-1 text-muted-foreground", "{detail}" }
+            }
+            div { class: "mt-2 flex flex-wrap gap-x-4 gap-y-1",
+                if let (Some(game_slug), Some(port_slug)) = (result.game_slug.clone(), result.port_slug.clone()) {
+                    Link {
+                        to: Route::PortPage { game_slug, port_slug },
+                        class: TEXT_LINK,
+                        "View the port"
+                    }
+                }
+                if !result.published {
+                    Link { to: Route::AccountPage {}, class: TEXT_LINK, "My submissions" }
                 }
             }
         }

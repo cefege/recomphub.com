@@ -10,7 +10,7 @@ use recomphub_db::secrets::Sealer;
 use recomphub_ingest::github::{self, GithubClient};
 use recomphub_ingest::igdb::{self, IgdbClient};
 use recomphub_ingest::{
-    best_sellers, describe, discover, game_faqs, importance, media, port_videos, youtube,
+    best_sellers, describe, digest, discover, game_faqs, importance, media, port_videos, youtube,
     ytdlp::YtDlp,
 };
 use recomphub_worker::imports;
@@ -77,6 +77,14 @@ enum Command {
     },
     /// Record today's platform parity snapshot and backfill earlier days missing from `stats_daily`.
     StatsSnapshot,
+    /// What real members did since the last run: new comments, ratings, submissions and
+    /// reports waiting or just decided. Nothing scheduled runs this; run it on request.
+    Digest {
+        /// Show everything since this many hours ago, and leave the "last run" marker alone,
+        /// instead of advancing it from the stored value.
+        #[arg(long)]
+        hours: Option<i64>,
+    },
 }
 
 #[tokio::main]
@@ -222,6 +230,12 @@ async fn run(command: Command) -> Result<()> {
             let report = recomphub_db::stats::run_snapshot_now(&pool).await?;
             info!(?report, "stats-snapshot finished");
         }
+        Command::Digest { hours } => {
+            let pool = pool().await?;
+            let since = hours.map(|h| chrono::Utc::now() - chrono::Duration::hours(h));
+            let d = digest::run(&pool, since).await?;
+            print_digest(&d);
+        }
         Command::SalesSync { dry_run } => {
             if dry_run {
                 let http = best_sellers::http_client()?;
@@ -287,4 +301,104 @@ fn optional_env(name: &str) -> Option<String> {
 
 fn media_dir() -> PathBuf {
     PathBuf::from(optional_env("MEDIA_DIR").unwrap_or_else(|| "./data/media".to_string()))
+}
+
+fn site_url() -> String {
+    optional_env("SITE_URL").unwrap_or_else(|| "https://recomphub.com".to_string())
+}
+
+/// Plain-text rendering of a digest: one section per kind, oldest first, with enough to act on
+/// without opening the site. Empty sections are skipped; an entirely empty digest says so.
+fn print_digest(d: &recomphub_ingest::digest::Digest) {
+    let site = site_url();
+    let who = |author: &str, email: &Option<String>| match email {
+        Some(e) => format!("{author} <{e}>"),
+        None => author.to_string(),
+    };
+    println!(
+        "Since {} ({} ago)",
+        d.since.format("%Y-%m-%d %H:%M UTC"),
+        humanize_span(d.until - d.since)
+    );
+    if d.is_empty() {
+        println!("Nothing new.");
+        return;
+    }
+    if !d.comments.is_empty() {
+        println!("\nComments ({}):", d.comments.len());
+        for c in &d.comments {
+            let body = if c.body.chars().count() > 140 {
+                format!("{}…", c.body.chars().take(140).collect::<String>())
+            } else {
+                c.body.clone()
+            };
+            println!(
+                "  {} on {} — \"{}\"\n    {site}/games/{}/{}",
+                who(&c.author, &c.email),
+                c.game_name,
+                body,
+                c.game_slug,
+                c.port_slug
+            );
+        }
+    }
+    if !d.ratings.is_empty() {
+        println!("\nRatings ({}):", d.ratings.len());
+        for r in &d.ratings {
+            println!(
+                "  {} rated {} {}★\n    {site}/games/{}/{}",
+                who(&r.author, &r.email),
+                r.game_name,
+                r.stars,
+                r.game_slug,
+                r.port_slug
+            );
+        }
+    }
+    if !d.pending_submissions.is_empty() {
+        println!("\nWaiting for review ({}):", d.pending_submissions.len());
+        for s in &d.pending_submissions {
+            print_submission(s, &who);
+        }
+        println!("    {site}/moderation");
+    }
+    if !d.reviewed_submissions.is_empty() {
+        println!(
+            "\nDecided since last check ({}):",
+            d.reviewed_submissions.len()
+        );
+        for s in &d.reviewed_submissions {
+            print_submission(s, &who);
+        }
+    }
+}
+
+fn print_submission(
+    s: &recomphub_ingest::digest::DigestSubmission,
+    who: &impl Fn(&str, &Option<String>) -> String,
+) {
+    let repo = s
+        .repo_url
+        .as_deref()
+        .map(|u| format!(" ({u})"))
+        .unwrap_or_default();
+    println!(
+        "  #{} [{}/{}] {} — {}{repo}",
+        s.id,
+        s.kind,
+        s.status,
+        who(&s.author, &s.email),
+        s.subject
+    );
+}
+
+fn humanize_span(span: chrono::TimeDelta) -> String {
+    let hours = span.num_hours();
+    if hours < 1 {
+        format!("{}m", span.num_minutes().max(0))
+    } else if hours < 48 {
+        format!("{hours}h")
+    } else {
+        format!("{}d", hours / 24)
+    }
 }

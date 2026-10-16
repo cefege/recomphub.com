@@ -775,6 +775,11 @@
       border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
     }
   }
+  .divide-border {
+    :where(& > :not(:last-child)) {
+      border-color: var(--border);
+    }
+  }
   .self-start {
     align-self: flex-start;
   }

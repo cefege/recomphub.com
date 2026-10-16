@@ -2,8 +2,8 @@
 
 use dioxus::prelude::*;
 use recomphub_shared::dto::{
-    EditInput, EditPortForm, Marks, RepoPreview, SessionUser, StarStateDto, SubmitInput,
-    SubmitResult, WantStateDto,
+    EditInput, EditPortForm, Marks, MySubmissionDto, RepoPreview, SessionUser, StarStateDto,
+    SubmitInput, SubmitResult, WantStateDto,
 };
 
 #[cfg(feature = "server")]
@@ -526,6 +526,72 @@ pub async fn submit(input: SubmitInput) -> Result<SubmitResult, ServerFnError> {
         game_slug,
         port_slug,
     })
+}
+
+/// The signed-in viewer's own submissions, newest first, for the account page.
+#[get("/api/my_submissions")]
+pub async fn my_submissions() -> Result<Vec<MySubmissionDto>, ServerFnError> {
+    let viewer = require_user().await?;
+    let pool = pool()?;
+    let rows = recomphub_db::submissions::list_by_submitter(pool, viewer.id, 50, 0)
+        .await
+        .map_err(db_error)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let (game_slug, port_slug) = match r.target_port_id {
+            Some(port_id) => match ports::get_row(pool, port_id).await {
+                Ok(row) => {
+                    let (g, p) = slugs_for(pool, &row).await?;
+                    (Some(g), Some(p))
+                }
+                Err(_) => (None, None),
+            },
+            None => (None, None),
+        };
+        let subject = submission_subject(&r, port_slug.as_deref());
+        out.push(MySubmissionDto {
+            id: r.id,
+            kind: r.kind,
+            status: r.status,
+            subject,
+            game_slug,
+            port_slug,
+            review_note: r.review_note,
+            created_at: r.created_at,
+            reviewed_at: r.reviewed_at,
+        });
+    }
+    Ok(out)
+}
+
+/// A short description of what a submission was about, read from its payload.
+#[cfg(feature = "server")]
+fn submission_subject(
+    r: &recomphub_db::submissions::SubmissionRow,
+    port_slug: Option<&str>,
+) -> String {
+    if let Some(name) = r.payload.get("name").and_then(Value::as_str) {
+        return name.to_string();
+    }
+    match r.kind.as_str() {
+        "edit_port" => port_slug
+            .map(|s| format!("Edit to {s}"))
+            .unwrap_or_else(|| "Port edit".to_string()),
+        "report" => r
+            .payload
+            .get("text")
+            .and_then(Value::as_str)
+            .map(|t| {
+                let t = t.trim();
+                if t.chars().count() > 80 {
+                    format!("{}…", t.chars().take(80).collect::<String>())
+                } else {
+                    t.to_string()
+                }
+            })
+            .unwrap_or_else(|| "Report".to_string()),
+        other => other.to_string(),
+    }
 }
 
 /// Submits changes to an existing port. Only the fields present in the input are changed.
