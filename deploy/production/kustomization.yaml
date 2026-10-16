@@ -10,4 +10,4 @@ resources:
   - networkpolicy.yaml
 images:
   - name: ghcr.io/cefege/recomphub.com
-    newTag: sha-ed55e011aed8
+    newTag: sha-564f79c720fd
