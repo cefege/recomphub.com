@@ -63,8 +63,9 @@ fn description_clause(description: &str) -> Option<String> {
 }
 
 /// Keeps the part before a subtitle separator and rejects empty, generic or overlong results.
-/// A short single-word head ("TLoZ:TWW HD Recompiled — Android") is an abbreviation that
-/// belongs to the title, so the cut is applied to what follows it instead.
+/// A head that is an abbreviation ("TLoZ:TWW HD Recompiled — Android", "SM64: …") belongs to
+/// the title, so the cut is applied to what follows it instead. Short real titles ("Doom:
+/// Native PC Port") are not abbreviations.
 fn clean_title(raw: &str) -> Option<String> {
     let trim = |s: &str| {
         s.trim()
@@ -74,7 +75,7 @@ fn clean_title(raw: &str) -> Option<String> {
     };
     let head_raw = cut_subtitle(raw);
     let head = trim(head_raw);
-    let is_abbreviation = !head.contains(char::is_whitespace) && head.chars().count() <= 5;
+    let is_abbreviation = is_abbreviation(&head);
     let title = if is_abbreviation && head_raw.len() < raw.len() {
         let after_head = &raw[head_raw.len()..];
         let rest_start = SEPARATORS
@@ -173,11 +174,24 @@ fn strip_markup(s: &str) -> String {
             }
             '!' if it.peek() == Some(&'[') => {}
             '[' | ']' | '*' | '_' | '`' | '\\' => {}
+            // Em and en dashes stay: they are subtitle separators.
+            '—' | '–' => out.push(c),
             c if (c as u32) >= 0x2000 && !c.is_alphanumeric() => {}
             c => out.push(c),
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// "TLoZ", "SM64", "OoT", "MGS": one word, at least two capitals, and capitals make up at
+/// least half of its letters.
+fn is_abbreviation(word: &str) -> bool {
+    if word.contains(char::is_whitespace) {
+        return false;
+    }
+    let letters = word.chars().filter(|c| c.is_alphabetic()).count();
+    let upper = word.chars().filter(|c| c.is_uppercase()).count();
+    upper >= 2 && upper * 2 >= letters
 }
 
 /// "recomp-zelda_ocarina" -> "Recomp Zelda Ocarina"; "PcPortGame" -> "Pc Port Game".
@@ -271,7 +285,23 @@ Play the 2002 game with a modern launcher on macOS, Windows, Linux, and Raspberr
             None,
             "zeldawwhdrecompandroid",
         );
-        assert_eq!(name, "TLoZ:TWW HD Recompiled Android");
+        assert_eq!(name, "TLoZ:TWW HD Recompiled");
+    }
+
+    #[test]
+    fn short_real_title_is_not_an_abbreviation() {
+        let name = derive_display_name(Some("# Doom: Native PC Port"), None, "doom-pc");
+        assert_eq!(name, "Doom");
+    }
+
+    #[test]
+    fn dash_separated_platform_suffix_is_cut() {
+        let name = derive_display_name(
+            Some("# Wind Waker HD Recompiled — Android Enhanced"),
+            None,
+            "wwhd-android",
+        );
+        assert_eq!(name, "Wind Waker HD Recompiled");
     }
 
     #[test]

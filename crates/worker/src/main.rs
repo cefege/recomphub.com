@@ -42,6 +42,8 @@ enum Command {
     },
     /// Refresh GitHub metadata, releases, authors and AI usage for stale ports.
     GithubSync,
+    /// Re-derive port display names from the README text github-sync already stored. No GitHub calls.
+    DeriveNames,
     /// Find new recomp repositories on GitHub search and r/recomps as candidates.
     Discover,
     /// Fetch YouTube gameplay videos per game and platform, within the daily search budget.
@@ -133,6 +135,11 @@ async fn run(command: Command) -> Result<()> {
             let client = GithubClient::from_env()?;
             let report = github::run_github_sync(&pool, &client).await?;
             info!(?report, "github-sync finished");
+        }
+        Command::DeriveNames => {
+            let pool = pool().await?;
+            let renamed = github::rederive_names(&pool).await?;
+            info!(renamed, "derive-names finished");
         }
         Command::Discover => {
             let pool = pool().await?;

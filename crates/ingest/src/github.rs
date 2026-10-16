@@ -818,7 +818,43 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
     if let Err(e) = crate::funding::refresh_due(pool, client).await {
         tracing::warn!(error = %format!("{e:#}"), "author funding refresh failed");
     }
+    if let Err(e) = rederive_names(pool).await {
+        tracing::warn!(error = %format!("{e:#}"), "display name pass failed");
+    }
     Ok(report)
+}
+
+/// Re-derives the display name of every port whose name came from its repo or a previous
+/// derivation, from the README and description already stored by the scan. No GitHub calls,
+/// so naming fixes reach every port in one pass. Returns the number of ports renamed.
+pub async fn rederive_names(pool: &PgPool) -> Result<usize> {
+    /// (port id, current name, repo URL, stored README, stored repo description)
+    type SourceRow = (i64, String, String, Option<String>, Option<String>);
+    let rows: Vec<SourceRow> = sqlx::query_as(
+        "SELECT p.id, p.name, p.repo_url, s.readme, s.repo_description
+         FROM ports p JOIN port_description_sources s ON s.port_id = p.id
+         WHERE p.name_source IN ('repo', 'derived') AND NOT ('name' = ANY(p.locked_fields))",
+    )
+    .fetch_all(pool)
+    .await
+    .context("loading stored port sources")?;
+    let mut conn = pool.acquire().await?;
+    let mut renamed = 0;
+    for (id, current, repo_url, readme, description) in rows {
+        let Ok((_, repo)) = parse_repo(&repo_url) else {
+            continue;
+        };
+        let name = crate::display_name::derive_display_name(
+            readme.as_deref(),
+            description.as_deref(),
+            &repo,
+        );
+        if name != current {
+            ports::set_derived_name(&mut conn, id, &name).await?;
+            renamed += 1;
+        }
+    }
+    Ok(renamed)
 }
 
 /// Repos per maintenance GraphQL query. Each repo costs a few hundred nodes, so chunks stay small.

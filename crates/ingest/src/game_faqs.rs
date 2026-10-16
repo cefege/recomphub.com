@@ -194,7 +194,8 @@ pub struct ProjectFacts {
     pub release: Option<ReleaseFacts>,
     pub last_commit: Option<String>,
     pub activity: Option<&'static str>,
-    pub github_stars: i32,
+    /// Coarse bucket ("1,000+"), so the facts hash doesn't change with every new star.
+    pub github_stars: &'static str,
     pub rating: Option<RatingFacts>,
     pub authors: Vec<String>,
     pub summary: Option<String>,
@@ -210,11 +211,23 @@ pub struct ReleaseFacts {
     pub prerelease: bool,
 }
 
+/// Ratings in coarse form, so a single new vote doesn't make the stored FAQ stale.
 #[derive(Debug, Serialize)]
 pub struct RatingFacts {
-    pub votes: i64,
-    /// Average out of 5, to one decimal place.
+    pub votes: &'static str,
+    /// Average out of 5, rounded to the nearest half star.
     pub average: f64,
+}
+
+/// "under 10", "10+", "100+", "1,000+", "10,000+".
+fn count_bucket(n: i64) -> &'static str {
+    match n {
+        ..=9 => "under 10",
+        10..=99 => "10+",
+        100..=999 => "100+",
+        1_000..=9_999 => "1,000+",
+        _ => "10,000+",
+    }
 }
 
 /// Outcome of one `describe-games` run.
@@ -313,8 +326,8 @@ async fn project(pool: &PgPool, p: &PortRow) -> Result<ProjectFacts> {
         .context("loading ratings")?;
     let summary = RatingSummary::from_distribution(distribution);
     let rating = (summary.count > 0).then(|| RatingFacts {
-        votes: summary.count,
-        average: ((summary.average.unwrap_or_default() * 10.0).round()) / 10.0,
+        votes: count_bucket(summary.count),
+        average: (summary.average.unwrap_or_default() * 2.0).round() / 2.0,
     });
     let description = port_descriptions::get(pool, p.id)
         .await
@@ -341,7 +354,7 @@ async fn project(pool: &PgPool, p: &PortRow) -> Result<ProjectFacts> {
             .as_deref()
             .and_then(MaintenanceLevel::from_key)
             .map(MaintenanceLevel::label),
-        github_stars: p.github_stars,
+        github_stars: count_bucket(i64::from(p.github_stars)),
         rating,
         authors,
         summary: description.as_ref().map(|d| d.summary.clone()),
