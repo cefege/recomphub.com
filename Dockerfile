@@ -3,7 +3,7 @@ WORKDIR /app
 
 RUN curl -fsSL https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz \
  | tar -xz -C /usr/local/cargo/bin \
- && cargo binstall dioxus-cli@0.7.10 -y --strategies compile \
+ && cargo binstall dioxus-cli@0.7.10 -y --locked --strategies compile \
  && rustup target add wasm32-unknown-unknown
 
 # Pinned standalone yt-dlp, verified against the release checksum for its architecture.
