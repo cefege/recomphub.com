@@ -95,6 +95,8 @@ pub struct PortRow {
     pub game_id: i64,
     pub slug: String,
     pub name: String,
+    /// Where `name` came from: `repo` (still the repo slug), `derived`, or `manual`.
+    pub name_source: String,
     pub kind: String,
     pub source_platform_id: Option<i32>,
     pub repo_url: String,
@@ -331,13 +333,14 @@ pub async fn insert_port(
         .unwrap_or(full.input.name.as_str());
     let slug = unique_slug(&mut *conn, game_id, base).await?;
     let i = &full.input;
+    let name_source = name_source_for(&i.name, &repo);
     let port_id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO ports (game_id, slug, name, kind, source_platform_id, repo_url, homepage_url,
             description, import_description, requirements, toolchain, license, playability,
             declared_platforms, detected_platforms, ai_usage, ai_tools, ai_source, ai_evidence,
-            sources, status)
+            sources, name_source, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                $19, $20, 'published')
+                $19, $20, $21, 'published')
          RETURNING id",
     )
     .bind(game_id)
@@ -360,6 +363,7 @@ pub async fn insert_port(
     .bind(i.ai_source.clone())
     .bind(serde_json::to_value(&i.ai_evidence)?)
     .bind(sources.to_vec())
+    .bind(name_source)
     .fetch_one(&mut *conn)
     .await?;
     replace_authors(&mut *conn, port_id, &full.authors).await?;
@@ -379,12 +383,14 @@ pub async fn update_port(conn: &mut PgConnection, port_id: i64, full: &PortFull)
         return Err(DbError::InvalidState(format!("{repo} is already listed")));
     }
     let i = &full.input;
+    let name_source = name_source_for(&i.name, &repo);
     let game_id = sqlx::query_scalar::<_, i64>(
         "UPDATE ports SET slug = COALESCE($2::text, slug), name = $3, kind = $4,
             source_platform_id = $5, repo_url = $6, homepage_url = $7, description = $8,
             import_description = $9, requirements = $10, toolchain = $11, license = $12,
             playability = $13, declared_platforms = $14, detected_platforms = $15,
-            ai_usage = $16, ai_tools = $17, ai_source = $18, ai_evidence = $19, updated_at = now()
+            ai_usage = $16, ai_tools = $17, ai_source = $18, ai_evidence = $19, name_source = $20,
+            updated_at = now()
          WHERE id = $1
          RETURNING game_id",
     )
@@ -407,11 +413,43 @@ pub async fn update_port(conn: &mut PgConnection, port_id: i64, full: &PortFull)
     .bind(i.ai_tools.clone())
     .bind(i.ai_source.clone())
     .bind(serde_json::to_value(&i.ai_evidence)?)
+    .bind(name_source)
     .fetch_optional(&mut *conn)
     .await?
     .ok_or_else(|| DbError::NotFound(format!("port {port_id}")))?;
     replace_authors(&mut *conn, port_id, &full.authors).await?;
     games::refresh_rollup(&mut *conn, game_id).await?;
+    Ok(())
+}
+
+/// `repo` while `name` is still the repo slug (ignoring case, `-` and `_`), otherwise `manual`.
+/// Only a `repo` name may be replaced by github-sync; every other name is kept.
+pub fn name_source_for(name: &str, repo_url: &str) -> &'static str {
+    fn norm(s: &str) -> String {
+        s.chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+    let slug = repo_url.rsplit('/').next().unwrap_or_default();
+    if !slug.is_empty() && norm(name.trim()) == norm(slug) {
+        "repo"
+    } else {
+        "manual"
+    }
+}
+
+/// Replaces a port's name with a derived one, only while it is still the repo slug and no editor
+/// has locked `name`.
+pub async fn set_derived_name(conn: &mut PgConnection, port_id: i64, name: &str) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE ports SET name = $2, name_source = 'derived'
+         WHERE id = $1 AND name_source = 'repo' AND NOT ('name' = ANY(locked_fields))",
+    )
+    .bind(port_id)
+    .bind(name.trim())
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -1120,6 +1158,26 @@ pub async fn lock_fields(conn: &mut PgConnection, port_id: i64, fields: &[String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn name_equal_to_repo_slug_is_repo_source() {
+        let repo = "https://github.com/someone/NFSMW_Recompiled";
+        assert_eq!(name_source_for("nfsmw-recompiled", repo), "repo");
+        assert_eq!(name_source_for("  nfsmw-recompiled  ", repo), "repo");
+    }
+
+    #[test]
+    fn renamed_or_derived_names_are_manual() {
+        let repo = "https://github.com/someone/nfsmw-recompiled";
+        assert_eq!(
+            name_source_for("Need for Speed: Most Wanted", repo),
+            "manual"
+        );
+        assert_eq!(
+            name_source_for("Harry Potter and the Chamber of Secrets PC", repo),
+            "manual"
+        );
+    }
 
     #[test]
     fn normalizes_repo_urls() {

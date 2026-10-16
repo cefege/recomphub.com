@@ -159,7 +159,9 @@ pub async fn port_gaps_page(
                    p.github_stars, p.star_count, g.slug AS game_slug, g.name AS game_name,
                    g.popularity, {BEST_SALE_COLUMNS},
                    ({IMPORTANCE_SQL})::float8 AS importance,
-                   port_platforms(p) AS targets
+                   port_platforms(p) AS targets,
+                   ARRAY(SELECT platform_target(pl.slug) FROM game_platforms gp JOIN platforms pl ON pl.id = gp.platform_id
+                         WHERE gp.game_id = g.id AND platform_target(pl.slug) IS NOT NULL) AS originals
             FROM ports p
             JOIN games g ON g.id = p.game_id
             {BEST_SALE_JOIN}
@@ -168,7 +170,7 @@ pub async fn port_gaps_page(
         ), gaps AS (
             SELECT b.*,
                    ARRAY(SELECT m FROM unnest($1::text[]) AS m
-                         WHERE NOT (m = ANY(b.targets))) AS missing
+                         WHERE NOT (m = ANY(b.targets) OR m = ANY(b.originals))) AS missing
             FROM base b
         )
         SELECT port_id, port_slug, port_name, repo_url, github_stars, game_slug, game_name,
@@ -195,14 +197,16 @@ pub async fn port_gaps_count(
     missing_filter: Option<&str>,
 ) -> DbResult<i64> {
     let sql = "WITH base AS (
-            SELECT p.id AS port_id, port_platforms(p) AS targets
+            SELECT p.id AS port_id, port_platforms(p) AS targets,
+                   ARRAY(SELECT platform_target(pl.slug) FROM game_platforms gp JOIN platforms pl ON pl.id = gp.platform_id
+                         WHERE gp.game_id = p.game_id AND platform_target(pl.slug) IS NOT NULL) AS originals
             FROM ports p
             WHERE p.status = 'published' AND p.kind <> 'decompilation'
               AND cardinality(port_platforms(p)) > 0
         ), gaps AS (
             SELECT b.port_id,
                    ARRAY(SELECT m FROM unnest($1::text[]) AS m
-                         WHERE NOT (m = ANY(b.targets))) AS missing
+                         WHERE NOT (m = ANY(b.targets) OR m = ANY(b.originals))) AS missing
             FROM base b
         )
         SELECT count(*) FROM gaps

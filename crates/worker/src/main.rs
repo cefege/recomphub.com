@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use recomphub_db::PgPool;
+use recomphub_db::secrets::Sealer;
 use recomphub_ingest::github::{self, GithubClient};
 use recomphub_ingest::igdb::{self, IgdbClient};
 use recomphub_ingest::{
@@ -13,7 +14,7 @@ use recomphub_ingest::{
 };
 use recomphub_worker::imports;
 use sqlx::postgres::PgPoolOptions;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
@@ -143,24 +144,26 @@ async fn run(command: Command) -> Result<()> {
         }
         Command::DescribePorts { dry_run } => {
             let pool = pool().await?;
-            let model = optional_env("DESCRIPTION_MODEL")
-                .unwrap_or_else(|| describe::DEFAULT_MODEL.to_string());
             if dry_run {
-                match describe::preview_request(&pool, &model).await? {
-                    Some((port_id, body)) => {
-                        println!("port {port_id}:");
-                        println!("{}", serde_json::to_string_pretty(&body)?);
+                match describe::preview_prompt(&pool).await? {
+                    Some((port_id, system, user)) => {
+                        println!("port {port_id}");
+                        println!("system:\n{system}");
+                        println!("user:\n{user}");
                     }
                     None => println!("no port needs a description"),
                 }
-            } else if let Some(api_key) = optional_env("ANTHROPIC_API_KEY") {
-                let http = imports::http_client()?;
-                let report =
-                    describe::describe_ports(&pool, &http, &api_key, &model, describe::RUN_LIMIT)
-                        .await?;
-                info!(?report, model, "describe-ports finished");
             } else {
-                info!("ANTHROPIC_API_KEY is not set; describe-ports skipped");
+                match Sealer::from_env() {
+                    Ok(sealer) => {
+                        let http = imports::http_client()?;
+                        let report =
+                            describe::describe_ports(&pool, &http, &sealer, describe::RUN_LIMIT)
+                                .await?;
+                        info!(?report, "describe-ports finished");
+                    }
+                    Err(e) => warn!(error = %e, "describe-ports skipped"),
+                }
             }
         }
         Command::StatsSnapshot => {

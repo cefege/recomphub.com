@@ -26,7 +26,7 @@ async fn make_user(
     .bind(approved)
     .fetch_one(pool)
     .await?;
-    sqlx::query("INSERT INTO user_identities (provider, subject, user_id, login) VALUES ('github', $1, $2, $3)")
+    sqlx::query("INSERT INTO user_identities (provider, subject, user_id, login) VALUES ('cloudflare', $1, $2, $3)")
         .bind(github_id.to_string())
         .bind(id)
         .bind(login.to_string())

@@ -80,6 +80,26 @@ string_enum!(
 );
 
 impl TargetPlatform {
+    /// The target a game's original platform already covers, from its IGDB `platforms.slug`.
+    /// Originals with no target here (Dreamcast, Wii, ...) return `None`. Mirrored in SQL by
+    /// `platform_target()` (migration 0013); keep the two in step.
+    pub fn from_platform_slug(slug: &str) -> Option<Self> {
+        Some(match slug {
+            "win" => TargetPlatform::Windows,
+            "mac" => TargetPlatform::MacOs,
+            "linux" => TargetPlatform::Linux,
+            "browser" => TargetPlatform::Web,
+            "android" => TargetPlatform::Android,
+            "iphone" | "ipad" => TargetPlatform::Ios,
+            "switch" => TargetPlatform::Switch,
+            "psp" => TargetPlatform::Psp,
+            "3ds" => TargetPlatform::N3ds,
+            "wiiu" => TargetPlatform::WiiU,
+            "psvita" => TargetPlatform::PsVita,
+            _ => return None,
+        })
+    }
+
     /// URL slug used in `/runs-on/{slug}` and `/platforms/{slug}/{target}`.
     pub fn slug(self) -> &'static str {
         match self {

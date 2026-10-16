@@ -276,3 +276,21 @@ async fn sales_and_popularity_reach_every_list(pool: PgPool) -> DbResult<()> {
     assert_eq!(videos[0].sale.signal(), best);
     Ok(())
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn sql_platform_target_matches_rust_mapping(pool: PgPool) -> DbResult<()> {
+    let slugs = [
+        "win", "mac", "linux", "browser", "android", "iphone", "ipad", "switch", "psp", "3ds",
+        "wiiu", "psvita", "dc",
+    ];
+    for slug in slugs {
+        let sql = sqlx::query_scalar::<_, Option<String>>("SELECT platform_target($1)")
+            .bind(slug)
+            .fetch_one(&pool)
+            .await?;
+        let rust = recomphub_shared::TargetPlatform::from_platform_slug(slug)
+            .map(|t| t.as_str().to_string());
+        assert_eq!(sql, rust, "slug {slug}");
+    }
+    Ok(())
+}

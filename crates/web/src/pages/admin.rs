@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use recomphub_shared::dto::provider_label;
 use recomphub_shared::{SettingRow, UserAdminRow};
 
+use super::admin_ai_providers::AiProvidersSection;
 use crate::api;
 use crate::components::styles::*;
 use crate::components::{Breadcrumb, EmptyState, RoleGate, Seo};
@@ -37,10 +38,11 @@ pub fn AdminPage() -> Element {
                 ] }
                 h1 { class: "{H1} mt-4", "Admin" }
             }
-            RoleGate { admin_only: true,
+            RoleGate { admin_only: true, next: "/admin".to_string(),
                 div { class: "mt-8 space-y-12",
                     UsersPanel {}
                     SettingsPanel {}
+                    AiProvidersSection {}
                 }
             }
         }

@@ -233,27 +233,11 @@ pub struct SessionUser {
     pub avatar: Option<MediaRef>,
 }
 
-/// A sign-in provider connected to the signed-in account.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ConnectedAccount {
-    /// "github" or "google".
-    pub provider: String,
-    /// The GitHub login, or the verified Google email. None when the provider sent neither.
-    pub handle: Option<String>,
-}
-
-/// Which sign-in providers are configured on this server, so the UI can hide the rest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthProviders {
-    pub github: bool,
-    pub google: bool,
-}
-
-/// Display name for a stored provider key ("github", "google").
+/// Display name for a stored provider key.
 pub fn provider_label(provider: &str) -> &'static str {
     match provider {
         "github" => "GitHub",
-        "google" => "Google",
+        "cloudflare" => "Cloudflare",
         _ => "Unknown provider",
     }
 }
@@ -498,7 +482,7 @@ pub struct UserAdminRow {
     pub id: i64,
     pub display_name: String,
     pub github_login: Option<String>,
-    /// Connected sign-in providers, such as "github" and "google".
+    /// Sign-in providers in use: "github" for members, "cloudflare" for the admin.
     pub providers: Vec<String>,
     pub role: String,
     pub banned: bool,
@@ -510,6 +494,51 @@ pub struct UserAdminRow {
 pub struct SettingRow {
     pub key: String,
     pub value: i64,
+}
+
+/// One AI provider in the describe fallback order. Credentials never leave the server; the
+/// account label is the only identifying detail shown.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiProviderRow {
+    pub id: i64,
+    pub position: i32,
+    pub kind: String,
+    pub model: String,
+    pub enabled: bool,
+    pub account_label: String,
+    pub last_error: Option<String>,
+    pub last_error_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+/// The admin view of the provider list. `secrets_configured` is false when `SECRETS_KEY` is unset,
+/// in which case providers cannot be added.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiProvidersView {
+    pub secrets_configured: bool,
+    pub providers: Vec<AiProviderRow>,
+}
+
+/// Start of an Anthropic login: the admin opens `authorize_url`, then pastes the callback value
+/// with `pending_id`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiOauthStart {
+    pub pending_id: String,
+    pub authorize_url: String,
+}
+
+/// Start of a ChatGPT device login: the admin enters `user_code` at `verify_url`, then checks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiDeviceStart {
+    pub pending_id: String,
+    pub user_code: String,
+    pub verify_url: String,
+}
+
+/// One check of a ChatGPT device login. `provider` is set once the login completed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiDevicePoll {
+    pub provider: Option<AiProviderRow>,
 }
 
 /// Home page data.

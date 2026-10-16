@@ -162,7 +162,7 @@ pub async fn revert(id: i64) -> Result<(), ServerFnError> {
 }
 
 /// Applied and reverted submissions, newest first, 50 per page.
-#[get("/api/moderation/log")]
+#[post("/api/moderation/log")]
 pub async fn moderation_log(page: i64) -> Result<Page<LogItem>, ServerFnError> {
     require_moderator().await?;
     let pool = pool()?;
@@ -214,7 +214,7 @@ pub async fn hide_video(video_id: i64) -> Result<(), ServerFnError> {
 }
 
 /// Users whose display name or GitHub login matches the term, for the admin search.
-#[get("/api/admin/users")]
+#[post("/api/admin/users")]
 pub async fn admin_users(term: String) -> Result<Vec<UserAdminRow>, ServerFnError> {
     require_admin().await?;
     let rows = recomphub_db::users_sessions::search(pool()?, term.trim(), 50)

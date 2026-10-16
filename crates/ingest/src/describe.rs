@@ -1,6 +1,7 @@
 //! Generated port descriptions. github-sync stores the repository text it already fetches
 //! ([`record_sources`]). The worker's `describe-ports` run turns each port's stored text into a
-//! short description through the Anthropic Messages API, and stores it once it validates.
+//! short description through the admin's AI providers, tried in position order, and stores the
+//! first answer that validates.
 //!
 //! The model sees only the repository text and the port's facts. [`validate`] enforces the shape of
 //! the answer and rejects anything that names a ROM download site.
@@ -10,9 +11,11 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use recomphub_db::ai_providers::{self as ai, EnabledProvider};
 use recomphub_db::port_descriptions::{
     self as store, Candidate, NewPortDescription, SourceSnapshot,
 };
+use recomphub_db::secrets::Sealer;
 use recomphub_shared::dto::PORT_TECHNIQUES;
 use regex::Regex;
 use serde::Deserialize;
@@ -20,16 +23,15 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
-/// Model used when `DESCRIPTION_MODEL` is unset.
-pub const DEFAULT_MODEL: &str = "claude-haiku-5-5";
+use crate::llm;
+
 /// Ports generated per run. Later daily runs work through the rest of the queue.
 pub const RUN_LIMIT: usize = 200;
 /// Bumped when the prompt or the output schema changes, so every description regenerates.
 pub const PROMPT_VERSION: u32 = 1;
 
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
-const API_VERSION: &str = "2023-06-01";
 const TOOL_NAME: &str = "record_description";
+const TOOL_DESCRIPTION: &str = "Record the generated description of this port.";
 const MAX_TOKENS: u32 = 1024;
 const README_CHARS: usize = 12_000;
 const RELEASE_CHARS: usize = 3_000;
@@ -281,8 +283,9 @@ pub fn user_message(c: &Candidate, s: &SourceSnapshot) -> String {
     out
 }
 
-/// Messages API request body. The reply is forced through one tool so it parses as JSON.
-pub fn request_body(model: &str, user: &str) -> Value {
+/// JSON Schema for the record the model fills in. The length limits here are advisory for the
+/// provider; [`validate`] enforces them again.
+pub fn output_schema() -> Value {
     let techniques: Vec<&str> = PORT_TECHNIQUES.iter().map(|(slug, _)| *slug).collect();
     let list = |max: usize| {
         json!({
@@ -292,32 +295,21 @@ pub fn request_body(model: &str, user: &str) -> Value {
         })
     };
     json!({
-        "model": model,
-        "max_tokens": MAX_TOKENS,
-        "system": SYSTEM_PROMPT,
-        "tools": [{
-            "name": TOOL_NAME,
-            "description": "Record the generated description of this port.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string", "minLength": SUMMARY_MIN, "maxLength": SUMMARY_MAX},
-                    "technique": {"type": "string", "enum": techniques},
-                    "technique_note": {"type": "string", "maxLength": NOTE_MAX},
-                    "features": list(MAX_FEATURES),
-                    "requirements": list(MAX_REQUIREMENTS),
-                    "limitations": list(MAX_LIMITATIONS),
-                    "setup": list(MAX_SETUP),
-                },
-                "required": [
-                    "summary", "technique", "technique_note", "features",
-                    "requirements", "limitations", "setup"
-                ],
-                "additionalProperties": false,
-            },
-        }],
-        "tool_choice": {"type": "tool", "name": TOOL_NAME},
-        "messages": [{"role": "user", "content": user}],
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "minLength": SUMMARY_MIN, "maxLength": SUMMARY_MAX},
+            "technique": {"type": "string", "enum": techniques},
+            "technique_note": {"type": "string", "maxLength": NOTE_MAX},
+            "features": list(MAX_FEATURES),
+            "requirements": list(MAX_REQUIREMENTS),
+            "limitations": list(MAX_LIMITATIONS),
+            "setup": list(MAX_SETUP),
+        },
+        "required": [
+            "summary", "technique", "technique_note", "features",
+            "requirements", "limitations", "setup"
+        ],
+        "additionalProperties": false,
     })
 }
 
@@ -331,17 +323,6 @@ pub struct DescriptionOutput {
     pub requirements: Vec<String>,
     pub limitations: Vec<String>,
     pub setup: Vec<String>,
-}
-
-/// Pulls the `record_description` tool input out of a Messages API reply.
-pub fn parse_output(reply: &Value) -> Result<DescriptionOutput> {
-    let block = reply["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|b| b["type"] == "tool_use" && b["name"] == TOOL_NAME)
-        .context("model did not call record_description")?;
-    serde_json::from_value(block["input"].clone()).context("tool input does not match the schema")
 }
 
 fn single_line(text: &str, field: &str, min: usize, max: usize) -> Result<String> {
@@ -376,6 +357,7 @@ fn clean_list(field: &str, items: Vec<String>, max: usize) -> Result<Vec<String>
 pub fn validate(
     out: DescriptionOutput,
     port_id: i64,
+    provider: &str,
     model: &str,
     source_hash: &str,
 ) -> Result<NewPortDescription> {
@@ -412,52 +394,10 @@ pub fn validate(
         requirements,
         limitations,
         setup,
+        provider: provider.to_string(),
         model: model.to_string(),
         source_hash: source_hash.to_string(),
     })
-}
-
-const API_ERROR_CHARS: usize = 300;
-
-async fn call_model(
-    http: &reqwest::Client,
-    api_key: &str,
-    body: &Value,
-) -> Result<DescriptionOutput> {
-    let response = http
-        .post(API_URL)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", API_VERSION)
-        .json(body)
-        .send()
-        .await
-        .context("calling the Anthropic Messages API")?;
-    let status = response.status();
-    let reply: Value = response
-        .json()
-        .await
-        .context("reading the Anthropic Messages API response")?;
-    if !status.is_success() {
-        let detail = reply
-            .pointer("/error/message")
-            .and_then(Value::as_str)
-            .unwrap_or("no error message");
-        let detail: String = detail.chars().take(API_ERROR_CHARS).collect();
-        bail!("Anthropic Messages API returned {status}: {detail}");
-    }
-    parse_output(&reply)
-}
-
-async fn generate(
-    http: &reqwest::Client,
-    api_key: &str,
-    model: &str,
-    c: &Candidate,
-    s: &SourceSnapshot,
-) -> Result<NewPortDescription> {
-    let body = request_body(model, &user_message(c, s));
-    let out = call_model(http, api_key, &body).await?;
-    validate(out, c.port_id, model, &source_hash(c))
 }
 
 /// Outcome of one `describe-ports` run.
@@ -471,15 +411,23 @@ pub struct DescribeReport {
 }
 
 /// Generates descriptions for ports whose stored text or facts changed since their last one.
-/// At most `limit` model calls per run. Least recently attempted ports go first.
+/// At most `limit` ports per run. Least recently attempted ports go first. Each port tries the
+/// enabled AI providers in position order and keeps the first valid description.
 pub async fn describe_ports(
     pool: &PgPool,
     http: &reqwest::Client,
-    api_key: &str,
-    model: &str,
+    sealer: &Sealer,
     limit: usize,
 ) -> Result<DescribeReport> {
     let mut report = DescribeReport::default();
+    let providers = ai::list_enabled(pool)
+        .await
+        .context("listing enabled AI providers")?;
+    if providers.is_empty() {
+        tracing::warn!("no enabled AI providers; describe-ports has nothing to call");
+        return Ok(report);
+    }
+    let schema = output_schema();
     let mut calls = 0usize;
     for c in store::candidates(pool)
         .await
@@ -505,15 +453,48 @@ pub async fn describe_ports(
             tokio::time::sleep(CALL_SPACING).await;
         }
         calls += 1;
-        match generate(http, api_key, model, &c, &snapshot).await {
-            Ok(description) => {
+
+        let hash = source_hash(&c);
+        let user = user_message(&c, &snapshot);
+        let request = llm::Request {
+            system: SYSTEM_PROMPT,
+            user: &user,
+            tool_name: TOOL_NAME,
+            tool_description: TOOL_DESCRIPTION,
+            schema: &schema,
+            max_tokens: MAX_TOKENS,
+        };
+        let chain = llm::run_chain(
+            &providers,
+            async |p: &EnabledProvider| -> Result<NewPortDescription> {
+                let credential = llm::oauth::ensure_fresh(pool, http, sealer, p).await?;
+                let reply = llm::complete(http, &p.kind, &p.model, &credential, &request).await?;
+                let out: DescriptionOutput = serde_json::from_value(reply)
+                    .context("model output does not match the schema")?;
+                validate(out, c.port_id, &p.kind, &p.model, &hash)
+            },
+        )
+        .await;
+
+        for (index, message) in &chain.failures {
+            let provider = &providers[*index];
+            tracing::warn!(port_id = c.port_id, provider = %provider.kind, error = %message, "AI provider failed");
+            ai::record_failure(pool, provider.id, message).await?;
+        }
+        match chain.answer {
+            Some((index, description)) => {
+                ai::record_success(pool, providers[index].id).await?;
                 store::save(pool, &description).await?;
                 store::record_attempt(pool, c.port_id, None).await?;
                 report.generated += 1;
             }
-            Err(e) => {
-                let message = format!("{e:#}");
-                tracing::warn!(port_id = c.port_id, error = %message, "port description failed");
+            None => {
+                let message = chain
+                    .failures
+                    .iter()
+                    .map(|(index, error)| format!("{}: {error}", providers[*index].kind))
+                    .collect::<Vec<_>>()
+                    .join("; ");
                 store::record_attempt(pool, c.port_id, Some(message.as_str())).await?;
                 report.failed += 1;
             }
@@ -522,9 +503,9 @@ pub async fn describe_ports(
     Ok(report)
 }
 
-/// The request body the next run would send for the first port needing a description, with
-/// its port id. Nothing is called or written; used to review the prompt without an API key.
-pub async fn preview_request(pool: &PgPool, model: &str) -> Result<Option<(i64, Value)>> {
+/// The system prompt and user message the next run would send for the first port that needs a
+/// description, with its port id. Nothing is called or written.
+pub async fn preview_prompt(pool: &PgPool) -> Result<Option<(i64, String, String)>> {
     for c in store::candidates(pool).await? {
         if c.source_hash.as_deref() == Some(source_hash(&c).as_str()) {
             continue;
@@ -533,8 +514,8 @@ pub async fn preview_request(pool: &PgPool, model: &str) -> Result<Option<(i64, 
             continue;
         };
         if has_text(&snapshot) {
-            let body = request_body(model, &user_message(&c, &snapshot));
-            return Ok(Some((c.port_id, body)));
+            let user = user_message(&c, &snapshot);
+            return Ok(Some((c.port_id, SYSTEM_PROMPT.to_string(), user)));
         }
     }
     Ok(None)
@@ -612,17 +593,25 @@ mod tests {
 
     #[test]
     fn validate_accepts_well_formed_output() {
-        let row = validate(good_output(), 7, "claude-haiku-5-5", "hash").expect("valid");
+        let row = validate(
+            good_output(),
+            7,
+            "anthropic_api",
+            "claude-haiku-5-5",
+            "hash",
+        )
+        .expect("valid");
         assert_eq!(row.features, vec!["Widescreen support".to_string()]);
         assert_eq!(row.technique, "source_port");
         assert!(row.limitations.is_empty());
+        assert_eq!(row.provider, "anthropic_api");
     }
 
     #[test]
     fn validate_rejects_rom_sites() {
         let mut out = good_output();
         out.setup = vec!["Download the ROM from RomsMania.".into()];
-        let err = validate(out, 7, "m", "h").unwrap_err();
+        let err = validate(out, 7, "anthropic_api", "m", "h").unwrap_err();
         assert!(format!("{err:#}").contains("ROM download site"));
     }
 
@@ -630,41 +619,27 @@ mod tests {
     fn validate_rejects_bad_shape() {
         let mut short = good_output();
         short.summary = "Too short".into();
-        assert!(validate(short, 7, "m", "h").is_err());
+        assert!(validate(short, 7, "anthropic_api", "m", "h").is_err());
 
         let mut multi = good_output();
         multi.summary = "A port\nof a game that runs on modern systems.".into();
-        assert!(validate(multi, 7, "m", "h").is_err());
+        assert!(validate(multi, 7, "anthropic_api", "m", "h").is_err());
 
         let mut unknown = good_output();
         unknown.technique = "magic".into();
-        assert!(validate(unknown, 7, "m", "h").is_err());
+        assert!(validate(unknown, 7, "anthropic_api", "m", "h").is_err());
     }
 
     #[test]
-    fn parse_output_reads_the_tool_block() {
-        let reply = json!({
-            "content": [
-                {"type": "text", "text": "ok"},
-                {"type": "tool_use", "name": TOOL_NAME, "input": {
-                    "summary": "A source port of the original game that runs natively on modern systems.",
-                    "technique": "source_port",
-                    "technique_note": "Compiled per platform.",
-                    "features": [], "requirements": [], "limitations": [], "setup": []
-                }}
-            ]
-        });
-        let out = parse_output(&reply).expect("tool block");
-        assert_eq!(out.technique, "source_port");
-        assert!(parse_output(&json!({"content": []})).is_err());
-    }
-
-    #[test]
-    fn request_body_forces_the_tool_and_omits_temperature() {
-        let body = request_body("claude-haiku-5-5", "hello");
-        assert_eq!(body["tool_choice"]["name"], TOOL_NAME);
-        assert_eq!(body["tools"][0]["name"], TOOL_NAME);
-        assert!(body.get("temperature").is_none());
-        assert_eq!(body["messages"][0]["content"], "hello");
+    fn output_schema_requires_every_field_and_keeps_the_technique_list() {
+        let schema = output_schema();
+        assert_eq!(schema["required"].as_array().map(Vec::len), Some(7));
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(
+            schema["properties"]["technique"]["enum"]
+                .as_array()
+                .map(Vec::len),
+            Some(PORT_TECHNIQUES.len())
+        );
     }
 }

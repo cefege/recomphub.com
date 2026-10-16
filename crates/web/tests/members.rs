@@ -334,7 +334,7 @@ async fn user(pool: &PgPool, github_id: i64, login: &str, is_admin: bool) -> Vie
         subject: github_id.to_string(),
         login: Some(login.to_string()),
         email: None,
-        name: None,
+        name: Some(login.to_string()),
         avatar_media_id: None,
     };
     let row = identities::sign_in(pool, &profile, is_admin)

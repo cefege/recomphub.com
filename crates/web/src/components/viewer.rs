@@ -3,8 +3,10 @@ use std::collections::HashSet;
 use dioxus::prelude::*;
 use recomphub_shared::{Role, SessionUser};
 
-use super::styles::{BADGE, BADGE_SECONDARY, BUTTON, BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM};
-use super::ui::{EmptyState, LoginPrompt};
+use super::styles::{
+    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM, CARD_SURFACE,
+};
+use super::ui::LoginPrompt;
 use crate::api;
 
 /// Signed-in state, loaded after hydration so viewer markup never enters the SSR HTML.
@@ -50,7 +52,7 @@ impl ViewerStore {
 /// Send the visitor to the sign-in chooser, returning to the current page.
 pub fn login_redirect() {
     let _ = document::eval(
-        "location.href='/signin?next='+encodeURIComponent(location.pathname+location.search)",
+        "location.href='/auth/github?next='+encodeURIComponent(location.pathname+location.search)",
     );
 }
 
@@ -251,15 +253,10 @@ pub fn SignedIn(prompt: String, children: Element) -> Element {
 /// Renders its children when the signed-in viewer's role is allowed. `admin_only` pages refuse
 /// moderators. The server enforces the same rule on every API call.
 #[component]
-pub fn RoleGate(admin_only: bool, children: Element) -> Element {
+pub fn RoleGate(admin_only: bool, next: String, children: Element) -> Element {
     let viewer = use_context::<ViewerStore>();
     if !*viewer.ready.read() {
         return rsx! { div { class: "skeleton h-96 rounded-xl", "aria-hidden": "true" } };
-    }
-    if !viewer.logged_in() {
-        return rsx! {
-            LoginPrompt { text: "Sign in to continue.".to_string() }
-        };
     }
     let role = viewer
         .me
@@ -272,8 +269,38 @@ pub fn RoleGate(admin_only: bool, children: Element) -> Element {
         _ => false,
     };
     if allowed {
-        children
+        return children;
+    }
+    if !admin_only && !viewer.logged_in() {
+        // Moderators are members and sign in like everyone else; the admin uses Cloudflare.
+        return rsx! {
+            LoginPrompt { text: "Sign in to continue.".to_string() }
+            div { class: "mt-4 flex justify-center",
+                AdminSignInLink { next }
+            }
+        };
+    }
+    let text = if admin_only {
+        "This area is for the site admin."
     } else {
-        rsx! { EmptyState { text: "You do not have access to this page.".to_string() } }
+        "You do not have access to this page."
+    };
+    rsx! {
+        div { class: "{CARD_SURFACE} flex flex-col items-center gap-4 p-8 text-center",
+            p { class: "text-sm text-muted-foreground", "{text}" }
+            AdminSignInLink { next }
+        }
+    }
+}
+
+/// "Admin sign-in" link. It opens `/auth/cloudflare`, the only route that grants the admin role.
+#[component]
+fn AdminSignInLink(next: String) -> Element {
+    rsx! {
+        a {
+            href: "/auth/cloudflare?next={next}",
+            class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
+            "Admin sign-in"
+        }
     }
 }

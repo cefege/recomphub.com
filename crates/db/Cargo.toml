@@ -6,6 +6,8 @@ publish = false
 
 [dependencies]
 recomphub-shared = { path = "../shared" }
+aes-gcm = "0.11"
+base64 = "0.22"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "chrono", "json", "macros"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }

@@ -24,6 +24,7 @@ base64 = { version = "0.22", optional = true }
 regex = { version = "1", optional = true }
 tower-http = { version = "0.6", features = ["fs", "compression-gzip", "set-header"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+ring = { version = "0.17", optional = true }
 
 [features]
 default = []
@@ -44,7 +45,11 @@ server = [
   "dep:regex",
   "dep:tower-http",
   "dep:reqwest",
+  "dep:ring",
 ]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-timers = { version = "0.3", features = ["futures"] }
+
+[dev-dependencies]
+rsa = "0.9"

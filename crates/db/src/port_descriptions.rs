@@ -128,6 +128,7 @@ pub struct NewPortDescription {
     pub limitations: Vec<String>,
     pub setup: Vec<String>,
     pub model: String,
+    pub provider: String,
     pub source_hash: String,
 }
 
@@ -143,6 +144,7 @@ pub struct PortDescriptionRow {
     pub limitations: Vec<String>,
     pub setup: Vec<String>,
     pub model: String,
+    pub provider: Option<String>,
     pub source_hash: String,
     pub generated_at: DateTime<Utc>,
 }
@@ -152,8 +154,8 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
     sqlx::query(
         "INSERT INTO port_descriptions
              (port_id, summary, technique, technique_note, features, requirements, limitations,
-              setup, model, source_hash, generated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+              setup, model, provider, source_hash, generated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
          ON CONFLICT (port_id) DO UPDATE SET
              summary = EXCLUDED.summary,
              technique = EXCLUDED.technique,
@@ -163,6 +165,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
              limitations = EXCLUDED.limitations,
              setup = EXCLUDED.setup,
              model = EXCLUDED.model,
+             provider = EXCLUDED.provider,
              source_hash = EXCLUDED.source_hash,
              generated_at = EXCLUDED.generated_at",
     )
@@ -175,6 +178,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
     .bind(&d.limitations)
     .bind(&d.setup)
     .bind(&d.model)
+    .bind(&d.provider)
     .bind(&d.source_hash)
     .execute(ex)
     .await?;
@@ -185,7 +189,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
 pub async fn get(ex: impl PgExecutor<'_>, port_id: i64) -> DbResult<Option<PortDescriptionRow>> {
     Ok(sqlx::query_as::<_, PortDescriptionRow>(
         "SELECT port_id, summary, technique, technique_note, features, requirements, limitations,
-                setup, model, source_hash, generated_at
+                setup, model, provider, source_hash, generated_at
          FROM port_descriptions WHERE port_id = $1",
     )
     .bind(port_id)

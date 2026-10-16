@@ -2,6 +2,7 @@
 //! the submission apply/revert logic.
 
 pub mod activity;
+pub mod ai_providers;
 pub mod author_funding;
 pub mod comments;
 pub mod creators;
@@ -14,6 +15,7 @@ pub mod port_descriptions;
 pub mod port_videos;
 pub mod ports;
 pub mod sales;
+pub mod secrets;
 pub mod settings;
 pub mod stars;
 pub mod stats;

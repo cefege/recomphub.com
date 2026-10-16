@@ -1,8 +1,8 @@
 //! Server-only modules: state, sessions, bootstrap, routes and background tasks.
 
 pub mod bootstrap;
+pub mod cloudflare;
 pub mod config;
-pub mod google;
 pub mod http;
 pub mod live;
 pub mod oauth;

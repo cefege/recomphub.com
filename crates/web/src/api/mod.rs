@@ -1,7 +1,7 @@
 //! Server functions called from the UI. Each submodule owns one area; the flat
 //! re-exports let pages call `api::name(...)`.
 
-pub mod account;
+pub mod ai_providers;
 pub mod catalog;
 pub mod comments;
 pub mod creators;
@@ -13,7 +13,7 @@ pub mod members;
 pub mod moderation;
 pub mod stats;
 
-pub use account::*;
+pub use ai_providers::*;
 pub use catalog::*;
 pub use comments::*;
 pub use creators::*;

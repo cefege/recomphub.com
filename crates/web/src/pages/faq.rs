@@ -1,7 +1,7 @@
 //! Questions and answers for a game page. The same list renders on the page and as `FAQPage`
 //! JSON-LD, so the visible text and the structured data never drift apart.
 
-use recomphub_shared::{GameDetail, PortCard};
+use recomphub_shared::{GameDetail, PortCard, TargetPlatform};
 
 use crate::components::listing::PRIMARY_TARGETS;
 use crate::components::ui::{target_label, version_label};
@@ -77,7 +77,16 @@ fn target_faq(detail: &GameDetail, ports: &[&PortCard], target: &str) -> Faq {
         .filter(|p| p.targets.iter().any(|t| t == target))
         .collect();
 
+    let original = detail.platforms.iter().any(|p| {
+        p.slug
+            .as_deref()
+            .and_then(TargetPlatform::from_platform_slug)
+            .is_some_and(|t| t.as_str() == target)
+    });
     let answer = match via.as_slice() {
+        [] if original => format!(
+            "Yes. {game} originally shipped for {label}, so it already runs there natively. No port is needed."
+        ),
         [] if ports.is_empty() => {
             let wants = match detail.game.want_count {
                 0 => String::new(),
@@ -404,6 +413,25 @@ mod tests {
         assert!(linux.contains("Wine or Proton"), "{linux}");
         let web = answer(&faq, "in a web browser");
         assert!(!web.contains("Wine"), "{web}");
+    }
+
+    #[test]
+    fn original_platform_is_answered_as_already_native() {
+        let mut d = detail(vec![port("NFSMW-Recompiled", &["linux"], "playable", 5)], 0);
+        d.platforms = vec![PlatformRef {
+            id: 2,
+            slug: Some("win".into()),
+            name: "PC (Microsoft Windows)".into(),
+            abbreviation: None,
+            family: None,
+            game_count: 0,
+            ported_count: 0,
+        }];
+        let faq = game_faq(&d);
+        let windows = answer(&faq, "on Windows");
+        assert!(windows.starts_with("Yes. Need for Speed"), "{windows}");
+        assert!(windows.contains("already runs there natively"), "{windows}");
+        assert!(!windows.contains("Not natively"), "{windows}");
     }
 
     #[test]

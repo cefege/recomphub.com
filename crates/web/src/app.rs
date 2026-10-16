@@ -81,6 +81,15 @@ pub fn Shell() -> Element {
                             MenuIcon { class: "size-5" }
                         }
                         nav { class: "{POPOVER} absolute left-0 mt-2 flex w-56 flex-col", "aria-label": "Main",
+                            form { action: "/search", method: "get", role: "search", class: "p-1",
+                                input {
+                                    r#type: "search",
+                                    name: "q",
+                                    "aria-label": "Search games and ports",
+                                    placeholder: "Search games and ports…",
+                                    class: "{INPUT} h-8 w-full",
+                                }
+                            }
                             for (href, label) in NAV {
                                 a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
                             }
@@ -101,6 +110,9 @@ pub fn Shell() -> Element {
                                 placeholder: "Search games and ports…",
                                 class: "{INPUT} h-8 w-44 xl:w-72",
                             }
+                        }
+                        a { href: "/search", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} lg:hidden", "aria-label": "Search",
+                            SearchIcon { class: "size-4" }
                         }
                         OnlineCount {}
                         button {
@@ -196,6 +208,17 @@ fn MenuIcon(#[props(default)] class: String) -> Element {
     rsx! {
         svg { class: "{class}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
             path { d: "M4 6h16M4 12h16M4 18h16" }
+        }
+    }
+}
+
+/// Lucide "search" icon.
+#[component]
+fn SearchIcon(#[props(default)] class: String) -> Element {
+    rsx! {
+        svg { class: "{class}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+            circle { cx: "11", cy: "11", r: "8" }
+            path { d: "M21 21l-4.35-4.35" }
         }
     }
 }

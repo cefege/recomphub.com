@@ -33,7 +33,7 @@ pub fn ModerationQueue() -> Element {
                     "Review log"
                 }
             }
-            RoleGate { admin_only: false, QueueList {} }
+            RoleGate { admin_only: false, next: "/moderation".to_string(), QueueList {} }
         }
     }
 }
@@ -365,7 +365,7 @@ pub fn ModerationLog(page: String) -> Element {
                 ("Log".to_string(), "/moderation/log".to_string()),
             ] }
             h1 { class: "mt-4 {H1}", "Moderation log" }
-            RoleGate { admin_only: false, LogList { page: page_number } }
+            RoleGate { admin_only: false, next: "/moderation/log".to_string(), LogList { page: page_number } }
         }
     }
 }

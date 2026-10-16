@@ -110,6 +110,9 @@ pub struct PortCoverage {
     pub added: NaiveDate,
     /// Platform keys (`TargetPlatform::as_str`), distinct.
     pub targets: Vec<&'static str>,
+    /// Platform keys the game's original platforms already cover. They count as covered from
+    /// the game's first counted port, but are not ports on those platforms.
+    pub originals: Vec<&'static str>,
 }
 
 /// Every counter as a function of the day, built from creation dates.
@@ -142,6 +145,12 @@ impl Timeline {
             keys.dedup();
             for key in keys {
                 t.target_ports.entry(key).or_default().push(port.added);
+                pair_first
+                    .entry((port.game_id, key))
+                    .and_modify(|d| *d = (*d).min(port.added))
+                    .or_insert(port.added);
+            }
+            for &key in &port.originals {
                 pair_first
                     .entry((port.game_id, key))
                     .and_modify(|d| *d = (*d).min(port.added))
@@ -455,6 +464,15 @@ pub fn achievements(ports: &[PortFacts]) -> Vec<AchievementDto> {
 
 const PORT_COUNT_FILTER: &str = "p.status = 'published' AND p.kind <> 'decompilation'";
 
+/// Platform keys that a game's original platforms already cover, from their IGDB slugs.
+fn original_keys(slugs: &[String]) -> Vec<&'static str> {
+    slugs
+        .iter()
+        .filter_map(|s| TargetPlatform::from_platform_slug(s))
+        .map(|t| t.as_str())
+        .collect()
+}
+
 /// Counted ports with their added day and platform keys.
 pub async fn load_coverage(ex: impl PgExecutor<'_>) -> DbResult<Vec<PortCoverage>> {
     #[derive(sqlx::FromRow)]
@@ -462,10 +480,13 @@ pub async fn load_coverage(ex: impl PgExecutor<'_>) -> DbResult<Vec<PortCoverage
         game_id: i64,
         added: NaiveDate,
         platforms: Vec<String>,
+        original_slugs: Vec<String>,
     }
     let sql = format!(
         "SELECT p.game_id, (COALESCE(p.repo_created_at, p.created_at) AT TIME ZONE 'UTC')::date AS added,
-                port_platforms(p) AS platforms
+                port_platforms(p) AS platforms,
+                ARRAY(SELECT pl.slug FROM game_platforms gp JOIN platforms pl ON pl.id = gp.platform_id
+                      WHERE gp.game_id = p.game_id AND pl.slug IS NOT NULL) AS original_slugs
          FROM ports p
          WHERE {PORT_COUNT_FILTER}"
     );
@@ -481,6 +502,7 @@ pub async fn load_coverage(ex: impl PgExecutor<'_>) -> DbResult<Vec<PortCoverage
                 .filter_map(|p| p.parse::<TargetPlatform>().ok())
                 .map(|t| t.as_str())
                 .collect(),
+            originals: original_keys(&r.original_slugs),
         })
         .collect())
 }
@@ -657,12 +679,12 @@ async fn period_contributors(
     let rows = sqlx::query_as::<_, Row>(
         "WITH pairs AS (
             SELECT DISTINCT ON (p.game_id, t.target)
-                   p.id AS port_id, (p.created_at AT TIME ZONE 'UTC')::date AS added
+                   p.id AS port_id, (COALESCE(p.repo_created_at, p.created_at) AT TIME ZONE 'UTC')::date AS added
             FROM ports p
             CROSS JOIN LATERAL unnest(port_platforms(p)) AS t(target)
             WHERE p.status = 'published' AND p.kind <> 'decompilation'
               AND t.target = ANY($1::text[])
-            ORDER BY p.game_id, t.target, p.created_at, p.id
+            ORDER BY p.game_id, t.target, COALESCE(p.repo_created_at, p.created_at), p.id
          )
          SELECT lower(pa.github_login) AS login,
                 COALESCE(max(pa.name), lower(pa.github_login)) AS name,
@@ -809,10 +831,12 @@ async fn game_leaders(
         name: String,
         ports: i64,
         covered: Vec<String>,
+        original_slugs: Vec<String>,
     }
     let rows = sqlx::query_as::<_, Row>(
         "SELECT g.slug, g.name,
                 count(DISTINCT p.id)::bigint AS ports,
+                ARRAY(SELECT pl.slug FROM game_platforms gp JOIN platforms pl ON pl.id = gp.platform_id WHERE gp.game_id = g.id AND pl.slug IS NOT NULL) AS original_slugs,
                 COALESCE(array_agg(DISTINCT t.target) FILTER (WHERE t.target IS NOT NULL), '{}') AS covered
          FROM games g
          JOIN ports p ON p.game_id = g.id AND p.status = 'published' AND p.kind <> 'decompilation'
@@ -825,6 +849,19 @@ async fn game_leaders(
     .bind(MAJOR_TARGETS.to_vec())
     .fetch_all(pool)
     .await?;
+    let rows: Vec<Row> = rows
+        .into_iter()
+        .map(|mut r| {
+            r.covered.extend(
+                original_keys(&r.original_slugs)
+                    .into_iter()
+                    .map(str::to_string),
+            );
+            r.covered.sort_unstable();
+            r.covered.dedup();
+            r
+        })
+        .collect();
 
     let mut most: Vec<MostCoveredDto> = rows
         .iter()
@@ -951,7 +988,7 @@ pub async fn author_achievements(
 ) -> DbResult<Vec<AchievementDto>> {
     let sql = format!(
         "WITH base AS (
-            SELECT p.id, p.game_id, p.created_at, port_platforms(p) AS platforms, p.github_stars
+            SELECT p.id, p.game_id, COALESCE(p.repo_created_at, p.created_at) AS created_at, port_platforms(p) AS platforms, p.github_stars
             FROM ports p
             WHERE {PORT_COUNT_FILTER}
          ),
@@ -1000,6 +1037,7 @@ mod tests {
             game_id,
             added,
             targets: targets.to_vec(),
+            originals: Vec::new(),
         }
     }
 
@@ -1069,6 +1107,18 @@ mod tests {
         assert_eq!(end.slots_total(), 12);
         let linux = end.targets.iter().find(|t| t.key == "linux").unwrap();
         assert_eq!((linux.games, linux.ports), (1, 2));
+    }
+
+    #[test]
+    fn original_platform_counts_as_covered_without_a_port_there() {
+        let mut win = port(1, day(2), &["linux"]);
+        win.originals = vec!["windows"];
+        let t = Timeline::build(&[win], &[day(1)]);
+        let end = Parity::from_metrics(&t.values_on(day(2)));
+        // Windows is the game's original platform, so it is covered without a Windows port.
+        assert_eq!(end.slots_covered, 2);
+        let windows = end.targets.iter().find(|t| t.key == "windows").unwrap();
+        assert_eq!((windows.games, windows.ports), (1, 0));
     }
 
     #[test]
