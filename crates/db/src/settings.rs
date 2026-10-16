@@ -59,11 +59,16 @@ pub async fn set(ex: impl PgExecutor<'_>, key: &str, value: &Value) -> DbResult<
     Ok(())
 }
 
-/// All settings as `(key, value)` pairs, sorted by key.
+/// All admin-editable settings as `(key, value)` pairs, sorted by key. Internal markers like
+/// the digest's last-run timestamp are not admin-editable and are excluded, since they are not
+/// the integer shape this list promises.
 pub async fn all(ex: impl PgExecutor<'_>) -> DbResult<Vec<(String, Value)>> {
-    let rows = sqlx::query_as::<_, (String, Value)>("SELECT key, value FROM settings ORDER BY key")
-        .fetch_all(ex)
-        .await?;
+    let rows = sqlx::query_as::<_, (String, Value)>(
+        "SELECT key, value FROM settings WHERE key = ANY($1) ORDER BY key",
+    )
+    .bind(KNOWN_KEYS)
+    .fetch_all(ex)
+    .await?;
     Ok(rows)
 }
 
