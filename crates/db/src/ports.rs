@@ -444,7 +444,7 @@ pub fn name_source_for(name: &str, repo_url: &str) -> &'static str {
 pub async fn set_derived_name(conn: &mut PgConnection, port_id: i64, name: &str) -> DbResult<()> {
     sqlx::query(
         "UPDATE ports SET name = $2, name_source = 'derived'
-         WHERE id = $1 AND name_source = 'repo' AND NOT ('name' = ANY(locked_fields))",
+         WHERE id = $1 AND name_source IN ('repo', 'derived') AND NOT ('name' = ANY(locked_fields))",
     )
     .bind(port_id)
     .bind(name.trim())

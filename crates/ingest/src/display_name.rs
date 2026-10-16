@@ -63,16 +63,34 @@ fn description_clause(description: &str) -> Option<String> {
 }
 
 /// Keeps the part before a subtitle separator and rejects empty, generic or overlong results.
+/// A short single-word head ("TLoZ:TWW HD Recompiled — Android") is an abbreviation that
+/// belongs to the title, so the cut is applied to what follows it instead.
 fn clean_title(raw: &str) -> Option<String> {
-    let title = cut_subtitle(raw)
-        .trim()
-        .trim_end_matches(['-', '|', ','])
-        .trim();
+    let trim = |s: &str| {
+        s.trim()
+            .trim_end_matches(['-', '|', ','])
+            .trim()
+            .to_string()
+    };
+    let head_raw = cut_subtitle(raw);
+    let head = trim(head_raw);
+    let is_abbreviation = !head.contains(char::is_whitespace) && head.chars().count() <= 5;
+    let title = if is_abbreviation && head_raw.len() < raw.len() {
+        let after_head = &raw[head_raw.len()..];
+        let rest_start = SEPARATORS
+            .iter()
+            .find_map(|sep| after_head.strip_prefix(sep))
+            .map_or(head_raw.len(), |rest| raw.len() - rest.len());
+        let tail = cut_subtitle(&raw[rest_start..]);
+        trim(&raw[..rest_start + tail.len()])
+    } else {
+        head
+    };
     let len = title.chars().count();
     if !(3..=TITLE_MAX).contains(&len) || GENERIC.contains(&title.to_lowercase().as_str()) {
         return None;
     }
-    Some(title.to_string())
+    Some(title)
 }
 
 /// Subtitle separators, tried in order.
@@ -244,6 +262,16 @@ Play the 2002 game with a modern launcher on macOS, Windows, Linux, and Raspberr
             "zelda-mm-pc",
         );
         assert_eq!(suffixed, "The Legend of Zelda: Majora's Mask");
+    }
+
+    #[test]
+    fn abbreviation_before_the_colon_stays_in_the_name() {
+        let name = derive_display_name(
+            Some("# TLoZ:TWW HD Recompiled — Android"),
+            None,
+            "zeldawwhdrecompandroid",
+        );
+        assert_eq!(name, "TLoZ:TWW HD Recompiled Android");
     }
 
     #[test]

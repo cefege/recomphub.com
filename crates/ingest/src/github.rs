@@ -785,7 +785,7 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                 let mut tx = pool.begin().await?;
                 ports::update_github(&mut tx, port.id, &sync, Some(&ai)).await?;
                 ports::replace_github_authors(&mut tx, port.id, &authors).await?;
-                if port.name_source == "repo" {
+                if port.name_source == "repo" || port.name_source == "derived" {
                     let name = crate::display_name::derive_display_name(
                         prev.source.readme.as_deref(),
                         prev.description.as_deref(),
