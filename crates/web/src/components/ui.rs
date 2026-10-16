@@ -413,128 +413,190 @@ pub fn LoginPrompt(text: String) -> Element {
     }
 }
 
-/// Gameplay video tabs. "All" shows every video. Other tabs filter by target.
-/// Clicking a thumbnail swaps in the nocookie iframe.
+/// Gameplay videos, watched without leaving the page: one large player with a playlist beside
+/// it. Picking a video swaps it into the player, so only one embed exists and plays at a time.
+/// Platform tabs filter the playlist when the videos cover more than one target. Every control
+/// is a button, so nothing navigates to YouTube, even before hydration.
 #[component]
-pub fn VideoTabs(videos: Vec<VideoDto>) -> Element {
+pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
     let mut active = use_signal(|| "all".to_string());
-    let visible: Vec<VideoDto> = videos.into_iter().filter(|v| !v.hidden).collect();
-    if visible.is_empty() {
-        return rsx! {};
-    }
+    let mut selected = use_signal(|| None::<i64>);
+    let mut playing = use_signal(|| false);
+    let mut removed = use_signal(Vec::<i64>::new);
+    let mut hide_error = use_signal(|| None::<String>);
+    let can_hide = use_context::<ViewerStore>().can_moderate();
+
+    let visible: Vec<VideoDto> = videos
+        .into_iter()
+        .filter(|v| !v.hidden && !removed.read().contains(&v.id))
+        .collect();
     let mut targets: Vec<String> = Vec::new();
     for v in &visible {
         if !targets.contains(&v.target) {
             targets.push(v.target.clone());
         }
     }
+    let filter = active();
+    let filtered: Vec<VideoDto> = visible
+        .iter()
+        .filter(|v| filter == "all" || v.target == filter)
+        .cloned()
+        .collect();
+    let listed = if filtered.is_empty() {
+        visible
+    } else {
+        filtered
+    };
+    let Some(current) = selected()
+        .and_then(|id| listed.iter().find(|v| v.id == id))
+        .or(listed.first())
+        .cloned()
+    else {
+        return rsx! {};
+    };
+    let current_id = current.id;
+    let embed = format!(
+        "https://www.youtube-nocookie.com/embed/{}?autoplay=1&rel=0&playsinline=1",
+        current.youtube_id
+    );
+    let channel = current.channel.clone().unwrap_or_default();
+    let hide_message = hide_error().unwrap_or_default();
+    let single = listed.len() == 1;
+    let layout = if single {
+        "max-w-3xl"
+    } else {
+        "grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"
+    };
     rsx! {
         div { class: "flex flex-col gap-4",
             if targets.len() > 1 {
                 div { role: "tablist", class: TABS_LIST,
-                    button { r#type: "button", role: "tab", "aria-selected": if active() == "all" { "true" } else { "false" },
-                        class: if active() == "all" { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
-                        onclick: move |_| active.set("all".to_string()),
-                        "All"
-                    }
-                    for t in targets.clone() {
+                    for t in std::iter::once("all".to_string()).chain(targets.clone()) {
                         button { r#type: "button", role: "tab",
-                            "aria-selected": if active() == t { "true" } else { "false" },
-                            class: if active() == t { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
+                            "aria-selected": if filter == t { "true" } else { "false" },
+                            class: if filter == t { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
                             onclick: {
                                 let t = t.clone();
-                                move |_| active.set(t.clone())
+                                move |_| {
+                                    active.set(t.clone());
+                                    selected.set(None);
+                                    playing.set(false);
+                                }
                             },
-                            "{target_label(&t)}"
+                            if t == "all" { "All" } else { "{target_label(&t)}" }
                         }
                     }
                 }
             }
-            ul { class: "grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3",
-                for v in visible {
-                    {
-                        let id = v.id;
-                        let target = v.target.clone();
-                        rsx! {
-                            li { key: "{id}", hidden: active() != "all" && active() != target, "data-target": "{target}",
-                                VideoFacade { video: v }
+            div { class: "{layout}",
+                div { class: "min-w-0",
+                    div { class: "aspect-video w-full overflow-hidden rounded-lg border bg-black",
+                        if playing() {
+                            iframe {
+                                key: "{current.youtube_id}",
+                                class: "h-full w-full",
+                                src: "{embed}",
+                                title: "{current.title}",
+                                allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+                                allowfullscreen: true,
+                                referrerpolicy: "strict-origin-when-cross-origin",
+                            }
+                        } else {
+                            button { r#type: "button", class: "group relative block h-full w-full cursor-pointer",
+                                "aria-label": "Play {current.title}",
+                                onclick: move |_| playing.set(true),
+                                Picture {
+                                    media: current.thumb.clone(),
+                                    alt: format!("Video thumbnail: {}", current.title),
+                                    initials: "▶".to_string(),
+                                    sizes: "(min-width: 1024px) 66vw, 100vw",
+                                    class: "h-full w-full object-cover transition-opacity group-hover:opacity-90",
+                                }
+                                span { class: "absolute inset-0 flex items-center justify-center",
+                                    span { class: "flex size-16 items-center justify-center rounded-full bg-black/70 text-white transition-transform group-hover:scale-105",
+                                        crate::components::icons::PlayIcon { class: "size-7" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div { class: "mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2",
+                        div { class: "min-w-0",
+                            p { class: "font-medium", "{current.title}" }
+                            if !channel.is_empty() {
+                                p { class: "mt-0.5 text-sm text-muted-foreground", "{channel}" }
+                            }
+                        }
+                        if can_hide {
+                            div { class: "flex items-center gap-2",
+                                if !hide_message.is_empty() {
+                                    span { class: "text-xs text-destructive", "{hide_message}" }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
+                                    onclick: move |_| {
+                                        spawn(async move {
+                                            match api::hide_video(current_id).await {
+                                                Ok(()) => {
+                                                    removed.write().push(current_id);
+                                                    selected.set(None);
+                                                    playing.set(false);
+                                                    hide_error.set(None);
+                                                }
+                                                Err(e) => hide_error.set(Some(e.to_string())),
+                                            }
+                                        });
+                                    },
+                                    "Hide video"
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/// One video. Renders a link to YouTube until clicked, then the nocookie embed.
-#[component]
-pub fn VideoFacade(video: VideoDto) -> Element {
-    let mut playing = use_signal(|| false);
-    let mut gone = use_signal(|| false);
-    let mut hide_error = use_signal(|| None::<String>);
-    let can_hide = use_context::<ViewerStore>().can_moderate();
-    let hide_message = hide_error().unwrap_or_default();
-    let video_id = video.id;
-    let watch = format!("https://www.youtube.com/watch?v={}", video.youtube_id);
-    let embed = format!(
-        "https://www.youtube-nocookie.com/embed/{}?autoplay=1",
-        video.youtube_id
-    );
-    let channel = video.channel.clone().unwrap_or_default();
-    if gone() {
-        return rsx! {};
-    }
-    if playing() {
-        return rsx! {
-            div { class: "flex flex-col gap-2",
-                div { class: "aspect-video w-full overflow-hidden rounded-lg bg-muted",
-                    iframe { class: "h-full w-full", src: "{embed}", title: "{video.title}", allow: "autoplay; encrypted-media; picture-in-picture", allowfullscreen: true }
-                }
-                p { class: "line-clamp-2 text-sm font-medium", "{video.title}" }
-            }
-        };
-    }
-    rsx! {
-        div { class: "flex flex-col gap-2",
-            a { href: "{watch}", target: "_blank", rel: "noopener", class: "group relative block aspect-video overflow-hidden rounded-lg bg-muted",
-                onclick: move |e| { e.prevent_default(); playing.set(true); },
-                Picture {
-                    media: video.thumb.clone(),
-                    alt: format!("Video thumbnail: {}", video.title),
-                    initials: "▶".to_string(),
-                    sizes: "(min-width: 1024px) 33vw, 100vw",
-                    class: "h-full w-full object-cover transition-opacity group-hover:opacity-90",
-                }
-                span { class: "absolute inset-0 flex items-center justify-center",
-                    span { class: "flex size-12 items-center justify-center rounded-full bg-black/70 text-white",
-                        crate::components::icons::PlayIcon { class: "size-5" }
-                    }
-                }
-            }
-            div {
-                p { class: "line-clamp-2 text-sm font-medium", "{video.title}" }
-                if !channel.is_empty() {
-                    p { class: "mt-0.5 text-xs text-muted-foreground", "{channel}" }
-                }
-            }
-            if can_hide {
-                div { class: "flex flex-wrap items-center gap-2",
-                    button {
-                        r#type: "button",
-                        class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
-                        onclick: move |_| {
-                            spawn(async move {
-                                match api::hide_video(video_id).await {
-                                    Ok(()) => gone.set(true),
-                                    Err(e) => hide_error.set(Some(e.to_string())),
+                if !single {
+                    div { class: "relative min-h-0",
+                        ol { class: "flex max-h-[28rem] flex-col gap-1 overflow-y-auto lg:absolute lg:inset-0 lg:max-h-none",
+                            "aria-label": "Playlist",
+                            for (i, v) in listed.iter().enumerate() {
+                                {
+                                    let id = v.id;
+                                    let is_current = id == current_id;
+                                    let item_channel = v.channel.clone().unwrap_or_default();
+                                    rsx! {
+                                        li { key: "{id}",
+                                            button { r#type: "button",
+                                                class: if is_current { "flex w-full cursor-pointer gap-3 rounded-md bg-muted p-2 text-left" } else { "flex w-full cursor-pointer gap-3 rounded-md p-2 text-left hover:bg-muted/60" },
+                                                "aria-current": if is_current { "true" } else { "false" },
+                                                onclick: move |_| {
+                                                    selected.set(Some(id));
+                                                    playing.set(true);
+                                                },
+                                                span { class: "relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-muted",
+                                                    Picture {
+                                                        media: v.thumb.clone(),
+                                                        alt: String::new(),
+                                                        initials: "▶".to_string(),
+                                                        sizes: "128px",
+                                                        class: "h-full w-full object-cover",
+                                                    }
+                                                    if is_current && playing() {
+                                                        span { class: "absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white", "Now playing" }
+                                                    }
+                                                }
+                                                span { class: "min-w-0",
+                                                    span { class: "line-clamp-2 text-sm font-medium", "{v.title}" }
+                                                    if !item_channel.is_empty() {
+                                                        span { class: "mt-0.5 block text-xs text-muted-foreground", "{item_channel}" }
+                                                    }
+                                                    span { class: "sr-only", "Video {i + 1}" }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                            });
-                        },
-                        "Hide video"
-                    }
-                    if !hide_message.is_empty() {
-                        span { class: "text-xs text-destructive", "{hide_message}" }
+                            }
+                        }
                     }
                 }
             }

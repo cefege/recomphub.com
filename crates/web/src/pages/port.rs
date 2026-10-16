@@ -18,7 +18,7 @@ use crate::components::styles::{
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
     AiBadge, Breadcrumb, PlayabilityMeter, PortCardView, ReleaseChip, Section, TargetIcon,
-    VideoTabs, initials_of, keyed, target_label,
+    VideoPlayer, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{StarButton, use_marks};
 
@@ -381,7 +381,7 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
 
         if !videos.is_empty() {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
-                VideoTabs { videos }
+                VideoPlayer { videos }
             }
         }
 

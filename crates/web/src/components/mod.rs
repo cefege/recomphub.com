@@ -30,7 +30,7 @@ pub use stats::{AuthorAchievements, ParityMeter, PlatformCoverage};
 pub use time::RelativeTime;
 pub use ui::{
     AiBadge, Breadcrumb, CardGrid, Chip, EmptyState, GroundRules, LoginPrompt, Pager,
-    PlayabilityMeter, PortCardView, Rail, ReleaseChip, Section, TargetIcon, TrendChip, VideoTabs,
+    PlayabilityMeter, PortCardView, Rail, ReleaseChip, Section, TargetIcon, TrendChip, VideoPlayer,
     ViewToggle, ai_text, initials_of, keyed, target_label, url_encode, with_query,
 };
 pub use viewer::{

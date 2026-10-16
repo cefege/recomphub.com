@@ -20,7 +20,7 @@ use crate::components::styles::{
 };
 use crate::components::ui::{
     Breadcrumb, CardGrid, Chip, EmptyState, Pager, PortCardView, Rail, Section, TargetIcon,
-    VideoTabs, ViewToggle, initials_of, keyed, target_label,
+    VideoPlayer, ViewToggle, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{WantButton, use_marks};
 use crate::pages::faq::game_faq;
@@ -587,7 +587,7 @@ fn GameBody(detail: GameDetail) -> Element {
 
         if !videos.is_empty() {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
-                VideoTabs { videos }
+                VideoPlayer { videos }
             }
         }
 

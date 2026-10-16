@@ -422,8 +422,10 @@ pub async fn update_port(conn: &mut PgConnection, port_id: i64, full: &PortFull)
     Ok(())
 }
 
-/// `repo` while `name` is still the repo slug (ignoring case, `-` and `_`), otherwise `manual`.
-/// Only a `repo` name may be replaced by github-sync; every other name is kept.
+/// `repo` while `name` is still the repo slug (ignoring case, `-` and `_`) or is written like
+/// one: no capitals at all ("crashwoc-decomp", "super mario bros. remastered android"), which
+/// is how importers pass slugs through. Otherwise `manual`. Only a `repo` name may be replaced
+/// by github-sync; editor changes also lock `name`, so a lowercase edit is never replaced.
 pub fn name_source_for(name: &str, repo_url: &str) -> &'static str {
     fn norm(s: &str) -> String {
         s.chars()
@@ -431,12 +433,12 @@ pub fn name_source_for(name: &str, repo_url: &str) -> &'static str {
             .flat_map(char::to_lowercase)
             .collect()
     }
+    let name = name.trim();
     let slug = repo_url.rsplit('/').next().unwrap_or_default();
-    if !slug.is_empty() && norm(name.trim()) == norm(slug) {
-        "repo"
-    } else {
-        "manual"
-    }
+    let is_slug = !slug.is_empty() && norm(name) == norm(slug);
+    let uncased =
+        name.chars().any(|c| c.is_ascii_lowercase()) && !name.chars().any(char::is_uppercase);
+    if is_slug || uncased { "repo" } else { "manual" }
 }
 
 /// Replaces a port's name with a derived one, only while it is still the repo slug and no editor
@@ -1164,6 +1166,32 @@ mod tests {
         let repo = "https://github.com/someone/NFSMW_Recompiled";
         assert_eq!(name_source_for("nfsmw-recompiled", repo), "repo");
         assert_eq!(name_source_for("  nfsmw-recompiled  ", repo), "repo");
+    }
+
+    #[test]
+    fn uncased_import_names_are_repo_source_but_cased_brands_are_manual() {
+        assert_eq!(
+            name_source_for(
+                "crashwoc-decomp",
+                "https://github.com/denzi-gh/crashwoc-decomp-gc"
+            ),
+            "repo"
+        );
+        assert_eq!(
+            name_source_for(
+                "super mario bros. remastered android",
+                "https://github.com/x/super-mario-bros.-remastered-android"
+            ),
+            "repo"
+        );
+        assert_eq!(
+            name_source_for("Sonic 3 A.I.R.", "https://github.com/eukaryot/sonic3air"),
+            "manual"
+        );
+        assert_eq!(
+            name_source_for("Party Board", "https://github.com/mariopartyrd/partyboard"),
+            "manual"
+        );
     }
 
     #[test]
