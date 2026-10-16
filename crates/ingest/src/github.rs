@@ -785,14 +785,6 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                 let mut tx = pool.begin().await?;
                 ports::update_github(&mut tx, port.id, &sync, Some(&ai)).await?;
                 ports::replace_github_authors(&mut tx, port.id, &authors).await?;
-                if port.name_source == "repo" || port.name_source == "derived" {
-                    let name = crate::display_name::derive_display_name(
-                        prev.source.readme.as_deref(),
-                        prev.description.as_deref(),
-                        &repo,
-                    );
-                    ports::set_derived_name(&mut tx, port.id, &name).await?;
-                }
                 tx.commit().await?;
                 if let Err(e) =
                     port_video_store::record_readme_videos(pool, port.id, &prev.readme_youtube_ids)
@@ -818,43 +810,83 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
     if let Err(e) = crate::funding::refresh_due(pool, client).await {
         tracing::warn!(error = %format!("{e:#}"), "author funding refresh failed");
     }
-    if let Err(e) = rederive_names(pool).await {
+    if let Err(e) = rederive_names(pool, false).await {
         tracing::warn!(error = %format!("{e:#}"), "display name pass failed");
     }
     Ok(report)
 }
 
 /// Re-derives the display name of every port whose name came from its repo or a previous
-/// derivation, from the README and description already stored by the scan. No GitHub calls,
-/// so naming fixes reach every port in one pass. Returns the number of ports renamed.
-pub async fn rederive_names(pool: &PgPool) -> Result<usize> {
-    /// (port id, current name, repo URL, stored README, stored repo description)
-    type SourceRow = (i64, String, String, Option<String>, Option<String>);
-    let rows: Vec<SourceRow> = sqlx::query_as(
-        "SELECT p.id, p.name, p.repo_url, s.readme, s.repo_description
-         FROM ports p JOIN port_description_sources s ON s.port_id = p.id
-         WHERE p.name_source IN ('repo', 'derived') AND NOT ('name' = ANY(p.locked_fields))",
+/// derivation, from the README and description already stored by the scan, and makes names
+/// unique within each game. No GitHub calls. Returns `(port id, old name, new name)` for every
+/// change; with `dry_run` nothing is written.
+pub async fn rederive_names(pool: &PgPool, dry_run: bool) -> Result<Vec<(i64, String, String)>> {
+    use crate::display_name::{NameSources, Named, derive_display_name, disambiguate};
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: i64,
+        game_id: i64,
+        name: String,
+        repo_url: String,
+        kind: String,
+        game: String,
+        eligible: bool,
+        readme: Option<String>,
+        repo_description: Option<String>,
+        github_stars: i32,
+    }
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT p.id, p.game_id, p.name, p.repo_url, p.kind, g.name AS game,
+                (p.name_source IN ('repo', 'derived') AND NOT ('name' = ANY(p.locked_fields)))
+                    AS eligible,
+                s.readme, s.repo_description, p.github_stars
+         FROM ports p
+         JOIN games g ON g.id = p.game_id
+         LEFT JOIN port_description_sources s ON s.port_id = p.id
+         ORDER BY p.id",
     )
     .fetch_all(pool)
     .await
-    .context("loading stored port sources")?;
+    .context("loading ports for the name pass")?;
+
+    let mut named: Vec<Named> = rows
+        .iter()
+        .map(|r| {
+            let (owner, repo) = parse_repo(&r.repo_url).unwrap_or_default();
+            let name = if r.eligible {
+                derive_display_name(&NameSources {
+                    readme: r.readme.as_deref(),
+                    description: r.repo_description.as_deref(),
+                    repo: &repo,
+                    game: &r.game,
+                    kind: &r.kind,
+                })
+            } else {
+                r.name.clone()
+            };
+            Named {
+                game_id: r.game_id,
+                owner,
+                name,
+                stars: r.github_stars,
+            }
+        })
+        .collect();
+    disambiguate(&mut named);
+
+    let mut changes = Vec::new();
     let mut conn = pool.acquire().await?;
-    let mut renamed = 0;
-    for (id, current, repo_url, readme, description) in rows {
-        let Ok((_, repo)) = parse_repo(&repo_url) else {
+    for (row, new) in rows.iter().zip(named) {
+        if !row.eligible || new.name == row.name {
             continue;
-        };
-        let name = crate::display_name::derive_display_name(
-            readme.as_deref(),
-            description.as_deref(),
-            &repo,
-        );
-        if name != current {
-            ports::set_derived_name(&mut conn, id, &name).await?;
-            renamed += 1;
         }
+        if !dry_run {
+            ports::set_derived_name(&mut conn, row.id, &new.name).await?;
+        }
+        changes.push((row.id, row.name.clone(), new.name));
     }
-    Ok(renamed)
+    Ok(changes)
 }
 
 /// Repos per maintenance GraphQL query. Each repo costs a few hundred nodes, so chunks stay small.

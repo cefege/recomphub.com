@@ -43,7 +43,11 @@ enum Command {
     /// Refresh GitHub metadata, releases, authors and AI usage for stale ports.
     GithubSync,
     /// Re-derive port display names from the README text github-sync already stored. No GitHub calls.
-    DeriveNames,
+    DeriveNames {
+        /// Print every change and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Find new recomp repositories on GitHub search and r/recomps as candidates.
     Discover,
     /// Fetch YouTube gameplay videos per game and platform, within the daily search budget.
@@ -136,10 +140,15 @@ async fn run(command: Command) -> Result<()> {
             let report = github::run_github_sync(&pool, &client).await?;
             info!(?report, "github-sync finished");
         }
-        Command::DeriveNames => {
+        Command::DeriveNames { dry_run } => {
             let pool = pool().await?;
-            let renamed = github::rederive_names(&pool).await?;
-            info!(renamed, "derive-names finished");
+            let changes = github::rederive_names(&pool, dry_run).await?;
+            if dry_run {
+                for (id, old, new) in &changes {
+                    println!("{id}\t{old}\t->\t{new}");
+                }
+            }
+            info!(renamed = changes.len(), dry_run, "derive-names finished");
         }
         Command::Discover => {
             let pool = pool().await?;
