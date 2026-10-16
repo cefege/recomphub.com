@@ -3930,8 +3930,6 @@ dependencies = [
  "recomphub-shared",
  "regex",
  "reqwest",
- "ring",
- "rsa",
  "serde",
  "serde_json",
  "sha2",

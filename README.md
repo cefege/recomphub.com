@@ -59,13 +59,9 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `SECRETS_KEY` | 32 bytes, base64 (`openssl rand -base64 32`); encrypts AI provider credentials at rest. Web and workers need the same value |
 | `YTDLP_BIN` | `yt-dlp` |
 | `YTDLP_COOKIES` | optional path to a Netscape cookies.txt; copied to a temp file, never logged |
-| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Web application) for sign-in; the Google button appears on `/sign-in` only when set. Redirect URI: `${SITE_URL}/auth/google/callback` |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Web application); the only sign-in method. `/auth/google` returns 503 without it. Redirect URI: `${SITE_URL}/auth/google/callback` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
-| `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed (or a Cloudflare Access sign-in with that email) gets the admin role |
-| `GITHUB_OAUTH_CLIENT_ID` | optional GitHub OAuth app client ID; the GitHub button appears on `/sign-in` only when set. Callback: `${SITE_URL}/auth/github/callback` |
-| `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret |
-| `CF_ACCESS_TEAM_DOMAIN` | optional Cloudflare Access team domain for the `/auth/cloudflare` admin path; 503 without it |
-| `CF_ACCESS_AUD` | Cloudflare Access application audience tag |
+| `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed gets the admin role |
 | `RUST_LOG` | |
 | `IP` and `PORT` | set by the Dockerfile; dx reads them |
 
@@ -83,7 +79,7 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 
 ## Operator steps
 
-These need your Cloudflare, cluster and GitHub access.
+These need your Cloudflare (DNS and tunnel), Google Cloud, cluster and GitHub access.
 
 1. Create the public repo `cefege/recomphub.com` and push. The GHCR package `ghcr.io/cefege/recomphub.com` inherits the repo's public visibility, so the cluster pulls it without a pull secret.
 2. Create the tunnel and wire DNS:
@@ -93,7 +89,7 @@ These need your Cloudflare, cluster and GitHub access.
    - `cloudflared tunnel route dns recomphub www.recomphub.com`
    - Put the tunnel ID in `deploy/production/cloudflared.yaml` (currently tunnel `recomphub`, `152ceebc-cbe8-442d-9b03-54bf2f37e4e0`).
 3. Create the Google sign-in client in Google Cloud Console: **APIs & Services → OAuth consent screen** (External, app name RecompHub, scopes `openid`, `email`, `profile`, then **Publish app** so any Google account can sign in), then **Credentials → Create credentials → OAuth client ID → Web application** with authorized JavaScript origin `https://recomphub.com` and authorized redirect URI `https://recomphub.com/auth/google/callback`. Note the client ID and secret for the secret below.
-   Everyone, the admin included, signs in at `/sign-in`. The admin role goes to a Google account whose verified email is in `ADMIN_EMAILS`. GitHub sign-in (an OAuth app with callback `https://recomphub.com/auth/github/callback`) and the Cloudflare Access path (`/auth/cloudflare`) are optional.
+   Everyone, the admin included, signs in with Google; "Sign in" goes straight to `/auth/google`. The admin role goes to a Google account whose verified email is in `ADMIN_EMAILS`.
 4. Create the application secret:
 
    ```sh
@@ -106,8 +102,6 @@ These need your Cloudflare, cluster and GitHub access.
      --from-literal=TWITCH_CLIENT_ID=... \
      --from-literal=TWITCH_CLIENT_SECRET=... \
      --from-literal=YOUTUBE_API_KEY=... \
-     --from-literal=GITHUB_OAUTH_CLIENT_ID=... \
-     --from-literal=GITHUB_OAUTH_CLIENT_SECRET=... \
      --from-literal=SECRETS_KEY="$(openssl rand -base64 32)" \
      --from-literal=ADMIN_EMAILS=mateiasmihaiandrei@gmail.com
    ```

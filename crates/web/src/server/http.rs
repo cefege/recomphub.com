@@ -1,5 +1,5 @@
 //! Plain HTTP routes served beside the Dioxus app: health, robots, sitemaps,
-//! the RSS feed, media files and the Cloudflare sign-in endpoints. Also the
+//! the RSS feed, media files and the Google sign-in endpoints. Also the
 //! site-wide middleware (canonical redirects, cache headers, compression).
 
 use chrono::{DateTime, Utc};
@@ -18,7 +18,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, Predicate};
 use tower_http::services::ServeDir;
 
-use super::{cloudflare, config, oauth, state};
+use super::{config, oauth, state};
 
 /// Google's limit per sitemap file.
 const SITEMAP_LIMIT: usize = 45_000;
@@ -37,12 +37,9 @@ pub fn with_site_routes(router: Router) -> Router {
         .route("/sitemap.xml", get(sitemap_index))
         .route("/sitemaps/{name}", get(sitemap_file))
         .route("/feed.xml", get(feed))
-        .route("/auth/google", get(oauth::google_login))
-        .route("/auth/google/callback", get(oauth::google_callback))
-        .route("/auth/github", get(oauth::github_login))
-        .route("/auth/github/callback", get(oauth::github_callback))
-        .route("/auth/cloudflare", get(cloudflare::login))
-        .route("/auth/logout", post(cloudflare::logout))
+        .route("/auth/google", get(oauth::login))
+        .route("/auth/google/callback", get(oauth::callback))
+        .route("/auth/logout", post(oauth::logout))
         .nest_service("/media", ServeDir::new(&config::get().media_dir));
 
     let compression = CompressionLayer::new().compress_when(DefaultPredicate::new().and(

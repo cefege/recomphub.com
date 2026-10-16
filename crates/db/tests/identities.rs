@@ -1,13 +1,11 @@
 //! Sign-in identity rules: first sign-in, subject keying, no email merging, banning and admin promotion.
 
-use recomphub_db::identities::{self, IdentityProfile, Provider};
+use recomphub_db::identities::{self, IdentityProfile};
 use recomphub_db::{DbResult, PgPool};
 
-fn cloudflare(subject: &str, email: Option<&str>) -> IdentityProfile {
+fn google(subject: &str, email: Option<&str>) -> IdentityProfile {
     IdentityProfile {
-        provider: Provider::Cloudflare,
         subject: subject.to_string(),
-        login: None,
         email: email.map(str::to_string),
         name: Some("Ada Lovelace".to_string()),
         avatar_media_id: None,
@@ -24,13 +22,12 @@ async fn set_banned(pool: &PgPool, user_id: i64) -> DbResult<()> {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn first_sign_in_creates_user_and_identity(pool: PgPool) -> DbResult<()> {
-    let user =
-        identities::sign_in(&pool, &cloudflare("sub-1", Some("ada@example.com")), false).await?;
+    let user = identities::sign_in(&pool, &google("sub-1", Some("ada@example.com")), false).await?;
     assert_eq!(user.display_name, "Ada Lovelace");
     assert_eq!(user.role, "user");
 
     let again =
-        identities::sign_in(&pool, &cloudflare("sub-1", Some("ada@example.com")), false).await?;
+        identities::sign_in(&pool, &google("sub-1", Some("ada@example.com")), false).await?;
     assert_eq!(
         again.id, user.id,
         "the same subject signs into the same user"
@@ -41,9 +38,9 @@ async fn first_sign_in_creates_user_and_identity(pool: PgPool) -> DbResult<()> {
 #[sqlx::test(migrations = "./migrations")]
 async fn a_shared_email_never_merges_two_accounts(pool: PgPool) -> DbResult<()> {
     let first =
-        identities::sign_in(&pool, &cloudflare("sub-1", Some("ada@example.com")), false).await?;
+        identities::sign_in(&pool, &google("sub-1", Some("ada@example.com")), false).await?;
     let second =
-        identities::sign_in(&pool, &cloudflare("sub-2", Some("ada@example.com")), false).await?;
+        identities::sign_in(&pool, &google("sub-2", Some("ada@example.com")), false).await?;
     assert_ne!(
         first.id, second.id,
         "a shared email must not merge two accounts"
@@ -53,11 +50,10 @@ async fn a_shared_email_never_merges_two_accounts(pool: PgPool) -> DbResult<()> 
 
 #[sqlx::test(migrations = "./migrations")]
 async fn admin_promotion_is_granted_and_never_revoked(pool: PgPool) -> DbResult<()> {
-    let user =
-        identities::sign_in(&pool, &cloudflare("sub-1", Some("mike@example.com")), true).await?;
+    let user = identities::sign_in(&pool, &google("sub-1", Some("mike@example.com")), true).await?;
     assert_eq!(user.role, "admin");
     let later =
-        identities::sign_in(&pool, &cloudflare("sub-1", Some("mike@example.com")), false).await?;
+        identities::sign_in(&pool, &google("sub-1", Some("mike@example.com")), false).await?;
     assert_eq!(
         later.role, "admin",
         "a sign-in without the grant keeps the role"
@@ -67,42 +63,9 @@ async fn admin_promotion_is_granted_and_never_revoked(pool: PgPool) -> DbResult<
 
 #[sqlx::test(migrations = "./migrations")]
 async fn banned_users_are_returned_for_the_caller_to_refuse(pool: PgPool) -> DbResult<()> {
-    let user = identities::sign_in(&pool, &cloudflare("sub-1", None), false).await?;
+    let user = identities::sign_in(&pool, &google("sub-1", None), false).await?;
     set_banned(&pool, user.id).await?;
-    let again = identities::sign_in(&pool, &cloudflare("sub-1", None), false).await?;
+    let again = identities::sign_in(&pool, &google("sub-1", None), false).await?;
     assert!(again.banned);
-    Ok(())
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn google_identity_signs_in_and_never_merges_with_another_provider(
-    pool: PgPool,
-) -> DbResult<()> {
-    let google = IdentityProfile {
-        provider: Provider::Google,
-        subject: "1098765".to_string(),
-        login: None,
-        email: Some("ada@example.com".to_string()),
-        name: Some("Ada Lovelace".to_string()),
-        avatar_media_id: None,
-    };
-    let user = identities::sign_in(&pool, &google, true).await?;
-    assert_eq!(user.role, "admin");
-    assert_eq!(user.github_login, None);
-    assert_eq!(
-        identities::sign_in(&pool, &google, false).await?.id,
-        user.id
-    );
-
-    let other = identities::sign_in(
-        &pool,
-        &cloudflare("1098765", Some("ada@example.com")),
-        false,
-    )
-    .await?;
-    assert_ne!(
-        other.id, user.id,
-        "same subject and email under another provider is another account"
-    );
     Ok(())
 }

@@ -14,7 +14,7 @@ use recomphub::api::moderation::{
 };
 use recomphub::server::session::{SESSION_COOKIE, new_token};
 use recomphub::server::state::init_pool;
-use recomphub_db::identities::{self, IdentityProfile, Provider};
+use recomphub_db::identities::{self, IdentityProfile};
 use recomphub_db::users_sessions;
 use recomphub_shared::dto::ReviewOverrides;
 use sqlx::{Connection, PgConnection, PgPool, postgres::PgPoolOptions};
@@ -97,7 +97,7 @@ async fn plain_user(fx: &Fixtures, plain: &Viewer) {
     );
 
     let signed_in = as_user(plain, me()).await.expect("me").expect("signed in");
-    assert_eq!(signed_in.github_login.as_deref(), Some("plain-test"));
+    assert_eq!(signed_in.display_name, "plain-test");
 
     let on = as_user(plain, toggle_star(fx.port)).await.expect("star on");
     assert!(on.starred);
@@ -330,9 +330,7 @@ async fn insert_port(pool: &PgPool, game_id: i64, slug: &str, repo_url: &str) ->
 
 async fn user(pool: &PgPool, github_id: i64, login: &str, is_admin: bool) -> Viewer {
     let profile = IdentityProfile {
-        provider: Provider::GitHub,
         subject: github_id.to_string(),
-        login: Some(login.to_string()),
         email: None,
         name: Some(login.to_string()),
         avatar_media_id: None,

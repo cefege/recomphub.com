@@ -157,7 +157,7 @@ pub fn Shell() -> Element {
                             // A real link, so it works before hydration; once hydrated it also
                             // carries the current page as `next`.
                             a {
-                                href: "/sign-in",
+                                href: "/auth/google",
                                 class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
                                 onclick: move |e| {
                                     e.prevent_default();

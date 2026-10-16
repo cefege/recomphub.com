@@ -75,18 +75,6 @@ pub async fn me() -> Result<Option<SessionUser>, ServerFnError> {
     Ok(Some(session_user(&row, avatar)))
 }
 
-/// Member sign-in providers that are configured, in display order (`google`, `github`).
-#[get("/api/sign-in-methods")]
-pub async fn sign_in_methods() -> Result<Vec<String>, ServerFnError> {
-    use crate::server::oauth::OAuth;
-    let cfg = crate::server::config::get();
-    Ok([(OAuth::Google, "google"), (OAuth::GitHub, "github")]
-        .into_iter()
-        .filter(|(provider, _)| provider.configured(cfg))
-        .map(|(_, slug)| slug.to_string())
-        .collect())
-}
-
 /// Which of the given ports and games the signed-in viewer has starred or wanted.
 /// A signed-out viewer has no marks, so the result is empty.
 #[post("/api/marks")]

@@ -5,7 +5,7 @@ use crate::pages::{
     About, AccountPage, AdminPage, AuthorPage, CreatorsHub, CreatorsPlatforms, CreatorsRecompile,
     CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, ModerationLog, ModerationQueue,
     NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage, PrivacyPage,
-    RunsOnPage, SearchPage, SignInPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
+    RunsOnPage, SearchPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
 };
 
 #[derive(Routable, Clone, PartialEq)]
@@ -48,8 +48,6 @@ pub enum Route {
     EditPortPage { port_id: i64 },
     #[route("/account")]
     AccountPage {},
-    #[route("/sign-in?:next")]
-    SignInPage { next: String },
     #[route("/moderation")]
     ModerationQueue {},
     #[route("/moderation/log?:page")]

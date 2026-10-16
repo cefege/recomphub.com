@@ -248,8 +248,6 @@ pub struct SessionUser {
 pub fn provider_label(provider: &str) -> &'static str {
     match provider {
         "google" => "Google",
-        "github" => "GitHub",
-        "cloudflare" => "Cloudflare",
         _ => "Unknown provider",
     }
 }
@@ -494,7 +492,7 @@ pub struct UserAdminRow {
     pub id: i64,
     pub display_name: String,
     pub github_login: Option<String>,
-    /// Sign-in providers in use: "google", "github", "cloudflare".
+    /// Sign-in providers in use (only "google").
     pub providers: Vec<String>,
     /// Emails from the sign-in providers. Admin-only; never shown publicly.
     pub emails: Vec<String>,

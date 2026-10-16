@@ -49,10 +49,10 @@ impl ViewerStore {
     }
 }
 
-/// Send the visitor to the sign-in chooser, returning to the current page.
+/// Send the visitor to Google sign-in, returning to the current page.
 pub fn login_redirect() {
     let _ = document::eval(
-        "location.href='/sign-in?next='+encodeURIComponent(location.pathname+location.search)",
+        "location.href='/auth/google?next='+encodeURIComponent(location.pathname+location.search)",
     );
 }
 
