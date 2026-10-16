@@ -38,7 +38,11 @@ pub const GITHUB_QUERIES: &[&str] = &[
     "\"your own copy of the original game\" in:readme",
 ];
 
-pub const REDDIT_FEED_URL: &str = "https://www.reddit.com/r/recomps/new/.rss?limit=100";
+/// Subreddit Atom feeds scanned for linked GitHub repositories.
+pub const REDDIT_FEED_URLS: [&str; 2] = [
+    "https://www.reddit.com/r/recomps/new/.rss?limit=100",
+    "https://www.reddit.com/r/decomps/new/.rss?limit=100",
+];
 pub const REDDIT_USER_AGENT: &str = "recomphub/1.0 (+https://recomphub.com)";
 /// A GitHub search hit is kept when it has at least this many stars, or any release.
 pub const KEEP_MIN_STARS: i64 = 5;
@@ -59,7 +63,7 @@ pub struct DiscoverReport {
     pub kept: usize,
     /// Candidate submissions created (GitHub and Reddit together).
     pub inserted: usize,
-    /// Set when the r/recomps feed was skipped (a non-200 response).
+    /// Set when a subreddit feed was skipped (a non-200 response).
     pub reddit_skipped: bool,
 }
 
@@ -99,7 +103,7 @@ pub fn reddit_payload(repo: &reddit::RedditRepo) -> Value {
     })
 }
 
-/// Runs every GitHub query, then the r/recomps feed.
+/// Runs every GitHub query, then the r/recomps and r/decomps feeds.
 ///
 /// Requires `GITHUB_TOKEN` through `client`: unauthenticated search is limited to 10 requests a
 /// minute, which the queries exceed.
@@ -160,28 +164,33 @@ pub async fn run_discover(pool: &PgPool, client: &GithubClient) -> Result<Discov
     Ok(report)
 }
 
-/// Fetches r/recomps. A non-200 response logs a warning and skips only this source.
+/// Fetches each subreddit feed. A non-200 response logs a warning and skips only that feed.
 async fn run_reddit(pool: &PgPool, report: &mut DiscoverReport) -> Result<()> {
     let http = reqwest::Client::builder()
         .user_agent(REDDIT_USER_AGENT)
         .timeout(REDDIT_TIMEOUT)
         .build()
         .context("building the Reddit HTTP client")?;
-    let resp = http
-        .get(REDDIT_FEED_URL)
-        .send()
-        .await
-        .context("requesting the r/recomps feed")?;
-    let status = resp.status();
-    if !status.is_success() {
-        tracing::warn!(%status, "r/recomps feed returned a non-200 response; skipping Reddit");
-        report.reddit_skipped = true;
-        return Ok(());
-    }
-    let body = resp.bytes().await.context("reading the r/recomps feed")?;
-    for repo in reddit::parse_feed(&body)? {
-        if submissions::add_candidate(pool, "discovery:reddit", &reddit_payload(&repo)).await? {
-            report.inserted += 1;
+    for url in REDDIT_FEED_URLS {
+        let resp = http
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("requesting {url}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            tracing::warn!(%status, url, "subreddit feed returned a non-200 response; skipping it");
+            report.reddit_skipped = true;
+            continue;
+        }
+        let body = resp
+            .bytes()
+            .await
+            .with_context(|| format!("reading {url}"))?;
+        for repo in reddit::parse_feed(&body)? {
+            if submissions::add_candidate(pool, "discovery:reddit", &reddit_payload(&repo)).await? {
+                report.inserted += 1;
+            }
         }
     }
     Ok(())

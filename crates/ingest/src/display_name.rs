@@ -88,7 +88,13 @@ fn clean_title(raw: &str) -> Option<String> {
         head
     };
     let len = title.chars().count();
-    if !(3..=TITLE_MAX).contains(&len) || GENERIC.contains(&title.to_lowercase().as_str()) {
+    let lower = title.to_lowercase();
+    let letters = title.chars().filter(|c| c.is_alphabetic()).count();
+    let upper = title.chars().filter(|c| c.is_uppercase()).count();
+    // Notices and banners ("NOTE: This is outdated!", "SUPPORT THE OFFICIAL RELEASE…") aren't names.
+    let shouting = letters >= 12 && upper * 10 >= letters * 7;
+    let notice = lower.contains("http") || lower.starts_with("note") || title.ends_with('!');
+    if !(3..=TITLE_MAX).contains(&len) || GENERIC.contains(&lower.as_str()) || shouting || notice {
         return None;
     }
     Some(title)
@@ -119,6 +125,19 @@ const PLATFORM_WORDS: &[&str] = &[
     "wii",
     "3ds",
     "xbox",
+    "recompilation",
+    "recompile",
+    "decomp",
+    "decompilation",
+    "static",
+    "statique",
+    "matching",
+    "rexglue",
+    "n64recomp",
+    "xenonrecomp",
+    "xbe",
+    "wip",
+    "project",
 ];
 
 /// Cuts at the first separator whose following segment (up to the next separator) is platform or
@@ -142,7 +161,9 @@ fn cut_subtitle(s: &str) -> &str {
             .peekable();
         let platformy = words.peek().is_some()
             && words.all(|w| {
-                PLATFORM_WORDS.contains(&w.as_str()) || SUFFIX_FILLER.contains(&w.as_str())
+                PLATFORM_WORDS.contains(&w.as_str())
+                    || SUFFIX_FILLER.contains(&w.as_str())
+                    || w.chars().all(|c| c.is_ascii_digit())
             });
         if platformy {
             return &s[..at];
@@ -152,7 +173,19 @@ fn cut_subtitle(s: &str) -> &str {
 }
 
 /// Words that may sit between platform words in a suffix without making it part of the title.
-const SUFFIX_FILLER: &[&str] = &["unofficial", "for", "and", "on", "pi", "version", "build"];
+const SUFFIX_FILLER: &[&str] = &[
+    "unofficial",
+    "for",
+    "and",
+    "on",
+    "pi",
+    "version",
+    "build",
+    "to",
+    "360",
+    "rust",
+    "bevy",
+];
 
 /// Drops HTML tags, link targets, emphasis marks, images and symbols (emoji, ™).
 fn strip_markup(s: &str) -> String {
