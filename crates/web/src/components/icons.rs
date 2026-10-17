@@ -73,6 +73,27 @@ pub fn GlobeIcon(#[props(default)] class: String) -> Element {
     }
 }
 
+/// Picture icon for image-attach controls, stroked like `GlobeIcon`.
+#[component]
+pub fn ImageIcon(#[props(default)] class: String) -> Element {
+    rsx! {
+        svg {
+            class: "{class}",
+            width: "16",
+            height: "16",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            "aria-hidden": "true",
+            "focusable": "false",
+            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
+            circle { cx: "9", cy: "9", r: "2" }
+            path { d: "m21 15-5-5L5 21" }
+        }
+    }
+}
+
 /// Heart icon for donation and funding links, stroked like `GlobeIcon`.
 #[component]
 pub fn HeartIcon(#[props(default)] class: String) -> Element {

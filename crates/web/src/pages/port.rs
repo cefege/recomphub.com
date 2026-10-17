@@ -133,6 +133,7 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let port = detail.port.clone();
     let game = detail.game.clone();
     let game_id = port.game_id;
+    let port_id = port.id;
     // While this is the game's only published native port, the game page shows the same
     // content at a shorter URL. No redirect is sent (a browser-cached 301 would survive after a
     // second port lands, and the user wants this to revert on its own): crawlers without
@@ -196,16 +197,22 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
                 a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
             }
         }
-        PortMainContent { detail, ratings }
+        PortMainContent { detail }
+        div { class: "mt-12",
+            PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }
+        }
+        div { class: "mt-12 flex justify-end",
+            ReportDialog { game_id, port_id }
+        }
     }
 }
 
 /// Everything about one port below its title: hero, facts, generated description,
-/// maintenance, requirements, other ports, and the ratings/comments section. Shared by the
-/// port's own page and, when a game has exactly one published port, the game page. The caller
-/// owns hit-recording and live-watch, since the game page already does both for its own view.
+/// maintenance, requirements and other ports. Shared by the port's own page and, when a game
+/// has exactly one published port, the game page. The caller renders its own comments/report
+/// section once, since where that belongs on a merged game page differs from the port page.
 #[component]
-pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Element {
+pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
     let live = use_context::<LiveStore>();
     let port_id = detail.port.id;
     let game_id = detail.port.game_id;
@@ -303,6 +310,7 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
     let ai_tools = port.ai_tools.clone();
     let ai_evidence = port.ai_evidence.clone();
     let about = d.about.clone();
+    let has_about = about.is_some();
 
     rsx! {
         div { class: "mt-6",
@@ -407,7 +415,9 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
             }
         }
 
-        if let Some(text) = description_text {
+        if let Some(text) = description_text
+            && !has_about
+        {
             Section { heading: "Repository description".to_string(), class: "mt-12".to_string(),
                 p { class: "whitespace-pre-line leading-relaxed", "{text}" }
             }
@@ -424,12 +434,6 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
                     }
                 }
             }
-        }
-        div { class: "mt-12",
-            PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }
-        }
-        div { class: "mt-12 flex justify-end",
-            ReportDialog { game_id, port_id }
         }
     }
 }

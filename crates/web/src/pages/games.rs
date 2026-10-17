@@ -4,12 +4,13 @@ use recomphub_shared::seo::{
     game_with_ports_description, game_with_ports_title, game_without_port_description,
     game_without_port_title, meta_description,
 };
-use recomphub_shared::{GameCard, GameDetail, Playability, PortCard, TargetPlatform};
+use recomphub_shared::{GameCard, GameDetail, Playability, PortCard, PortDetail, TargetPlatform};
 
 use super::jsonld;
 use crate::api;
 use crate::api::games::GamesQuery;
 use crate::components::cards::GameCardView;
+use crate::components::comments::PortComments;
 use crate::components::listing::{GameListTable, PRIMARY_TARGETS, parse_page, query_string};
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::picture::Picture;
@@ -552,7 +553,7 @@ fn GameBody(detail: GameDetail) -> Element {
 
         if is_solo_port {
             div { class: "mt-12",
-                GameSolePort { game_slug: game.slug.clone(), port_slug: list[0].slug.clone() }
+                GameSolePort { port: list[0].clone() }
             }
         } else if has_ports {
             Section { heading: "Native ports".to_string(), class: "mt-12".to_string(),
@@ -672,8 +673,12 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        div { class: "mt-12 flex justify-end",
-            ReportDialog { game_id }
+        if is_solo_port {
+            GameSolePortComments { port_id: list[0].id, port_name: list[0].name.clone(), game_id }
+        } else {
+            div { class: "mt-12 flex justify-end",
+                ReportDialog { game_id }
+            }
         }
     }
 }
@@ -681,15 +686,45 @@ fn GameBody(detail: GameDetail) -> Element {
 /// Fetches and renders one port's full detail inline on its game page, used in place of the
 /// "Native ports" list when a game has exactly one published native port. Nothing is stored for
 /// this: `GameBody` decides fresh from the live port count every time the page loads, so it
-/// reverts to the card list on its own the moment a second port is added.
+/// reverts to the card list on its own the moment a second port is added. A failed fetch (a
+/// race with the port being hidden or renamed, a timeout) falls back to the plain card instead
+/// of failing the whole game page: before this merge, a solo-port game always rendered.
 #[component]
-fn GameSolePort(game_slug: String, port_slug: String) -> Element {
-    let (lookup_game, lookup_port) = (game_slug.clone(), port_slug.clone());
-    let data = use_loader(move || api::port_detail(lookup_game.clone(), lookup_port.clone()))?;
-    let detail = data();
-    let port_id = detail.port.id;
+fn GameSolePort(port: PortCard) -> Element {
+    let (game_slug, port_slug) = (port.game_slug.clone(), port.slug.clone());
+    let data = use_loader(move || {
+        let game_slug = game_slug.clone();
+        let port_slug = port_slug.clone();
+        async move {
+            Ok::<Option<PortDetail>, ServerFnError>(
+                api::port_detail(game_slug, port_slug).await.ok(),
+            )
+        }
+    })?;
+    match data() {
+        Some(detail) => rsx! { PortMainContent { detail } },
+        None => rsx! {
+            ul { class: "grid gap-4 md:grid-cols-2",
+                li { PortCardView { port } }
+            }
+        },
+    }
+}
+
+/// The merged game page's comments and report dialog for its sole port, rendered once at the
+/// foot of the page instead of inside `GameSolePort`, which only has the port's facts. Ratings
+/// are non-essential: a failed fetch falls back to an empty summary instead of failing the page.
+#[component]
+fn GameSolePortComments(port_id: i64, port_name: String, game_id: i64) -> Element {
     let ratings_data = use_loader(move || async move {
         Ok::<RatingSummary, ServerFnError>(api::port_ratings(port_id).await.unwrap_or_default())
     })?;
-    rsx! { PortMainContent { detail, ratings: ratings_data() } }
+    rsx! {
+        div { class: "mt-12",
+            PortComments { key: "{port_id}", port_id, port_name: port_name.clone(), ratings: ratings_data() }
+        }
+        div { class: "mt-12 flex justify-end",
+            ReportDialog { game_id, port_id }
+        }
+    }
 }
