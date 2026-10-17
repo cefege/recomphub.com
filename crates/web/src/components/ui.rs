@@ -604,18 +604,21 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
     }
 }
 
-/// One slide of a [`PortHero`] gallery. `Image(None)` is the cover slot when the port has no
-/// cover yet; `Picture` falls back to an initials placeholder for it.
+/// One slide of a [`PortHero`] gallery. `Cover` is the last-resort slide used only when a port
+/// has neither a screenshot nor a video: box art is portrait and would crop badly stretched to
+/// a 16:9 frame, so it renders contained instead of covered, and never appears while there is
+/// real gameplay media to show.
 #[derive(Clone)]
 enum HeroItem {
-    Image(Option<MediaRef>),
+    Screenshot(MediaRef),
+    Cover(Option<MediaRef>),
     Video(VideoDto),
 }
 
-/// The port page's media gallery: cover, member-contributed screenshots and gameplay videos in
-/// one Steam-style strip. One large slide at a time with a thumbnail rail beneath it; picking a
-/// video thumbnail plays it in place, so only one embed exists at once. Always shows at least
-/// the cover slot, even without a cover image, so the page keeps its shape.
+/// The port page's media gallery: member-contributed screenshots (or the game's own, when the
+/// port has none yet) and gameplay videos in one Steam-style strip, opening on the first of
+/// those rather than the cover. One large slide at a time with a thumbnail rail beneath it;
+/// picking a video thumbnail plays it in place, so only one embed exists at once.
 #[component]
 pub fn PortHero(
     cover: Option<MediaRef>,
@@ -630,14 +633,16 @@ pub fn PortHero(
     let mut removed = use_signal(Vec::<i64>::new);
     let mut hide_error = use_signal(|| None::<String>);
 
-    let items: Vec<HeroItem> = std::iter::once(HeroItem::Image(cover))
-        .chain(screenshots.into_iter().map(|m| HeroItem::Image(Some(m))))
-        .chain(
-            videos
-                .into_iter()
-                .filter(|v| !removed.read().contains(&v.id))
-                .map(HeroItem::Video),
-        )
+    let live_videos: Vec<VideoDto> = videos
+        .into_iter()
+        .filter(|v| !removed.read().contains(&v.id))
+        .collect();
+    let has_real_media = !screenshots.is_empty() || !live_videos.is_empty();
+    let items: Vec<HeroItem> = screenshots
+        .into_iter()
+        .map(HeroItem::Screenshot)
+        .chain(live_videos.into_iter().map(HeroItem::Video))
+        .chain((!has_real_media).then_some(HeroItem::Cover(cover)))
         .collect();
     let index = selected().min(items.len() - 1);
     let current = items[index].clone();
@@ -647,14 +652,24 @@ pub fn PortHero(
         div { class: "flex flex-col gap-3",
             div { class: "aspect-video w-full overflow-hidden rounded-lg border bg-black",
                 match &current {
-                    HeroItem::Image(media) => rsx! {
+                    HeroItem::Screenshot(media) => rsx! {
+                        Picture {
+                            media: Some(media.clone()),
+                            alt: alt.clone(),
+                            initials: initials.clone(),
+                            sizes: "(min-width: 1024px) 66vw, 100vw",
+                            eager: true,
+                            class: "h-full w-full object-cover".to_string(),
+                        }
+                    },
+                    HeroItem::Cover(media) => rsx! {
                         Picture {
                             media: media.clone(),
                             alt: alt.clone(),
                             initials: initials.clone(),
                             sizes: "(min-width: 1024px) 66vw, 100vw",
                             eager: true,
-                            class: "h-full w-full object-cover".to_string(),
+                            class: "h-full w-full object-contain".to_string(),
                         }
                     },
                     HeroItem::Video(v) => {
@@ -744,17 +759,19 @@ pub fn PortHero(
                                     playing.set(false);
                                 },
                                 {
-                                    let thumb_media = match item {
-                                        HeroItem::Image(m) => m.clone(),
-                                        HeroItem::Video(v) => v.thumb.clone(),
+                                    let (thumb_media, contain) = match item {
+                                        HeroItem::Screenshot(m) => (Some(m.clone()), false),
+                                        HeroItem::Cover(m) => (m.clone(), true),
+                                        HeroItem::Video(v) => (v.thumb.clone(), false),
                                     };
+                                    let fit = if contain { "object-contain" } else { "object-cover" };
                                     rsx! {
                                         Picture {
                                             media: thumb_media,
                                             alt: String::new(),
                                             initials: "".to_string(),
                                             sizes: "96px",
-                                            class: "h-full w-full object-cover".to_string(),
+                                            class: format!("h-full w-full {fit}"),
                                         }
                                     }
                                 }

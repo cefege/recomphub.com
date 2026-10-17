@@ -586,12 +586,24 @@ pub async fn port_detail(
     // Videos attributed to this port first; the stable sort keeps the list order within each group.
     video_rows.sort_by_key(|v| v.port_id != Some(port_id));
     let videos = video_dtos(pool, video_rows).await?;
-    let screenshots = recomphub_db::port_media::approved_for_port(pool, port_id)
-        .await
-        .map_err(db_error)?
-        .iter()
-        .map(media_ref)
-        .collect();
+    let port_screenshots: Vec<MediaRef> =
+        recomphub_db::port_media::approved_for_port(pool, port_id)
+            .await
+            .map_err(db_error)?
+            .iter()
+            .map(media_ref)
+            .collect();
+    // A port with its own contributed screenshots shows those; otherwise it falls back to the
+    // game's existing screenshots rather than opening the hero on nothing but the cover.
+    let screenshots = if port_screenshots.is_empty() {
+        let ids = games::screenshot_media_ids(pool, game.id)
+            .await
+            .map_err(db_error)?;
+        let media = media_map(pool, ids.clone()).await?;
+        ids.iter().filter_map(|id| media.get(id).cloned()).collect()
+    } else {
+        port_screenshots
+    };
 
     Ok(PortDetail {
         port,
