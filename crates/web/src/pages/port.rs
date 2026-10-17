@@ -6,7 +6,6 @@ use recomphub_shared::{PortDetail, TargetPlatform};
 use super::jsonld;
 use crate::api;
 use crate::components::comments::PortComments;
-use crate::components::contribute::ContributeSection;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::maintenance::MaintenancePanel;
 use crate::components::picture::Picture;
@@ -389,9 +388,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
                     }
                 }
             }
-        }
-        div { class: "mt-12",
-            ContributeSection { port_id, port_name: port.name.clone() }
         }
         div { class: "mt-12",
             PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }

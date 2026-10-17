@@ -1,10 +1,13 @@
-//! Member-uploaded port screenshots. Always moderated, even from a signed-in account: a row
-//! starts `pending` and only shows on the port page once a moderator approves it.
+//! Member-uploaded port screenshots, and screenshots the GitHub scan finds in a port's own
+//! README. Member uploads always start `pending`, even from a signed-in account, and only show
+//! on the port page once a moderator approves them. README screenshots are trusted the same way
+//! README-linked gameplay videos already are (see `recomphub_db::port_videos`): they come from
+//! the project's own repository, not a stranger's upload, so they are inserted `approved`.
 
 use chrono::{DateTime, Utc};
-use sqlx::PgExecutor;
+use sqlx::{PgExecutor, PgPool};
 
-use crate::media::MediaRow;
+use crate::media::{self, MediaRow};
 use crate::{DbError, DbResult};
 
 /// One `port_media` row.
@@ -29,7 +32,10 @@ pub struct PendingPortImage {
     pub game_slug: String,
 }
 
-/// Queues an uploaded, already-rendered image for review. Returns the `port_media` id.
+/// Queues an uploaded, already-rendered image for review. Returns the `port_media` id. If this
+/// account (or another) already queued the exact same file for this port, `media::enqueue`
+/// resolves to the same `media_id`; the no-op update (the same trick `media::enqueue` uses)
+/// makes `RETURNING id` give back the existing row instead of erroring.
 pub async fn insert_pending(
     ex: impl PgExecutor<'_>,
     port_id: i64,
@@ -37,8 +43,10 @@ pub async fn insert_pending(
     uploaded_by: i64,
 ) -> DbResult<i64> {
     Ok(sqlx::query_scalar::<_, i64>(
-        "INSERT INTO port_media (port_id, media_id, uploaded_by, status)
-         VALUES ($1, $2, $3, 'pending') RETURNING id",
+        "INSERT INTO port_media (port_id, media_id, uploaded_by, status, source)
+         VALUES ($1, $2, $3, 'pending', 'upload')
+         ON CONFLICT (port_id, media_id) DO UPDATE SET port_id = EXCLUDED.port_id
+         RETURNING id",
     )
     .bind(port_id)
     .bind(media_id)
@@ -60,13 +68,20 @@ pub async fn uploads_today(ex: impl PgExecutor<'_>, uploaded_by: i64) -> DbResul
     .await?)
 }
 
-/// Approved screenshots for a port, oldest first.
+/// Approved, rendered screenshots for a port, README-derived ones first in their README order,
+/// then uploads oldest first. A row whose render has not finished yet, or failed, is left out:
+/// otherwise an unrendered README image would open the port's hero on a broken image. A
+/// README-derived render under 480px wide is also left out: a README's first image is sometimes
+/// a small project logo or badge that slipped past the alt-text filter, and a logo must not
+/// replace the game's real screenshots in the hero. A member's upload is exempt: a moderator
+/// already judged it before approving it, so a deliberately small screenshot stays.
 pub async fn approved_for_port(ex: impl PgExecutor<'_>, port_id: i64) -> DbResult<Vec<MediaRow>> {
     Ok(sqlx::query_as::<_, MediaRow>(
         "SELECT m.* FROM port_media pm
          JOIN media m ON m.id = pm.media_id
-         WHERE pm.port_id = $1 AND pm.status = 'approved'
-         ORDER BY pm.created_at",
+         WHERE pm.port_id = $1 AND pm.status = 'approved' AND m.status = 'ready'
+           AND (pm.source = 'upload' OR m.width >= 480)
+         ORDER BY pm.position NULLS LAST, pm.created_at, pm.id",
     )
     .bind(port_id)
     .fetch_all(ex)
@@ -120,5 +135,52 @@ pub async fn review(
     if res.rows_affected() == 0 {
         return Err(DbError::NotFound(format!("pending port image {id}")));
     }
+    Ok(())
+}
+
+/// Caps README-derived screenshots kept per port, matching `recomphub_ingest::readme_images::MAX_IMAGES`.
+pub const README_IMAGE_CAP: usize = 6;
+
+/// Enqueues and attaches up to [`README_IMAGE_CAP`] screenshots found in a port's README, as
+/// already-approved rows in README order: trusted the same way README-linked gameplay videos
+/// already are, since both come from the project's own repository rather than a stranger's
+/// upload. A README row for an image no longer in the list is removed, so a project that swaps
+/// its screenshots does not keep accumulating stale ones; member uploads are never touched.
+pub async fn record_readme_images(
+    pool: &PgPool,
+    port_id: i64,
+    image_urls: &[String],
+) -> DbResult<()> {
+    let urls: Vec<&str> = image_urls
+        .iter()
+        .take(README_IMAGE_CAP)
+        .map(String::as_str)
+        .collect();
+    let mut tx = pool.begin().await?;
+    let mut media_ids = Vec::with_capacity(urls.len());
+    for url in &urls {
+        media_ids.push(media::enqueue(&mut *tx, "port_screenshot", url).await?);
+    }
+    sqlx::query(
+        "DELETE FROM port_media
+         WHERE port_id = $1 AND source = 'readme' AND NOT (media_id = ANY($2))",
+    )
+    .bind(port_id)
+    .bind(&media_ids)
+    .execute(&mut *tx)
+    .await?;
+    for (position, media_id) in media_ids.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO port_media (port_id, media_id, uploaded_by, status, source, position)
+             VALUES ($1, $2, NULL, 'approved', 'readme', $3)
+             ON CONFLICT (port_id, media_id) DO UPDATE SET position = EXCLUDED.position",
+        )
+        .bind(port_id)
+        .bind(media_id)
+        .bind(position as i32)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }

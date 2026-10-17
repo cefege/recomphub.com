@@ -14,6 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
 use recomphub_db::PgPool;
 use recomphub_db::media;
+use recomphub_db::port_media;
 use recomphub_db::port_videos as port_video_store;
 use recomphub_db::ports::{
     self, AiEvidence as DbAiEvidence, AiSync, AuthorInput, GithubSync, PortRow,
@@ -26,6 +27,7 @@ use serde_json::{Value, json};
 use crate::detect::{self, AiDetection, CommitInfo};
 use crate::github_links;
 use crate::maintenance::{self, maintenance_query, parse_maintenance_batch};
+use crate::readme_images;
 use crate::video_links;
 
 const API: &str = "https://api.github.com";
@@ -102,6 +104,9 @@ pub struct RepoPreview {
     pub ai: AiDetection,
     /// YouTube video IDs linked from the README, in first-appearance order.
     pub readme_youtube_ids: Vec<String>,
+    /// Real screenshot URLs found in the README, filtered of badges and logos, in
+    /// first-appearance order.
+    pub readme_image_urls: Vec<String>,
     /// Text the generated port description is built from. See `describe`.
     pub source: crate::describe::RawSource,
     pub contributors: Vec<Contributor>,
@@ -364,6 +369,17 @@ impl GithubClient {
             .as_deref()
             .map(video_links::youtube_ids_in_markdown)
             .unwrap_or_default();
+        let readme_image_urls = readme
+            .as_deref()
+            .map(|text| {
+                readme_images::screenshot_urls_in_readme(
+                    text,
+                    &r.owner.login,
+                    &r.name,
+                    &r.default_branch,
+                )
+            })
+            .unwrap_or_default();
         let owner_is_org = r.owner.kind.eq_ignore_ascii_case("Organization");
         let owner_name = if owner_is_org {
             None
@@ -419,6 +435,7 @@ impl GithubClient {
             detected_platforms,
             ai,
             readme_youtube_ids,
+            readme_image_urls,
             contributors,
             source: crate::describe::RawSource {
                 topics: r.topics,
@@ -791,6 +808,11 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                         .await
                 {
                     tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README video IDs not recorded");
+                }
+                if let Err(e) =
+                    port_media::record_readme_images(pool, port.id, &prev.readme_image_urls).await
+                {
+                    tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README image URLs not recorded");
                 }
                 if let Err(e) = crate::describe::record_sources(
                     pool,

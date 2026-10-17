@@ -49,6 +49,7 @@ fn preview(owner: &str, owner_is_org: bool, contributors: Vec<Contributor>) -> R
             evidence: Vec::new(),
         },
         readme_youtube_ids: Vec::new(),
+        readme_image_urls: Vec::new(),
         source: Default::default(),
         contributors,
     }

@@ -16,6 +16,7 @@ pub mod media;
 pub mod platform_map;
 pub mod port_videos;
 pub mod portsdr;
+pub mod readme_images;
 pub mod recompendium;
 pub mod reddit;
 pub mod video_links;

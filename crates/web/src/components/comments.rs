@@ -1,5 +1,6 @@
 //! Star ratings, the rating summary, and comments at the foot of a port page.
 
+use base64::Engine;
 use dioxus::prelude::*;
 use recomphub_shared::TargetPlatform;
 use recomphub_shared::dto::{CommentDto, CommentQuery, CommentSort, RatingSummary};
@@ -18,6 +19,8 @@ use crate::api;
 
 /// Maximum comment length, matched by the server.
 const MAX_BODY: usize = 2000;
+/// Largest screenshot the browser will read before giving up and telling the commenter why.
+const MAX_SCREENSHOT_MB: u64 = 10;
 
 /// Ratings and comments for one port. The summary arrives with the page; the comment feed loads
 /// after hydration so signed-in state never reaches the server-rendered HTML.
@@ -46,6 +49,11 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let mut target = use_signal(String::new);
     let mut posting = use_signal(|| false);
     let mut post_error = use_signal(|| None::<String>);
+    let mut screenshot_name = use_signal(|| None::<String>);
+    let mut screenshot_data = use_signal(|| None::<String>);
+    let mut screenshot_error = use_signal(|| None::<String>);
+    let mut screenshot_busy = use_signal(|| false);
+    let mut video_url = use_signal(String::new);
 
     // Load the viewer's own rating once the viewer is known.
     use_effect(move || {
@@ -131,25 +139,99 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
         });
     };
 
+    let on_screenshot_change = move |evt: FormEvent| {
+        let Some(file) = evt.files().into_iter().next() else {
+            return;
+        };
+        let name = file.name();
+        screenshot_busy.set(true);
+        screenshot_error.set(None);
+        spawn(async move {
+            let result = async {
+                let bytes = file
+                    .read_bytes()
+                    .await
+                    .map_err(|e| format!("could not read {name}: {e}"))?;
+                if bytes.len() as u64 > MAX_SCREENSHOT_MB * 1024 * 1024 {
+                    return Err(format!("{name} is larger than {MAX_SCREENSHOT_MB} MB"));
+                }
+                Ok::<_, String>(base64::engine::general_purpose::STANDARD.encode(&bytes))
+            }
+            .await;
+            match result {
+                Ok(data) => {
+                    screenshot_name.set(Some(name));
+                    screenshot_data.set(Some(data));
+                }
+                Err(e) => screenshot_error.set(Some(e)),
+            }
+            screenshot_busy.set(false);
+        });
+    };
+
     let post = move |evt: FormEvent| {
         evt.prevent_default();
         let body = draft();
+        let has_body = !body.trim().is_empty();
         let tested = target();
         let tested = if tested.is_empty() {
             None
         } else {
             Some(tested)
         };
+        let screenshot = screenshot_name().zip(screenshot_data());
+        let video = video_url();
+        let video = if video.trim().is_empty() {
+            None
+        } else {
+            Some(video)
+        };
         posting.set(true);
         post_error.set(None);
         spawn(async move {
-            match api::create_comment(port_id, body, tested).await {
-                Ok(_) => {
-                    draft.set(String::new());
-                    target.set(String::new());
+            // A comment with no text but an attachment is allowed: the server requires text in
+            // a comment, so when there is none, only the attachments are submitted.
+            let comment_ok = if has_body {
+                match api::create_comment(port_id, body, tested).await {
+                    Ok(_) => {
+                        draft.set(String::new());
+                        target.set(String::new());
+                        true
+                    }
+                    Err(e) => {
+                        post_error.set(Some(e.to_string()));
+                        false
+                    }
+                }
+            } else {
+                true
+            };
+            if comment_ok {
+                // An attachment posted either way; a failure is reported but never undoes the
+                // comment, and the field is left filled in so the user can retry without
+                // reselecting the file or retyping the link.
+                let mut extra_errors = Vec::new();
+                if let Some((name, data)) = screenshot {
+                    match api::upload_port_image(port_id, name, data).await {
+                        Ok(_) => {
+                            screenshot_name.set(None);
+                            screenshot_data.set(None);
+                        }
+                        Err(e) => extra_errors.push(format!("screenshot: {e}")),
+                    }
+                }
+                if let Some(link) = video {
+                    match api::submit_port_video(port_id, link).await {
+                        Ok(_) => video_url.set(String::new()),
+                        Err(e) => extra_errors.push(format!("video: {e}")),
+                    }
+                }
+                if !extra_errors.is_empty() {
+                    post_error.set(Some(extra_errors.join("; ")));
+                }
+                if has_body {
                     fetch(1, false);
                 }
-                Err(e) => post_error.set(Some(e.to_string())),
             }
             posting.set(false);
         });
@@ -166,7 +248,17 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let average_rounded = average_value.map(|a| a.round() as i64).unwrap_or(0);
     let mine = my_stars();
     let draft_len = draft().chars().count();
-    let can_post = !posting() && draft_len > 0 && draft_len <= MAX_BODY;
+    let has_screenshot = screenshot_data().is_some();
+    let has_video = !video_url().trim().is_empty();
+    let can_post = !posting()
+        && !screenshot_busy()
+        && draft_len <= MAX_BODY
+        && (draft_len > 0 || has_screenshot || has_video);
+    let screenshot_choose_label = if screenshot_busy() {
+        "Reading…".to_string()
+    } else {
+        screenshot_name().unwrap_or_else(|| "Choose an image".to_string())
+    };
     let sort_now = sort();
     let stars_now = stars();
 
@@ -280,7 +372,8 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                 h3 { class: "text-base font-semibold", "Share your experience" }
                 if ready && signed_in {
                     p { class: "{LEAD} text-sm",
-                        "How does {port_name} run for you? Share your platform, hardware, settings and any issues."
+                        "How does {port_name} run for you? Share your platform, hardware, settings and any issues. "
+                        "Attach a screenshot or a gameplay video link if you have one."
                     }
                     form { class: "flex flex-col gap-3", onsubmit: post,
                         label { class: "{LABEL}", r#for: "comment-body-{port_id}", "Your comment" }
@@ -291,6 +384,38 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                             placeholder: "What works, what does not, and the settings you used",
                             value: "{draft}",
                             oninput: move |e| draft.set(e.value()),
+                        }
+                        div { class: "grid gap-3 sm:grid-cols-2",
+                            div { class: "flex flex-col gap-1.5",
+                                label { class: "{LABEL}", "Add a screenshot (optional)" }
+                                label {
+                                    class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} w-fit cursor-pointer",
+                                    "{screenshot_choose_label}"
+                                    input {
+                                        r#type: "file",
+                                        accept: "image/*",
+                                        class: "sr-only",
+                                        disabled: screenshot_busy(),
+                                        onchange: on_screenshot_change,
+                                    }
+                                }
+                                p { class: "text-xs text-muted-foreground", "Up to {MAX_SCREENSHOT_MB} MB. Converted and reviewed before it's shown." }
+                                if let Some(msg) = screenshot_error() {
+                                    p { class: "text-xs text-destructive", "{msg}" }
+                                }
+                            }
+                            div { class: "flex flex-col gap-1.5",
+                                label { class: "{LABEL}", r#for: "comment-video-{port_id}", "Add a gameplay video (optional)" }
+                                input {
+                                    id: "comment-video-{port_id}",
+                                    r#type: "url",
+                                    class: "{INPUT}",
+                                    placeholder: "https://www.youtube.com/watch?v=…",
+                                    value: "{video_url}",
+                                    oninput: move |e| video_url.set(e.value()),
+                                }
+                                p { class: "text-xs text-muted-foreground", "A public YouTube link. Reviewed before it's shown; your channel is credited." }
+                            }
                         }
                         div { class: "flex flex-wrap items-end gap-3",
                             div { class: "flex w-56 flex-col gap-1.5",

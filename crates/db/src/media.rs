@@ -47,7 +47,9 @@ pub async fn enqueue(ex: impl PgExecutor<'_>, kind: &str, source_url: &str) -> D
 /// Up to `limit` rows still to process: pending, or failed with fewer than 3 attempts.
 /// A member's uploaded screenshot goes first: someone is waiting on it, and it should never
 /// sit behind a large catalog backlog. Covers, avatars and video thumbnails come next since
-/// every listing shows them, then screenshots, then og images.
+/// every listing shows them, then screenshots, then og images. README-derived screenshots (not
+/// a member upload) rank with plain screenshots: there is nobody waiting on them, and a weekly
+/// scan can enqueue hundreds at once, which must not push covers or member uploads back.
 pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<MediaRow>> {
     let rows = sqlx::query_as::<_, MediaRow>(
         "SELECT m.* FROM media m
@@ -57,12 +59,13 @@ pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<M
              FROM games WHERE cover_media_id IS NOT NULL GROUP BY cover_media_id
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending' OR (m.status = 'failed' AND m.attempts < 3)
-         ORDER BY CASE m.kind
-                      WHEN 'port_screenshot' THEN 0
-                      WHEN 'cover' THEN 1
-                      WHEN 'avatar' THEN 2
-                      WHEN 'video_thumb' THEN 3
-                      WHEN 'screenshot' THEN 4
+         ORDER BY CASE
+                      WHEN m.kind = 'port_screenshot' AND m.source_url LIKE 'upload:%' THEN 0
+                      WHEN m.kind = 'cover' THEN 1
+                      WHEN m.kind = 'avatar' THEN 2
+                      WHEN m.kind = 'video_thumb' THEN 3
+                      WHEN m.kind = 'screenshot' THEN 4
+                      WHEN m.kind = 'port_screenshot' THEN 4
                       ELSE 5
                   END,
                   g.ported DESC NULLS LAST,
