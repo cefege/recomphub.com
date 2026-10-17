@@ -47,6 +47,19 @@ pub async fn insert_pending(
     .await?)
 }
 
+/// How many screenshots this account has uploaded in the last 24 hours, for the per-account
+/// daily cap. An unbounded upload endpoint writes to disk before any moderator looks at it, so
+/// without a cap one account could fill the media volume.
+pub async fn uploads_today(ex: impl PgExecutor<'_>, uploaded_by: i64) -> DbResult<i64> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        "SELECT count(*)::bigint FROM port_media
+         WHERE uploaded_by = $1 AND created_at > now() - interval '1 day'",
+    )
+    .bind(uploaded_by)
+    .fetch_one(ex)
+    .await?)
+}
+
 /// Approved screenshots for a port, oldest first.
 pub async fn approved_for_port(ex: impl PgExecutor<'_>, port_id: i64) -> DbResult<Vec<MediaRow>> {
     Ok(sqlx::query_as::<_, MediaRow>(

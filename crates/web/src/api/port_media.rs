@@ -49,6 +49,11 @@ fn media_ref(m: &MediaRow) -> MediaRef {
     }
 }
 
+/// Screenshots one account may upload per day. An unbounded upload writes to disk before any
+/// moderator looks at it, so this caps how much one account can put on the media volume.
+#[cfg(feature = "server")]
+const MAX_UPLOADS_PER_DAY: i64 = 20;
+
 /// Uploads a screenshot for a port: writes the bytes to disk and queues them for `media-sync`
 /// to render (AVIF encoding is CPU-heavy; running it inline would hold the request open for as
 /// long as the encode takes). It is not shown on the port page until a moderator approves the
@@ -62,6 +67,18 @@ pub async fn upload_port_image(
     let user = require_user().await?;
     let pool = pool()?;
     ports::get_row(pool, port_id).await.map_err(db_error)?;
+
+    let used = port_media::uploads_today(pool, user.id)
+        .await
+        .map_err(db_error)?;
+    if used >= MAX_UPLOADS_PER_DAY {
+        return Err(http_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "You can upload up to {MAX_UPLOADS_PER_DAY} screenshots a day; try again tomorrow."
+            ),
+        ));
+    }
 
     let bytes = BASE64
         .decode(data_base64.as_bytes())
@@ -89,22 +106,31 @@ pub async fn upload_port_image(
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    let path = media_render::upload_path(&config::get().media_dir, &hash);
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    }
-    let mut file = tokio::fs::File::create(&path)
-        .await
-        .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    file.write_all(&bytes)
-        .await
-        .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+    // Queue (or reuse) the media row first: when the exact same bytes were already rendered by
+    // an earlier upload, the row comes back `ready` and there is nothing left to write or
+    // render, so the disk write below is skipped entirely.
     let media_id = media::enqueue(pool, "port_screenshot", &format!("upload:{hash}"))
         .await
         .map_err(db_error)?;
+    let already_rendered = media::get(pool, media_id)
+        .await
+        .map_err(db_error)?
+        .is_some_and(|m| m.status == "ready");
+    if !already_rendered {
+        let path = media_render::upload_path(&config::get().media_dir, &hash);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+        let mut file = tokio::fs::File::create(&path)
+            .await
+            .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        file.write_all(&bytes)
+            .await
+            .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
     port_media::insert_pending(pool, port_id, media_id, user.id)
         .await
         .map_err(db_error)?;
