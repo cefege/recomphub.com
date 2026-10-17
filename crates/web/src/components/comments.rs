@@ -8,9 +8,9 @@ use recomphub_shared::dto::{CommentDto, CommentQuery, CommentSort, RatingSummary
 use super::icons::{ImageIcon, StarIcon, YoutubeIcon};
 use super::picture::Picture;
 use super::styles::{
-    BADGE, BADGE_DESTRUCTIVE, BADGE_OUTLINE, BUTTON, BUTTON_GHOST, BUTTON_LINK, BUTTON_MD,
-    BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM, CARD_SURFACE, H2, INPUT, LABEL, TAB, TAB_ACTIVE,
-    TABS_LIST, TEXTAREA,
+    BADGE, BADGE_DESTRUCTIVE, BADGE_OUTLINE, BADGE_SECONDARY, BUTTON, BUTTON_GHOST, BUTTON_LINK,
+    BUTTON_MD, BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM, CARD_SURFACE, H2, INPUT, LABEL, TAB,
+    TAB_ACTIVE, TABS_LIST, TEXTAREA,
 };
 use super::time::RelativeTime;
 use super::ui::{EmptyState, LoginPrompt, initials_of, target_label};
@@ -262,54 +262,45 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
         section { class: "flex flex-col gap-6", "aria-labelledby": "ratings-heading",
             h2 { id: "ratings-heading", class: "{H2}", "Ratings and comments" }
 
-            div { class: "{CARD_SURFACE} grid gap-6 p-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-center",
-                div { class: "flex flex-col gap-2",
-                    if count > 0 {
-                        div { class: "flex items-baseline gap-2",
-                            span { class: "text-4xl font-semibold tabular-nums", "{average_text}" }
-                            span { class: "text-sm text-muted-foreground", "out of 5" }
+            div { class: "flex flex-wrap items-center gap-2 text-sm",
+                if count > 0 {
+                    span {
+                        class: "flex items-center gap-0.5 text-warning",
+                        role: "img",
+                        "aria-label": "Average {average_text} out of 5",
+                        for n in 1..=5i64 {
+                            StarIcon { key: "{n}", filled: n <= average_rounded, class: "size-4" }
                         }
-                        div { class: "flex items-center gap-0.5 text-warning",
-                            role: "img",
-                            "aria-label": "Average {average_text} out of 5",
-                            for n in 1..=5i64 {
-                                StarIcon { key: "{n}", filled: n <= average_rounded, class: "size-4" }
-                            }
-                        }
-                        p { class: "text-sm text-muted-foreground",
-                            if count == 1 { "1 rating" } else { "{count} ratings" }
-                        }
-                    } else {
-                        p { class: "text-sm text-muted-foreground", "{average_text}" }
                     }
-                }
-                div { class: "flex flex-col gap-1.5",
-                    for star in (1..=5i16).rev() {
-                        {
-                            let index = (star - 1) as usize;
-                            let n = distribution[index];
-                            let pct = if count > 0 { n * 100 / count } else { 0 };
-                            let active = stars_now == Some(star);
-                            rsx! {
-                                button {
-                                    key: "{star}",
-                                    r#type: "button",
-                                    class: "flex w-full items-center gap-3 rounded-sm text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50",
-                                    disabled: n == 0,
-                                    "aria-pressed": "{active}",
-                                    "aria-label": "Show {star} star comments ({n})",
-                                    onclick: move |_| {
-                                        stars.set(if active { None } else { Some(star) });
-                                    },
-                                    span { class: "w-12 shrink-0 text-left text-muted-foreground", "{star} star" }
-                                    span { class: "h-2 flex-1 overflow-hidden rounded-full bg-muted",
-                                        span { class: "block h-full rounded-full bg-warning", style: "width: {pct}%" }
+                    span { class: "font-medium", "{average_text}" }
+                    span { class: "text-muted-foreground",
+                        if count == 1 { "· 1 rating" } else { "· {count} ratings" }
+                    }
+                    div { class: "ml-auto flex flex-wrap items-center gap-1",
+                        for star in (1..=5i16).rev() {
+                            {
+                                let index = (star - 1) as usize;
+                                let n = distribution[index];
+                                let active = stars_now == Some(star);
+                                rsx! {
+                                    button {
+                                        key: "{star}",
+                                        r#type: "button",
+                                        class: if active { "{BADGE} {BADGE_SECONDARY}" } else { "{BADGE} {BADGE_OUTLINE}" },
+                                        disabled: n == 0,
+                                        "aria-pressed": "{active}",
+                                        "aria-label": "Show {star} star comments ({n})",
+                                        onclick: move |_| {
+                                            stars.set(if active { None } else { Some(star) });
+                                        },
+                                        "{star}★ {n}"
                                     }
-                                    span { class: "w-8 shrink-0 text-right tabular-nums text-muted-foreground", "{n}" }
                                 }
                             }
                         }
                     }
+                } else {
+                    span { class: "text-muted-foreground", "{average_text}" }
                 }
             }
 
@@ -363,6 +354,7 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                         }
                         textarea {
                             id: "comment-body-{port_id}",
+                            "aria-label": "Your comment on {port_name}",
                             class: "{TEXTAREA} min-h-20 resize-y border-0 p-0 shadow-none focus-visible:ring-0",
                             rows: "3",
                             placeholder: "How does {port_name} run for you?",
