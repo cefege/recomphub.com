@@ -212,11 +212,16 @@ const NAV: [(&str, &str); 7] = [
     ("/submit", "Submit"),
 ];
 
-/// Count of pending member submissions, shown next to the Moderation link. Loads once per
-/// mount and is silent on any error or an empty count, so the menu never looks broken.
+/// Count of pending member submissions, screenshots and videos, shown next to the Moderation
+/// link. Loads once per mount and is silent on any error or an empty count, so the menu never
+/// looks broken.
 #[component]
 fn PendingBadge() -> Element {
-    let count = use_resource(api::pending_submission_count);
+    let count = use_resource(|| async move {
+        let subs = api::pending_submission_count().await?;
+        let media = api::pending_media_count().await?;
+        Ok::<i64, ServerFnError>(subs + media)
+    });
     match &*count.read() {
         Some(Ok(n)) if *n > 0 => rsx! {
             span { class: "{BADGE} {BADGE_PRIMARY}", "{n}" }

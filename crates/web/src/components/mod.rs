@@ -1,5 +1,6 @@
 pub mod cards;
 pub mod comments;
+pub mod contribute;
 pub mod funding;
 pub mod icons;
 pub mod listing;
@@ -16,6 +17,7 @@ pub mod viewer;
 
 pub use cards::GameCardView;
 pub use comments::PortComments;
+pub use contribute::ContributeSection;
 pub use funding::FundingLinks;
 pub use listing::{
     GameListTable, PRIMARY_TARGETS, PortTable, RankingTable, WINDOWS, WatchVisible, chip_class,
@@ -30,8 +32,8 @@ pub use stats::{AuthorAchievements, ParityMeter, PlatformCoverage};
 pub use time::RelativeTime;
 pub use ui::{
     AiBadge, Breadcrumb, CardGrid, Chip, EmptyState, GroundRules, LoginPrompt, Pager,
-    PlayabilityMeter, PortCardView, Rail, ReleaseChip, Section, TargetIcon, TrendChip, VideoPlayer,
-    ViewToggle, ai_text, initials_of, keyed, target_label, url_encode, with_query,
+    PlayabilityMeter, PortCardView, PortHero, Rail, ReleaseChip, Section, TargetIcon, TrendChip,
+    VideoPlayer, ViewToggle, ai_text, initials_of, keyed, target_label, url_encode, with_query,
 };
 pub use viewer::{
     Burst, RoleGate, SignedIn, StarButton, ViewerStore, WantButton, login_redirect, set_me,

@@ -6,3 +6,14 @@ resolver = "3"
 opt-level = "s"
 codegen-units = 1
 lto = true
+
+# Debug builds leave dependencies at opt-level 0 by default. `rav1e`/`ravif` (AVIF encoding,
+# ingest::media::render) and `image` (decoding) are CPU-bound and unusably slow unoptimised, even
+# for a single mid-size upload. Optimise only these; everything else, including the workspace's
+# own crates, stays at the default so `dx serve` incremental rebuilds stay fast.
+[profile.dev.package.rav1e]
+opt-level = 3
+[profile.dev.package.ravif]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3

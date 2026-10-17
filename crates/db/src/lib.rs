@@ -13,6 +13,7 @@ pub mod identities;
 pub mod live;
 pub mod media;
 pub mod port_descriptions;
+pub mod port_media;
 pub mod port_videos;
 pub mod ports;
 pub mod sales;

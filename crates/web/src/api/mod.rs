@@ -11,6 +11,7 @@ pub mod games {
 pub mod live;
 pub mod members;
 pub mod moderation;
+pub mod port_media;
 pub mod stats;
 
 pub use ai_providers::*;
@@ -20,4 +21,5 @@ pub use creators::*;
 pub use live::*;
 pub use members::*;
 pub use moderation::*;
+pub use port_media::*;
 pub use stats::*;

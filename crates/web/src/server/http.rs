@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use dioxus::server::axum::Router;
-use dioxus::server::axum::extract::{Path, Request};
+use dioxus::server::axum::extract::{DefaultBodyLimit, Path, Request};
 use dioxus::server::axum::http::{
     Extensions, HeaderMap, HeaderValue, Method, StatusCode, Uri, Version, header,
 };
@@ -49,11 +49,16 @@ pub fn with_site_routes(router: Router) -> Router {
         },
     ));
 
+    // Axum's `Bytes`-based extractors (used under every JSON server-fn body, including the
+    // screenshot upload, which sends base64 bytes as a JSON string) cap requests at 2 MB by
+    // default. Screenshots run up to `MAX_UPLOAD_BYTES` (ingest::media) before base64 overhead;
+    // this covers that with room to spare.
     router
         .merge(site)
         .layer(compression)
         .layer(middleware::from_fn(cache_headers))
         .layer(middleware::from_fn(canonical))
+        .layer(DefaultBodyLimit::max(24 * 1024 * 1024))
 }
 
 async fn healthz() -> Response {

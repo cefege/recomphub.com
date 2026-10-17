@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use dioxus::prelude::*;
-use recomphub_shared::{AiEvidenceDto, PortCard, TargetPlatform, VideoDto};
+use recomphub_shared::{AiEvidenceDto, MediaRef, PortCard, TargetPlatform, VideoDto};
 
 use crate::api;
 use crate::components::icons::{AndroidIcon, AppleIcon, GlobeIcon, LinuxIcon, WindowsIcon};
@@ -593,6 +593,174 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One slide of a [`PortHero`] gallery. `Image(None)` is the cover slot when the port has no
+/// cover yet; `Picture` falls back to an initials placeholder for it.
+#[derive(Clone)]
+enum HeroItem {
+    Image(Option<MediaRef>),
+    Video(VideoDto),
+}
+
+/// The port page's media gallery: cover, member-contributed screenshots and gameplay videos in
+/// one Steam-style strip. One large slide at a time with a thumbnail rail beneath it; picking a
+/// video thumbnail plays it in place, so only one embed exists at once. Always shows at least
+/// the cover slot, even without a cover image, so the page keeps its shape.
+#[component]
+pub fn PortHero(
+    cover: Option<MediaRef>,
+    screenshots: Vec<MediaRef>,
+    videos: Vec<VideoDto>,
+    alt: String,
+    initials: String,
+) -> Element {
+    let mut selected = use_signal(|| 0usize);
+    let mut playing = use_signal(|| false);
+    let can_hide = use_context::<ViewerStore>().can_moderate();
+    let mut removed = use_signal(Vec::<i64>::new);
+    let mut hide_error = use_signal(|| None::<String>);
+
+    let items: Vec<HeroItem> = std::iter::once(HeroItem::Image(cover))
+        .chain(screenshots.into_iter().map(|m| HeroItem::Image(Some(m))))
+        .chain(
+            videos
+                .into_iter()
+                .filter(|v| !removed.read().contains(&v.id))
+                .map(HeroItem::Video),
+        )
+        .collect();
+    let index = selected().min(items.len() - 1);
+    let current = items[index].clone();
+    let single = items.len() == 1;
+
+    rsx! {
+        div { class: "flex flex-col gap-3",
+            div { class: "aspect-video w-full overflow-hidden rounded-lg border bg-black",
+                match &current {
+                    HeroItem::Image(media) => rsx! {
+                        Picture {
+                            media: media.clone(),
+                            alt: alt.clone(),
+                            initials: initials.clone(),
+                            sizes: "(min-width: 1024px) 66vw, 100vw",
+                            eager: true,
+                            class: "h-full w-full object-cover".to_string(),
+                        }
+                    },
+                    HeroItem::Video(v) => {
+                        let video_id = v.id;
+                        let title = v.title.clone();
+                        let thumb = v.thumb.clone();
+                        let embed = format!(
+                            "https://www.youtube-nocookie.com/embed/{}?autoplay=1&rel=0&playsinline=1",
+                            v.youtube_id
+                        );
+                        rsx! {
+                            if playing() {
+                                iframe {
+                                    key: "{video_id}",
+                                    class: "h-full w-full",
+                                    src: "{embed}",
+                                    title: "{title}",
+                                    allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+                                    allowfullscreen: true,
+                                    referrerpolicy: "strict-origin-when-cross-origin",
+                                }
+                            } else {
+                                button { r#type: "button", class: "group relative block h-full w-full cursor-pointer",
+                                    "aria-label": "Play {title}",
+                                    onclick: move |_| playing.set(true),
+                                    Picture {
+                                        media: thumb,
+                                        alt: format!("Video thumbnail: {title}"),
+                                        initials: "▶".to_string(),
+                                        sizes: "(min-width: 1024px) 66vw, 100vw",
+                                        class: "h-full w-full object-cover transition-opacity group-hover:opacity-90".to_string(),
+                                    }
+                                    span { class: "absolute inset-0 flex items-center justify-center",
+                                        span { class: "flex size-16 items-center justify-center rounded-full bg-black/70 text-white transition-transform group-hover:scale-105",
+                                            crate::components::icons::PlayIcon { class: "size-7" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let HeroItem::Video(v) = &current
+                && can_hide
+            {
+                {
+                    let video_id = v.id;
+                    let hide_message = hide_error().unwrap_or_default();
+                    rsx! {
+                        div { class: "flex items-center gap-2",
+                            button {
+                                r#type: "button",
+                                class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
+                                onclick: move |_| {
+                                    spawn(async move {
+                                        match api::hide_video(video_id).await {
+                                            Ok(()) => {
+                                                removed.write().push(video_id);
+                                                selected.set(0);
+                                                playing.set(false);
+                                                hide_error.set(None);
+                                            }
+                                            Err(e) => hide_error.set(Some(e.to_string())),
+                                        }
+                                    });
+                                },
+                                "Hide video"
+                            }
+                            if !hide_message.is_empty() {
+                                span { class: "text-xs text-destructive", "{hide_message}" }
+                            }
+                        }
+                    }
+                }
+            }
+            if !single {
+                ul { class: "rail flex snap-x gap-2 overflow-x-auto pb-1", "aria-label": "Gallery",
+                    for (i, item) in items.iter().enumerate() {
+                        li { key: "{i}", class: "w-24 shrink-0 snap-start",
+                            button {
+                                r#type: "button",
+                                class: if i == index { "relative block aspect-video w-full overflow-hidden rounded-md border-2 border-primary" } else { "relative block aspect-video w-full overflow-hidden rounded-md border opacity-80 hover:opacity-100" },
+                                "aria-current": if i == index { "true" } else { "false" },
+                                onclick: move |_| {
+                                    selected.set(i);
+                                    playing.set(false);
+                                },
+                                {
+                                    let thumb_media = match item {
+                                        HeroItem::Image(m) => m.clone(),
+                                        HeroItem::Video(v) => v.thumb.clone(),
+                                    };
+                                    rsx! {
+                                        Picture {
+                                            media: thumb_media,
+                                            alt: String::new(),
+                                            initials: "".to_string(),
+                                            sizes: "96px",
+                                            class: "h-full w-full object-cover".to_string(),
+                                        }
+                                    }
+                                }
+                                if matches!(item, HeroItem::Video(_)) {
+                                    span { class: "absolute inset-0 flex items-center justify-center bg-black/30",
+                                        crate::components::icons::PlayIcon { class: "size-4 text-white" }
                                     }
                                 }
                             }

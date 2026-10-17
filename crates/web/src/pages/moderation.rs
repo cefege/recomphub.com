@@ -3,7 +3,10 @@
 
 use chrono::{DateTime, Utc};
 use dioxus::prelude::*;
-use recomphub_shared::{GameChoice, LogItem, Page, PortKind, QueueItem, ReviewOverrides};
+use recomphub_shared::{
+    GameChoice, LogItem, Page, PendingPortImageDto, PendingVideoDto, PortKind, QueueItem,
+    ReviewOverrides,
+};
 use serde_json::Value;
 
 use crate::api;
@@ -38,70 +41,295 @@ pub fn ModerationQueue() -> Element {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Member,
+    Found,
+    Screenshots,
+    Videos,
+}
+
 #[component]
 fn QueueList() -> Element {
-    let mut queue = use_signal(|| None::<Result<Vec<QueueItem>, String>>);
+    let mut submissions = use_signal(|| None::<Result<Vec<QueueItem>, String>>);
+    let mut images = use_signal(|| None::<Result<Vec<PendingPortImageDto>, String>>);
+    let mut videos = use_signal(|| None::<Result<Vec<PendingVideoDto>, String>>);
     let mut reload = use_signal(|| 0u32);
-    let mut tab = use_signal(|| "member".to_string());
+    let mut tab = use_signal(|| Tab::Member);
     use_effect(move || {
         let _ = reload();
         spawn(async move {
-            let result = api::moderation_queue().await.map_err(|e| e.to_string());
-            queue.set(Some(result));
+            submissions.set(Some(
+                api::moderation_queue().await.map_err(|e| e.to_string()),
+            ));
+        });
+        spawn(async move {
+            images.set(Some(
+                api::pending_port_images().await.map_err(|e| e.to_string()),
+            ));
+        });
+        spawn(async move {
+            videos.set(Some(
+                api::pending_submitted_videos()
+                    .await
+                    .map_err(|e| e.to_string()),
+            ));
         });
     });
 
-    let state = queue.read().clone();
+    let subs = submissions.read().clone();
+    let imgs = images.read().clone();
+    let vids = videos.read().clone();
+    let Some(Ok(subs)) = subs else {
+        return match subs {
+            Some(Err(message)) => rsx! {
+                p { class: "mt-8 text-sm text-destructive", "Could not load the queue: {message}" }
+            },
+            _ => rsx! {
+                div { class: "mt-8 space-y-4",
+                    for i in 0..3 {
+                        div { key: "{i}", class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
+                    }
+                }
+            },
+        };
+    };
+    let member: Vec<QueueItem> = subs
+        .iter()
+        .filter(|i| i.source == "user")
+        .cloned()
+        .collect();
+    let found: Vec<QueueItem> = subs.into_iter().filter(|i| i.source != "user").collect();
+    let image_count = imgs
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map_or(0, Vec::len);
+    let video_count = vids
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map_or(0, Vec::len);
+    let active = tab();
+    let on_done = move |_| reload.set(reload() + 1);
+
+    let tab_button = |label: String, value: Tab| {
+        rsx! {
+            button { r#type: "button", role: "tab", "aria-selected": if active == value { "true" } else { "false" },
+                class: if active == value { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
+                onclick: move |_| tab.set(value),
+                "{label}"
+            }
+        }
+    };
+
+    rsx! {
+        div { role: "tablist", class: "{TABS_LIST} mt-8 flex-wrap",
+            {tab_button(format!("Member submissions ({})", member.len()), Tab::Member)}
+            {tab_button(format!("Found automatically ({})", found.len()), Tab::Found)}
+            {tab_button(format!("Screenshots ({image_count})"), Tab::Screenshots)}
+            {tab_button(format!("Videos ({video_count})"), Tab::Videos)}
+        }
+        div { class: "mt-6",
+            match active {
+                Tab::Member => rsx! { SubmissionList { items: member, on_done } },
+                Tab::Found => rsx! { SubmissionList { items: found, on_done } },
+                Tab::Screenshots => rsx! { ImageQueuePanel { state: imgs, on_done } },
+                Tab::Videos => rsx! { VideoQueuePanel { state: vids, on_done } },
+            }
+        }
+    }
+}
+
+#[component]
+fn SubmissionList(items: Vec<QueueItem>, on_done: EventHandler<()>) -> Element {
+    if items.is_empty() {
+        return rsx! { EmptyState { text: "Nothing here right now.".to_string() } };
+    }
+    rsx! {
+        ul { class: "space-y-4",
+            for item in items {
+                li { key: "{item.id}", QueueCard { item, on_done } }
+            }
+        }
+    }
+}
+
+#[component]
+fn ImageQueuePanel(
+    state: Option<Result<Vec<PendingPortImageDto>, String>>,
+    on_done: EventHandler<()>,
+) -> Element {
     match state {
         None => rsx! {
-            div { class: "mt-8 space-y-4",
-                for i in 0..3 {
-                    div { key: "{i}", class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
-                }
-            }
+            div { class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
         },
         Some(Err(message)) => rsx! {
-            p { class: "mt-8 text-sm text-destructive", "Could not load the queue: {message}" }
+            p { class: "text-sm text-destructive", "Could not load screenshots: {message}" }
         },
         Some(Ok(items)) if items.is_empty() => rsx! {
-            div { class: "mt-8",
-                EmptyState { text: "Nothing is waiting for review.".to_string() }
+            EmptyState { text: "No screenshots waiting for review.".to_string() }
+        },
+        Some(Ok(items)) => rsx! {
+            ul { class: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
+                for item in items {
+                    li { key: "{item.id}", ImageQueueCard { item, on_done } }
+                }
             }
         },
-        Some(Ok(items)) => {
-            let member_count = items.iter().filter(|i| i.source == "user").count();
-            let found_count = items.len() - member_count;
-            let active = tab();
-            let visible: Vec<QueueItem> = items
-                .into_iter()
-                .filter(|i| (i.source == "user") == (active == "member"))
-                .collect();
-            rsx! {
-                div { role: "tablist", class: "{TABS_LIST} mt-8",
-                    button { r#type: "button", role: "tab", "aria-selected": if active == "member" { "true" } else { "false" },
-                        class: if active == "member" { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
-                        onclick: move |_| tab.set("member".to_string()),
-                        "Member submissions ({member_count})"
-                    }
-                    button { r#type: "button", role: "tab", "aria-selected": if active == "found" { "true" } else { "false" },
-                        class: if active == "found" { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
-                        onclick: move |_| tab.set("found".to_string()),
-                        "Found automatically ({found_count})"
-                    }
+    }
+}
+
+#[component]
+fn ImageQueueCard(item: PendingPortImageDto, on_done: EventHandler<()>) -> Element {
+    let mut busy = use_signal(|| false);
+    let mut error = use_signal(|| None::<String>);
+    let id = item.id;
+    let approve_fn = move || {
+        spawn(async move {
+            busy.set(true);
+            match api::review_port_image(id, true).await {
+                Ok(()) => on_done.call(()),
+                Err(e) => error.set(Some(e.to_string())),
+            }
+            busy.set(false);
+        });
+    };
+    let reject_fn = move || {
+        spawn(async move {
+            busy.set(true);
+            match api::review_port_image(id, false).await {
+                Ok(()) => on_done.call(()),
+                Err(e) => error.set(Some(e.to_string())),
+            }
+            busy.set(false);
+        });
+    };
+    let error_text = error().unwrap_or_default();
+    let port_href = format!("/games/{}/{}", item.game_slug, item.port_slug);
+    rsx! {
+        article { class: "{CARD_SURFACE} p-3",
+            crate::components::Picture {
+                media: Some(item.image.clone()),
+                alt: format!("Screenshot submitted for {}", item.port_name),
+                initials: "".to_string(),
+                sizes: "384px".to_string(),
+                class: "aspect-video w-full rounded-md object-cover".to_string(),
+            }
+            p { class: "mt-2 text-sm font-medium",
+                a { href: "{port_href}", class: "hover:underline", "{item.port_name}" }
+            }
+            p { class: "text-xs text-muted-foreground",
+                "{item.uploader_name.clone().unwrap_or_else(|| \"Member\".to_string())}"
+            }
+            div { class: "mt-3 flex gap-2",
+                button {
+                    r#type: "button",
+                    disabled: busy(),
+                    class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_XS}",
+                    onclick: move |_| approve_fn(),
+                    "Approve"
                 }
-                if visible.is_empty() {
-                    div { class: "mt-6",
-                        EmptyState { text: "Nothing here right now.".to_string() }
-                    }
-                } else {
-                    ul { class: "mt-6 space-y-4",
-                        for item in visible {
-                            li { key: "{item.id}",
-                                QueueCard { item, on_done: move |_| reload.set(reload() + 1) }
-                            }
-                        }
-                    }
+                button {
+                    r#type: "button",
+                    disabled: busy(),
+                    class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
+                    onclick: move |_| reject_fn(),
+                    "Reject"
                 }
+            }
+            if !error_text.is_empty() {
+                p { class: "mt-2 text-xs text-destructive", "{error_text}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn VideoQueuePanel(
+    state: Option<Result<Vec<PendingVideoDto>, String>>,
+    on_done: EventHandler<()>,
+) -> Element {
+    match state {
+        None => rsx! {
+            div { class: "skeleton h-40 rounded-xl", "aria-hidden": "true" }
+        },
+        Some(Err(message)) => rsx! {
+            p { class: "text-sm text-destructive", "Could not load videos: {message}" }
+        },
+        Some(Ok(items)) if items.is_empty() => rsx! {
+            EmptyState { text: "No videos waiting for review.".to_string() }
+        },
+        Some(Ok(items)) => rsx! {
+            ul { class: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
+                for item in items {
+                    li { key: "{item.id}", VideoQueueCard { item, on_done } }
+                }
+            }
+        },
+    }
+}
+
+#[component]
+fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
+    let mut busy = use_signal(|| false);
+    let mut error = use_signal(|| None::<String>);
+    let id = item.id;
+    let approve_fn = move || {
+        spawn(async move {
+            busy.set(true);
+            match api::review_submitted_video(id, true).await {
+                Ok(()) => on_done.call(()),
+                Err(e) => error.set(Some(e.to_string())),
+            }
+            busy.set(false);
+        });
+    };
+    let reject_fn = move || {
+        spawn(async move {
+            busy.set(true);
+            match api::review_submitted_video(id, false).await {
+                Ok(()) => on_done.call(()),
+                Err(e) => error.set(Some(e.to_string())),
+            }
+            busy.set(false);
+        });
+    };
+    let error_text = error().unwrap_or_default();
+    let watch = format!("https://www.youtube.com/watch?v={}", item.video.youtube_id);
+    let subject = item
+        .port_name
+        .clone()
+        .unwrap_or_else(|| item.game_name.clone());
+    rsx! {
+        article { class: "{CARD_SURFACE} p-3",
+            a { href: "{watch}", target: "_blank", rel: "noopener",
+                crate::components::Picture {
+                    media: item.video.thumb.clone(),
+                    alt: item.video.title.clone(),
+                    initials: "".to_string(),
+                    sizes: "384px".to_string(),
+                    class: "aspect-video w-full rounded-md object-cover".to_string(),
+                }
+            }
+            p { class: "mt-2 line-clamp-2 text-sm font-medium", "{item.video.title}" }
+            p { class: "text-xs text-muted-foreground", "{subject}" }
+            div { class: "mt-3 flex gap-2",
+                button {
+                    r#type: "button",
+                    disabled: busy(),
+                    class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_XS}",
+                    onclick: move |_| approve_fn(),
+                    "Approve"
+                }
+                button {
+                    r#type: "button",
+                    disabled: busy(),
+                    class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
+                    onclick: move |_| reject_fn(),
+                    "Reject"
+                }
+            }
+            if !error_text.is_empty() {
+                p { class: "mt-2 text-xs text-destructive", "{error_text}" }
             }
         }
     }

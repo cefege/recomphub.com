@@ -45,8 +45,9 @@ pub async fn enqueue(ex: impl PgExecutor<'_>, kind: &str, source_url: &str) -> D
 }
 
 /// Up to `limit` rows still to process: pending, or failed with fewer than 3 attempts.
-/// Visible kinds come first (covers, avatars, video thumbnails, screenshots, then og images).
-/// Covers of games with a port go first, since every listing shows them, then by importance.
+/// A member's uploaded screenshot goes first: someone is waiting on it, and it should never
+/// sit behind a large catalog backlog. Covers, avatars and video thumbnails come next since
+/// every listing shows them, then screenshots, then og images.
 pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<MediaRow>> {
     let rows = sqlx::query_as::<_, MediaRow>(
         "SELECT m.* FROM media m
@@ -57,11 +58,12 @@ pub async fn next_pending(ex: impl PgExecutor<'_>, limit: i64) -> DbResult<Vec<M
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending' OR (m.status = 'failed' AND m.attempts < 3)
          ORDER BY CASE m.kind
-                      WHEN 'cover' THEN 0
-                      WHEN 'avatar' THEN 1
-                      WHEN 'video_thumb' THEN 2
-                      WHEN 'screenshot' THEN 3
-                      ELSE 4
+                      WHEN 'port_screenshot' THEN 0
+                      WHEN 'cover' THEN 1
+                      WHEN 'avatar' THEN 2
+                      WHEN 'video_thumb' THEN 3
+                      WHEN 'screenshot' THEN 4
+                      ELSE 5
                   END,
                   g.ported DESC NULLS LAST,
                   g.importance DESC NULLS LAST,

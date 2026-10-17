@@ -10,6 +10,7 @@ dioxus = { version = "=0.7.10", features = ["router", "fullstack"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+base64 = "0.22"
 recomphub-db = { path = "../db", optional = true }
 recomphub-ingest = { path = "../ingest", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
@@ -20,7 +21,6 @@ tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 sha2 = { version = "0.10", optional = true }
 rand = { version = "0.9", optional = true }
-base64 = { version = "0.22", optional = true }
 regex = { version = "1", optional = true }
 tower-http = { version = "0.6", features = ["fs", "compression-gzip", "set-header"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
@@ -39,7 +39,6 @@ server = [
   "dep:tracing-subscriber",
   "dep:sha2",
   "dep:rand",
-  "dep:base64",
   "dep:anyhow",
   "dep:regex",
   "dep:tower-http",

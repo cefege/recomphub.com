@@ -6,6 +6,7 @@ use recomphub_shared::{PortDetail, TargetPlatform};
 use super::jsonld;
 use crate::api;
 use crate::components::comments::PortComments;
+use crate::components::contribute::ContributeSection;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::maintenance::MaintenancePanel;
 use crate::components::picture::Picture;
@@ -17,8 +18,8 @@ use crate::components::styles::{
 };
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
-    AiBadge, Breadcrumb, PlayabilityMeter, PortCardView, ReleaseChip, Section, TargetIcon,
-    VideoPlayer, initials_of, keyed, target_label,
+    AiBadge, Breadcrumb, PlayabilityMeter, PortCardView, PortHero, ReleaseChip, Section,
+    TargetIcon, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{StarButton, use_marks};
 
@@ -253,6 +254,7 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let other_title = format!("Other ports of {}", game.name);
     let other_ports = d.other_ports.clone();
     let videos = d.videos.clone();
+    let screenshots = d.screenshots.clone();
     let last_commit = d.last_commit_at;
     let ai_tools = port.ai_tools.clone();
     let ai_evidence = port.ai_evidence.clone();
@@ -260,40 +262,37 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
 
     rsx! {
         Seo { title, description, path, json_ld }
-        section { class: "grid gap-8 md:grid-cols-[220px_1fr]",
-            div { class: "mx-auto w-40 md:w-full",
-                div { class: "aspect-[3/4] overflow-hidden rounded-lg border",
-                    Picture {
-                        media: port.cover.clone(),
-                        alt: format!("Cover art for {}", game.name),
-                        initials: initials.clone(),
-                        sizes: "(min-width: 768px) 220px, 50vw".to_string(),
-                        eager: true,
-                        class: "h-full w-full object-cover".to_string(),
-                    }
-                }
+        div {
+            Breadcrumb { items: crumbs.clone() }
+            h1 { class: "mt-4 {H1}", "{port.name}" }
+            p { class: "mt-2 text-muted-foreground",
+                "{subtitle} "
+                a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
             }
-            div { class: "min-w-0",
-                Breadcrumb { items: crumbs.clone() }
-                h1 { class: "mt-4 {H1}", "{port.name}" }
-                p { class: "mt-2 text-muted-foreground",
-                    "{subtitle} "
-                    a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
+        }
+        div { class: "mt-6",
+            PortHero {
+                cover: port.cover.clone(),
+                screenshots: screenshots.clone(),
+                videos: videos.clone(),
+                alt: format!("{} gameplay", port.name),
+                initials: initials.clone(),
+            }
+        }
+        div { class: "mt-6 flex flex-wrap items-center justify-between gap-4",
+            div { class: "flex flex-wrap items-center gap-4",
+                LiveCount { game_id }
+                {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
+            }
+            div { class: "flex flex-wrap gap-2",
+                if let Some(url) = download.clone() {
+                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "Download latest release" }
                 }
-                div { class: "mt-4 flex flex-wrap items-center gap-4",
-                    LiveCount { game_id }
-                    {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
+                a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Repository" }
+                if let Some(url) = homepage.clone() {
+                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Website" }
                 }
-                div { class: "mt-6 flex flex-wrap gap-2",
-                    if let Some(url) = download.clone() {
-                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "Download latest release" }
-                    }
-                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Repository" }
-                    if let Some(url) = homepage.clone() {
-                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Website" }
-                    }
-                    a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
-                }
+                a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
             }
         }
 
@@ -379,12 +378,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
             }
         }
 
-        if !videos.is_empty() {
-            Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
-                VideoPlayer { videos }
-            }
-        }
-
         if !other_ports.is_empty() {
             Section { heading: other_title, class: "mt-12".to_string(),
                 ul { class: "grid gap-4 md:grid-cols-2",
@@ -397,7 +390,9 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
                 }
             }
         }
-
+        div { class: "mt-12",
+            ContributeSection { port_id, port_name: port.name.clone() }
+        }
         div { class: "mt-12",
             PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }
         }

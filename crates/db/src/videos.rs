@@ -21,6 +21,7 @@ pub struct VideoRow {
     pub published_at: Option<DateTime<Utc>>,
     pub thumb_media_id: Option<i64>,
     pub hidden: bool,
+    pub pending: bool,
     pub fetched_at: DateTime<Utc>,
 }
 
@@ -57,7 +58,9 @@ fn validate_target(target: &str) -> DbResult<()> {
         .map_err(DbError::from)
 }
 
-/// Inserts or refreshes a video. A row that moderators hid stays hidden.
+/// Inserts or refreshes a video found by the sync job. A row that moderators hid stays hidden;
+/// a row a member submitted (`pending`) is left untouched here, so a coincidental rediscovery
+/// never bypasses review.
 pub async fn upsert_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64> {
     validate_target(&v.target)?;
     let id = sqlx::query_scalar::<_, i64>(
@@ -85,7 +88,8 @@ pub async fn upsert_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64
     Ok(id)
 }
 
-/// Videos for a game, newest first. Hidden rows are included only when `include_hidden` is set.
+/// Videos for a game, newest first. Hidden and member-submitted-but-unreviewed rows are
+/// included only when `include_hidden` is set (the moderation views; no public page passes it).
 pub async fn list_for_game(
     ex: impl PgExecutor<'_>,
     game_id: i64,
@@ -93,7 +97,7 @@ pub async fn list_for_game(
 ) -> DbResult<Vec<VideoRow>> {
     let rows = sqlx::query_as::<_, VideoRow>(
         "SELECT * FROM videos
-         WHERE game_id = $1 AND ($2 OR NOT hidden)
+         WHERE game_id = $1 AND ($2 OR (NOT hidden AND NOT pending))
          ORDER BY published_at DESC NULLS LAST, id DESC",
     )
     .bind(game_id)
@@ -101,6 +105,86 @@ pub async fn list_for_game(
     .fetch_all(ex)
     .await?;
     Ok(rows)
+}
+
+/// A member-submitted video, pending moderator approval. Reuses the sync job's
+/// `(game, target, youtube_id)` uniqueness: resubmitting a known video just touches it and
+/// never resets an already-approved video back to pending.
+pub async fn submit_user_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64> {
+    validate_target(&v.target)?;
+    let id = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO videos (game_id, port_id, target, youtube_id, title, channel, thumb_media_id, pending)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+         ON CONFLICT (game_id, target, youtube_id) DO UPDATE
+           SET port_id = COALESCE(videos.port_id, EXCLUDED.port_id),
+               fetched_at = now()
+         RETURNING id",
+    )
+    .bind(v.game_id)
+    .bind(v.port_id)
+    .bind(v.target.clone())
+    .bind(v.youtube_id.clone())
+    .bind(v.title.clone())
+    .bind(v.channel.clone())
+    .bind(v.thumb_media_id)
+    .fetch_one(ex)
+    .await?;
+    Ok(id)
+}
+
+/// A pending, member-submitted video with enough to review it.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PendingVideo {
+    #[sqlx(flatten)]
+    pub video: VideoRow,
+    pub game_name: String,
+    pub game_slug: String,
+    pub port_name: Option<String>,
+    pub port_slug: Option<String>,
+}
+
+/// Every pending, member-submitted video, oldest first, for the moderation queue.
+pub async fn list_pending(ex: impl PgExecutor<'_>) -> DbResult<Vec<PendingVideo>> {
+    Ok(sqlx::query_as::<_, PendingVideo>(
+        "SELECT v.*, g.name AS game_name, g.slug AS game_slug, p.name AS port_name, p.slug AS port_slug
+         FROM videos v
+         JOIN games g ON g.id = v.game_id
+         LEFT JOIN ports p ON p.id = v.port_id
+         WHERE v.pending
+         ORDER BY v.fetched_at",
+    )
+    .fetch_all(ex)
+    .await?)
+}
+
+/// Count of pending, member-submitted videos, for the admin nav badge.
+pub async fn count_pending(ex: impl PgExecutor<'_>) -> DbResult<i64> {
+    Ok(
+        sqlx::query_scalar("SELECT count(*)::bigint FROM videos WHERE pending")
+            .fetch_one(ex)
+            .await?,
+    )
+}
+
+/// Approves (clears `pending`, so the video becomes public) or rejects (deletes the row, since
+/// it was never public) a pending submission. Returns `NotFound` if it is missing or already
+/// reviewed.
+pub async fn review_pending(ex: impl PgExecutor<'_>, id: i64, approve: bool) -> DbResult<()> {
+    let res = if approve {
+        sqlx::query("UPDATE videos SET pending = false WHERE id = $1 AND pending")
+            .bind(id)
+            .execute(ex)
+            .await?
+    } else {
+        sqlx::query("DELETE FROM videos WHERE id = $1 AND pending")
+            .bind(id)
+            .execute(ex)
+            .await?
+    };
+    if res.rows_affected() == 0 {
+        return Err(DbError::NotFound(format!("pending video {id}")));
+    }
+    Ok(())
 }
 
 /// Hides or shows a video. Returns `NotFound` when the id is unknown.

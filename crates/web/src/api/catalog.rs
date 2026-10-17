@@ -586,6 +586,12 @@ pub async fn port_detail(
     // Videos attributed to this port first; the stable sort keeps the list order within each group.
     video_rows.sort_by_key(|v| v.port_id != Some(port_id));
     let videos = video_dtos(pool, video_rows).await?;
+    let screenshots = recomphub_db::port_media::approved_for_port(pool, port_id)
+        .await
+        .map_err(db_error)?
+        .iter()
+        .map(media_ref)
+        .collect();
 
     Ok(PortDetail {
         port,
@@ -602,6 +608,7 @@ pub async fn port_detail(
         ai_source,
         other_ports,
         videos,
+        screenshots,
         weekly_commits,
     })
 }

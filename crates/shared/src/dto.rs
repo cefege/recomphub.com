@@ -219,8 +219,34 @@ pub struct PortDetail {
     pub ai_source: Option<String>,
     pub other_ports: Vec<PortCard>,
     pub videos: Vec<VideoDto>,
+    /// Member-contributed screenshots, approved by a moderator, oldest first.
+    pub screenshots: Vec<MediaRef>,
     /// Commits per week for the last 12 weeks, oldest first. Empty until GitHub's stats are fetched.
     pub weekly_commits: Vec<i32>,
+}
+
+/// A pending, member-uploaded screenshot, for the moderation queue.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingPortImageDto {
+    pub id: i64,
+    pub image: MediaRef,
+    pub uploader_name: Option<String>,
+    pub port_name: String,
+    pub port_slug: String,
+    pub game_slug: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A pending, member-submitted gameplay video, for the moderation queue.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingVideoDto {
+    pub id: i64,
+    pub video: VideoDto,
+    pub game_name: String,
+    pub game_slug: String,
+    pub port_name: Option<String>,
+    pub port_slug: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 /// One page of a listing.

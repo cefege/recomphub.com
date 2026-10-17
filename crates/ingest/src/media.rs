@@ -34,6 +34,7 @@ pub fn widths_for(kind: &str) -> Option<&'static [u32]> {
     match kind {
         "cover" => Some(&[132, 264, 528]),
         "screenshot" => Some(&[480, 960, 1600]),
+        "port_screenshot" => Some(&[480, 960, 1600]),
         "avatar" => Some(&[40, 80]),
         "video_thumb" => Some(&[320, 480]),
         "og" => Some(&[OG_WIDTH]),
@@ -59,6 +60,13 @@ pub fn planned_widths(kind: &str, source_width: u32) -> Vec<u32> {
 /// Output extension for a media kind.
 pub fn extension_for(kind: &str) -> &'static str {
     if kind == "og" { "jpg" } else { "avif" }
+}
+
+/// True when `bytes` starts with a signature `image` recognizes. A cheap header check (no
+/// decode), so a user upload that is clearly not an image fails the request immediately
+/// instead of sitting `pending` until `media-sync` rejects it.
+pub fn looks_like_image(bytes: &[u8]) -> bool {
+    image::guess_format(bytes).is_ok()
 }
 
 /// Downloads an image with a 20 s timeout and a 15 MB cap. Fails on non-2xx responses.
@@ -179,17 +187,32 @@ pub async fn render(
     .context("media render task panicked")?
 }
 
-/// Processes one pending row: download, render, then mark ready or failed.
-/// Returns `Ok(true)` when the row became ready. Failures are recorded on the row and return
-/// `Ok(false)`.
+/// Where an uploaded file's bytes are kept between the upload request and the next `media-sync`
+/// run, which renders it. `{hash}` is the same hash stored in the row's `source_url`.
+pub fn upload_path(media_dir: &Path, hash: &str) -> PathBuf {
+    media_dir.join("uploads").join(hash)
+}
+
+/// Processes one pending row: read its bytes (an uploaded file's `source_url` starts with
+/// `upload:`; anything else is downloaded), render, then mark ready or failed. Returns
+/// `Ok(true)` when the row became ready. Failures are recorded on the row and return `Ok(false)`.
 pub async fn process_row(
     pool: &PgPool,
     http: &reqwest::Client,
     dir: &Path,
     row: &MediaRow,
 ) -> Result<bool> {
+    let upload_hash = row.source_url.strip_prefix("upload:");
     let outcome = async {
-        let bytes = download(http, &row.source_url).await?;
+        let bytes = match upload_hash {
+            Some(hash) => {
+                let path = upload_path(dir, hash);
+                tokio::fs::read(&path)
+                    .await
+                    .with_context(|| format!("reading uploaded file {}", path.display()))?
+            }
+            None => download(http, &row.source_url).await?,
+        };
         render(dir.to_path_buf(), row.kind.clone(), row.hash.clone(), bytes).await
     }
     .await;
@@ -197,6 +220,10 @@ pub async fn process_row(
         Ok((src_w, src_h, widths)) => {
             let widths: Vec<i32> = widths.into_iter().map(|w| w as i32).collect();
             media::mark_ready(pool, row.id, widths, src_w as i32, src_h as i32).await?;
+            if let Some(hash) = upload_hash {
+                // Best effort: the rendered AVIF files are what matters from here on.
+                let _ = tokio::fs::remove_file(upload_path(dir, hash)).await;
+            }
             Ok(true)
         }
         Err(err) => {
