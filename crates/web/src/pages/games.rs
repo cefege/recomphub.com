@@ -701,16 +701,14 @@ fn GameSolePort(port: PortCard) -> Element {
             )
         }
     })?;
+    let port_id = port.id;
+    let ratings_data = use_loader(move || async move {
+        Ok::<RatingSummary, ServerFnError>(api::port_ratings(port_id).await.unwrap_or_default())
+    })?;
     match data() {
-        Some(detail) => {
-            let port_id = detail.port.id;
-            let ratings_data = use_loader(move || async move {
-                Ok::<RatingSummary, ServerFnError>(
-                    api::port_ratings(port_id).await.unwrap_or_default(),
-                )
-            })?;
-            rsx! { PortMainContent { detail, ratings: ratings_data() } }
-        }
+        Some(detail) => rsx! {
+            PortMainContent { detail, ratings: ratings_data(), embedded: true }
+        },
         None => rsx! {
             ul { class: "grid gap-4 md:grid-cols-2",
                 li { PortCardView { port } }

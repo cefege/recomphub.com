@@ -67,10 +67,8 @@ fn Fact(label: String, children: Element) -> Element {
 /// Generated description of the port, from its GitHub README and release notes.
 #[component]
 fn AboutPort(about: PortAbout, repo_url: String) -> Element {
-    let has_lists = !(about.features.is_empty()
-        && about.requirements.is_empty()
-        && about.limitations.is_empty()
-        && about.setup.is_empty());
+    let has_lists =
+        !(about.features.is_empty() && about.limitations.is_empty() && about.setup.is_empty());
     rsx! {
         Section { heading: "About this port".to_string(), class: "mt-12".to_string(),
             div { class: "flex flex-col gap-6",
@@ -82,9 +80,6 @@ fn AboutPort(about: PortAbout, repo_url: String) -> Element {
                     div { class: "grid gap-4 md:grid-cols-2",
                         if !about.features.is_empty() {
                             AboutList { heading: "Features".to_string(), items: about.features.clone(), numbered: false }
-                        }
-                        if !about.requirements.is_empty() {
-                            AboutList { heading: "Requirements".to_string(), items: about.requirements.clone(), numbered: false }
                         }
                         if !about.limitations.is_empty() {
                             AboutList { heading: "Known limitations".to_string(), items: about.limitations.clone(), numbered: false }
@@ -211,7 +206,11 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
 /// renders its own comments/report section once, since where that belongs on a merged game
 /// page differs from the port page.
 #[component]
-pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Element {
+pub(crate) fn PortMainContent(
+    detail: PortDetail,
+    ratings: RatingSummary,
+    #[props(default)] embedded: bool,
+) -> Element {
     let live = use_context::<LiveStore>();
     let port_id = detail.port.id;
     let game_id = detail.port.game_id;
@@ -310,6 +309,10 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
     let ai_evidence = port.ai_evidence.clone();
     let about = d.about.clone();
     let has_about = about.is_some();
+    let about_requirements: Vec<String> = about
+        .as_ref()
+        .map(|a| a.requirements.clone())
+        .unwrap_or_default();
     let rating_preview = if ratings.count > 0 {
         let avg = ratings
             .average
@@ -327,14 +330,16 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
     rsx! {
         div { class: "grid gap-6 md:grid-cols-[1fr_300px]",
             PortHero {
-                cover: port.cover.clone(),
+                cover: if embedded { None } else { port.cover.clone() },
                 screenshots: screenshots.clone(),
                 videos: videos.clone(),
                 alt: format!("{} gameplay", port.name),
                 initials: initials.clone(),
             }
             aside { class: "flex flex-col gap-4",
-                if let Some(about) = about.as_ref() {
+                if !embedded
+                    && let Some(about) = about.as_ref()
+                {
                     p { class: "text-sm text-muted-foreground", "{about.summary}" }
                 }
                 a {
@@ -421,9 +426,20 @@ pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Ele
             }
         }
 
-        if let Some(text) = requirements {
+        if requirements.is_some() || !about_requirements.is_empty() {
             Section { heading: "System requirements".to_string(), class: "mt-12".to_string(),
-                p { class: "whitespace-pre-line leading-relaxed text-muted-foreground", "{text}" }
+                div { class: "flex flex-col gap-4",
+                    if !about_requirements.is_empty() {
+                        ul { class: "flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground",
+                            for item in about_requirements.clone() {
+                                li { "{item}" }
+                            }
+                        }
+                    }
+                    if let Some(text) = requirements {
+                        p { class: "whitespace-pre-line leading-relaxed text-muted-foreground", "{text}" }
+                    }
+                }
             }
         }
 
