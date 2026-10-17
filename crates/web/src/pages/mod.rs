@@ -30,6 +30,7 @@ pub use home::Home;
 pub use moderation::{ModerationLog, ModerationQueue};
 pub use not_found::{NotFound, RouteError};
 pub use platforms::{PlatformPage, PlatformTargetPage, PlatformsIndex};
+pub(crate) use port::PortMainContent;
 pub use port::PortPage;
 pub use privacy::PrivacyPage;
 pub use search::SearchPage;

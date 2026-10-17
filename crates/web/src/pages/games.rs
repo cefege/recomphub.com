@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use recomphub_shared::dto::RatingSummary;
 use recomphub_shared::seo::{
     game_with_ports_description, game_with_ports_title, game_without_port_description,
     game_without_port_title, meta_description,
@@ -23,6 +24,7 @@ use crate::components::ui::{
     VideoPlayer, ViewToggle, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{WantButton, use_marks};
+use crate::pages::PortMainContent;
 use crate::pages::faq::game_faq;
 
 /// The `/games` filter state, parsed from the query string.
@@ -389,6 +391,9 @@ fn GameBody(detail: GameDetail) -> Element {
 
     let list = ports();
     let has_ports = !list.is_empty();
+    // Display-only: not stored anywhere, re-decided from the live port count on every load, so
+    // the game page automatically goes back to a card list the moment a second port is added.
+    let is_solo_port = list.len() == 1;
     let want = want_total();
     let platform_name = detail
         .platforms
@@ -545,7 +550,11 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        if has_ports {
+        if is_solo_port {
+            div { class: "mt-12",
+                GameSolePort { game_slug: game.slug.clone(), port_slug: list[0].slug.clone() }
+            }
+        } else if has_ports {
             Section { heading: "Native ports".to_string(), class: "mt-12".to_string(),
                 ul { class: "grid gap-4 md:grid-cols-2",
                     for port in sorted {
@@ -585,13 +594,13 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        if !videos.is_empty() {
+        if !videos.is_empty() && !is_solo_port {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
                 VideoPlayer { videos }
             }
         }
 
-        if !shots.is_empty() {
+        if !shots.is_empty() && !is_solo_port {
             Section { heading: "Screenshots".to_string(), class: "mt-12".to_string(),
                 Rail {
                     for (index, shot) in shots.iter().cloned().enumerate() {
@@ -667,4 +676,20 @@ fn GameBody(detail: GameDetail) -> Element {
             ReportDialog { game_id }
         }
     }
+}
+
+/// Fetches and renders one port's full detail inline on its game page, used in place of the
+/// "Native ports" list when a game has exactly one published native port. Nothing is stored for
+/// this: `GameBody` decides fresh from the live port count every time the page loads, so it
+/// reverts to the card list on its own the moment a second port is added.
+#[component]
+fn GameSolePort(game_slug: String, port_slug: String) -> Element {
+    let (lookup_game, lookup_port) = (game_slug.clone(), port_slug.clone());
+    let data = use_loader(move || api::port_detail(lookup_game.clone(), lookup_port.clone()))?;
+    let detail = data();
+    let port_id = detail.port.id;
+    let ratings_data = use_loader(move || async move {
+        Ok::<RatingSummary, ServerFnError>(api::port_ratings(port_id).await.unwrap_or_default())
+    })?;
+    rsx! { PortMainContent { detail, ratings: ratings_data() } }
 }

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use recomphub_shared::dto::{PortAbout, RatingSummary};
 use recomphub_shared::seo::{meta_description, port_title};
-use recomphub_shared::{PortDetail, TargetPlatform};
+use recomphub_shared::{PortCard, PortDetail, TargetPlatform};
 
 use super::jsonld;
 use crate::api;
@@ -130,6 +130,82 @@ fn AboutList(heading: String, items: Vec<String>, numbered: bool) -> Element {
 #[component]
 fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let site = use_context::<SiteUrl>().0;
+    let port = detail.port.clone();
+    let game = detail.game.clone();
+    let game_id = port.game_id;
+    // While this is the game's only published native port, the game page shows the same
+    // content at a shorter URL. No redirect is sent (a browser-cached 301 would survive after a
+    // second port lands, and the user wants this to revert on its own): crawlers without
+    // JavaScript still get the full page here, with the canonical link pointing at the game
+    // page, and a real browser is bounced there client-side. The moment a second native port
+    // exists, or this page is itself a decompilation (never merged onto the game page), both
+    // effects stop.
+    let is_sole_port = is_sole_native_port(&port.kind, &detail.other_ports);
+    let primary: Vec<&str> = port
+        .targets
+        .iter()
+        .filter_map(|t| t.parse::<TargetPlatform>().ok())
+        .filter(|p| p.is_primary())
+        .map(TargetPlatform::label)
+        .collect();
+    let targets_text: Vec<String> = port.targets.iter().map(|t| target_label(t)).collect();
+    let title = port_title(&port.name, &game.name, &port.kind_label, &primary);
+    let description = match detail.about.as_ref() {
+        Some(about) => meta_description(&about.summary),
+        None => meta_description(&format!(
+            "{} is a {} of {}. It runs on {}. Compare GitHub stars, releases, AI usage and gameplay videos.",
+            port.name,
+            port.kind_label,
+            game.name,
+            targets_text.join(", ")
+        )),
+    };
+    let crumbs = port_crumbs(&detail);
+    let json_ld = jsonld::port_json_ld(&site, &detail, &crumbs, &ratings);
+    let game_href = format!("/games/{}", game.slug);
+    let path = if is_sole_port {
+        game_href.clone()
+    } else {
+        format!("/games/{}/{}", game.slug, port.slug)
+    };
+    let subtitle = format!("{} of", article_kind(&port.kind_label));
+
+    let redirect_href = game_href.clone();
+    use_effect(move || {
+        if is_sole_port {
+            let _ = document::eval(&format!("location.replace('{redirect_href}')"));
+        }
+    });
+    // Recorded here, not in `PortMainContent`: when that content is embedded on the game page
+    // instead, the game page already records its own hit and live-watch for this `game_id`, and
+    // a second call here would count every solo-port view twice.
+    use_live_watch(Some(game_id), vec![game_id]);
+    use_effect(move || {
+        spawn(async move {
+            let _ = api::record_hit(game_id).await;
+        });
+    });
+
+    rsx! {
+        Seo { title, description, path, json_ld }
+        div {
+            Breadcrumb { items: crumbs.clone() }
+            h1 { class: "mt-4 {H1}", "{port.name}" }
+            p { class: "mt-2 text-muted-foreground",
+                "{subtitle} "
+                a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
+            }
+        }
+        PortMainContent { detail, ratings }
+    }
+}
+
+/// Everything about one port below its title: hero, facts, generated description,
+/// maintenance, requirements, other ports, and the ratings/comments section. Shared by the
+/// port's own page and, when a game has exactly one published port, the game page. The caller
+/// owns hit-recording and live-watch, since the game page already does both for its own view.
+#[component]
+pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Element {
     let live = use_context::<LiveStore>();
     let port_id = detail.port.id;
     let game_id = detail.port.game_id;
@@ -143,7 +219,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     });
 
     use_marks(vec![port_id], vec![game_id]);
-    use_live_watch(Some(game_id), vec![game_id]);
 
     let refresh = move || {
         let (game_slug, port_slug) = {
@@ -156,12 +231,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
             }
         });
     };
-
-    use_effect(move || {
-        spawn(async move {
-            let _ = api::record_hit(game_id).await;
-        });
-    });
 
     use_effect(move || {
         let front = live.activity.read().front().cloned();
@@ -187,30 +256,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let d = current();
     let port = d.port.clone();
     let game = d.game.clone();
-    let primary: Vec<&str> = port
-        .targets
-        .iter()
-        .filter_map(|t| t.parse::<TargetPlatform>().ok())
-        .filter(|p| p.is_primary())
-        .map(TargetPlatform::label)
-        .collect();
-    let targets_text: Vec<String> = port.targets.iter().map(|t| target_label(t)).collect();
-    let title = port_title(&port.name, &game.name, &port.kind_label, &primary);
-    let description = match d.about.as_ref() {
-        Some(about) => meta_description(&about.summary),
-        None => meta_description(&format!(
-            "{} is a {} of {}. It runs on {}. Compare GitHub stars, releases, AI usage and gameplay videos.",
-            port.name,
-            port.kind_label,
-            game.name,
-            targets_text.join(", ")
-        )),
-    };
-    let crumbs = port_crumbs(&d);
-    let json_ld = jsonld::port_json_ld(&site, &d, &crumbs, &ratings);
-    let path = format!("/games/{}/{}", game.slug, port.slug);
-    let subtitle = format!("{} of", article_kind(&port.kind_label));
-    let game_href = format!("/games/{}", game.slug);
     let initials = initials_of(&game.name);
     let source_name = d
         .source_platform
@@ -260,15 +305,6 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let about = d.about.clone();
 
     rsx! {
-        Seo { title, description, path, json_ld }
-        div {
-            Breadcrumb { items: crumbs.clone() }
-            h1 { class: "mt-4 {H1}", "{port.name}" }
-            p { class: "mt-2 text-muted-foreground",
-                "{subtitle} "
-                a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
-            }
-        }
         div { class: "mt-6",
             PortHero {
                 cover: port.cover.clone(),
@@ -406,4 +442,62 @@ fn article_kind(kind_label: &str) -> String {
         _ => "A",
     };
     format!("{article} {lower}")
+}
+
+/// Whether this port's game page should show its full content inline instead of a card list:
+/// it must itself be a native port (never a decompilation, which always has its own page), and
+/// no other published native port of the game may exist.
+fn is_sole_native_port(kind: &str, other_ports: &[PortCard]) -> bool {
+    kind.parse::<recomphub_shared::PortKind>()
+        .is_ok_and(recomphub_shared::PortKind::is_port)
+        && other_ports.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lone_native_port_is_sole() {
+        assert!(is_sole_native_port("static_recomp", &[]));
+    }
+
+    #[test]
+    fn a_native_port_with_another_published_port_is_not_sole() {
+        let other = PortCard {
+            id: 2,
+            slug: "other".to_string(),
+            game_id: 1,
+            game_slug: "game".to_string(),
+            game_name: "Game".to_string(),
+            name: "Other".to_string(),
+            kind: "static_recomp".to_string(),
+            kind_label: "Static recompilation".to_string(),
+            targets: Vec::new(),
+            authors: Vec::new(),
+            ai_usage: String::new(),
+            ai_tools: Vec::new(),
+            ai_evidence: Vec::new(),
+            playability: String::new(),
+            latest_version: None,
+            latest_release_url: None,
+            latest_release_at: None,
+            release_state: String::new(),
+            release_state_label: String::new(),
+            github_stars: 0,
+            star_count: 0,
+            repo_url: String::new(),
+            cover: None,
+            maintenance: None,
+        };
+        assert!(!is_sole_native_port("static_recomp", &[other]));
+    }
+
+    #[test]
+    fn a_decompilation_is_never_sole_even_with_no_other_native_ports() {
+        // A decomp page's "other published ports" query only ever returns other native ports,
+        // never other decomps, so an empty list here does not mean the decomp is alone: it means
+        // the game simply has no native port. The decomp page must keep its own URL and content.
+        assert!(!is_sole_native_port("decompilation", &[]));
+    }
 }
