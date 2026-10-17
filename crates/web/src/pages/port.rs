@@ -8,7 +8,6 @@ use crate::api;
 use crate::components::comments::PortComments;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::maintenance::MaintenancePanel;
-use crate::components::picture::Picture;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
 use crate::components::styles::{
@@ -58,9 +57,9 @@ fn port_crumbs(detail: &PortDetail) -> Vec<(String, String)> {
 #[component]
 fn Fact(label: String, children: Element) -> Element {
     rsx! {
-        div { class: "{CARD_SURFACE} p-4",
-            dt { class: "text-xs font-medium text-muted-foreground", "{label}" }
-            dd { class: "mt-2 text-sm", {children} }
+        div { class: "flex items-start justify-between gap-3 border-b pb-2 text-sm last:border-0 last:pb-0",
+            dt { class: "shrink-0 text-muted-foreground", "{label}" }
+            dd { class: "text-right", {children} }
         }
     }
 }
@@ -75,7 +74,6 @@ fn AboutPort(about: PortAbout, repo_url: String) -> Element {
     rsx! {
         Section { heading: "About this port".to_string(), class: "mt-12".to_string(),
             div { class: "flex flex-col gap-6",
-                p { class: "text-lg leading-relaxed", "{about.summary}" }
                 div { class: "flex flex-col gap-2",
                     span { class: "{BADGE} {BADGE_OUTLINE}", "{about.technique_label}" }
                     p { class: "leading-relaxed text-muted-foreground", "{about.technique_note}" }
@@ -197,7 +195,7 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
                 a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
             }
         }
-        PortMainContent { detail }
+        PortMainContent { detail, ratings: ratings.clone() }
         div { class: "mt-12",
             PortComments { key: "{port_id}", port_id, port_name: port.name.clone(), ratings }
         }
@@ -207,12 +205,13 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     }
 }
 
-/// Everything about one port below its title: hero, facts, generated description,
-/// maintenance, requirements and other ports. Shared by the port's own page and, when a game
-/// has exactly one published port, the game page. The caller renders its own comments/report
-/// section once, since where that belongs on a merged game page differs from the port page.
+/// Everything about one port below its title: media and facts sidebar, the download row,
+/// generated description, maintenance, system requirements and other ports. Shared by the
+/// port's own page and, when a game has exactly one published port, the game page. The caller
+/// renders its own comments/report section once, since where that belongs on a merged game
+/// page differs from the port page.
 #[component]
-pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
+pub(crate) fn PortMainContent(detail: PortDetail, ratings: RatingSummary) -> Element {
     let live = use_context::<LiveStore>();
     let port_id = detail.port.id;
     let game_id = detail.port.game_id;
@@ -311,9 +310,22 @@ pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
     let ai_evidence = port.ai_evidence.clone();
     let about = d.about.clone();
     let has_about = about.is_some();
+    let rating_preview = if ratings.count > 0 {
+        let avg = ratings
+            .average
+            .map(|a| (a * 10.0).round() / 10.0)
+            .unwrap_or(0.0);
+        format!(
+            "{avg:.1}★ ({} rating{})",
+            ratings.count,
+            if ratings.count == 1 { "" } else { "s" }
+        )
+    } else {
+        "No ratings yet".to_string()
+    };
 
     rsx! {
-        div { class: "mt-6",
+        div { class: "grid gap-6 md:grid-cols-[1fr_300px]",
             PortHero {
                 cover: port.cover.clone(),
                 screenshots: screenshots.clone(),
@@ -321,8 +333,68 @@ pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
                 alt: format!("{} gameplay", port.name),
                 initials: initials.clone(),
             }
+            aside { class: "flex flex-col gap-4",
+                if let Some(about) = about.as_ref() {
+                    p { class: "text-sm text-muted-foreground", "{about.summary}" }
+                }
+                a {
+                    href: "#ratings-heading",
+                    class: "text-sm font-medium hover:underline",
+                    "{rating_preview}"
+                }
+                dl { class: "flex flex-col gap-2",
+                    Fact { label: "Release".to_string(),
+                        ReleaseChip {
+                            version: port.latest_version.clone(),
+                            at: port.latest_release_at,
+                            state_label: port.release_state_label.clone(),
+                        }
+                    }
+                    Fact { label: "Developer".to_string(),
+                        div { class: "flex flex-wrap justify-end gap-x-1.5",
+                            for (index, (href, name, _)) in authors.iter().cloned().enumerate() {
+                                span { key: "{index}",
+                                    if let Some(href) = href {
+                                        a { href: "{href}", class: "font-medium hover:underline", "{name}" }
+                                    } else {
+                                        span { class: "font-medium", "{name}" }
+                                    }
+                                    if index + 1 < authors.len() { "," }
+                                }
+                            }
+                        }
+                    }
+                    Fact { label: "Original version".to_string(), "{source_name}" }
+                    Fact { label: "License".to_string(), "{license}" }
+                    Fact { label: "Toolchain".to_string(), "{toolchain}" }
+                    Fact { label: "GitHub stars".to_string(), "{stars}" }
+                    Fact { label: "Last commit".to_string(),
+                        if let Some(at) = last_commit {
+                            RelativeTime { at }
+                        } else {
+                            "Unknown"
+                        }
+                    }
+                    Fact { label: "AI use".to_string(),
+                        AiBadge { usage: port.ai_usage.clone(), tools: ai_tools.clone(), evidence: ai_evidence.clone() }
+                    }
+                    Fact { label: "Playability".to_string(),
+                        PlayabilityMeter { playability: port.playability.clone() }
+                    }
+                }
+                div { class: "flex flex-wrap gap-1.5 border-t pt-3",
+                    span { class: "{BADGE} {BADGE_OUTLINE}", "{port.kind_label}" }
+                    for (target, label) in runs.clone() {
+                        span { key: "{target}", class: "{BADGE} {BADGE_OUTLINE}",
+                            TargetIcon { target }
+                            "{label}"
+                        }
+                    }
+                }
+            }
         }
-        div { class: "mt-6 flex flex-wrap items-center justify-between gap-4",
+
+        div { class: "{CARD_SURFACE} mt-6 flex flex-wrap items-center justify-between gap-4 p-4",
             div { class: "flex flex-wrap items-center gap-4",
                 LiveCount { game_id }
                 {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
@@ -343,66 +415,6 @@ pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
             AboutPort { about, repo_url: port.repo_url.clone() }
         }
 
-        Section { heading: "Facts".to_string(), class: "mt-12".to_string(),
-            dl { class: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
-                Fact { label: "Kind".to_string(), "{port.kind_label}" }
-                Fact { label: "Original version".to_string(), "{source_name}" }
-                Fact { label: "Runs on".to_string(),
-                    div { class: "flex flex-wrap gap-2",
-                        for (target, label) in runs.clone() {
-                            span { class: "{BADGE} {BADGE_OUTLINE}",
-                                TargetIcon { target }
-                                "{label}"
-                            }
-                        }
-                    }
-                }
-                Fact { label: "Authors".to_string(),
-                    ul { class: "flex flex-col gap-2",
-                        for (href, name, avatar) in authors.clone() {
-                            li { class: "flex items-center gap-2",
-                                Picture {
-                                    media: avatar,
-                                    alt: name.clone(),
-                                    initials: initials_of(&name),
-                                    sizes: "24px".to_string(),
-                                    class: "size-6 rounded-full text-[9px]".to_string(),
-                                }
-                                if let Some(href) = href {
-                                    a { href: "{href}", class: "font-medium hover:underline", "{name}" }
-                                } else {
-                                    span { class: "font-medium", "{name}" }
-                                }
-                            }
-                        }
-                    }
-                }
-                Fact { label: "AI use".to_string(),
-                    AiBadge { usage: port.ai_usage.clone(), tools: ai_tools.clone(), evidence: ai_evidence.clone() }
-                }
-                Fact { label: "Playability".to_string(),
-                    PlayabilityMeter { playability: port.playability.clone() }
-                }
-                Fact { label: "Release".to_string(),
-                    ReleaseChip {
-                        version: port.latest_version.clone(),
-                        at: port.latest_release_at,
-                        state_label: port.release_state_label.clone(),
-                    }
-                }
-                Fact { label: "License".to_string(), "{license}" }
-                Fact { label: "GitHub stars".to_string(), "{stars}" }
-                Fact { label: "Last commit".to_string(),
-                    if let Some(at) = last_commit {
-                        RelativeTime { at }
-                    } else {
-                        "Unknown"
-                    }
-                }
-                Fact { label: "Toolchain".to_string(), "{toolchain}" }
-            }
-        }
-
         if let Some(m) = port.maintenance {
             Section { heading: "Maintenance".to_string(), class: "mt-12".to_string(),
                 MaintenancePanel { maintenance: m, weekly_commits: d.weekly_commits.clone() }
@@ -410,7 +422,7 @@ pub(crate) fn PortMainContent(detail: PortDetail) -> Element {
         }
 
         if let Some(text) = requirements {
-            Section { heading: "What you need".to_string(), class: "mt-12".to_string(),
+            Section { heading: "System requirements".to_string(), class: "mt-12".to_string(),
                 p { class: "whitespace-pre-line leading-relaxed text-muted-foreground", "{text}" }
             }
         }
