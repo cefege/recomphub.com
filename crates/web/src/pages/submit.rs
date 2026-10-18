@@ -184,7 +184,14 @@ fn SubmitForm(game: String, repo: String) -> Element {
             start_preview(w, prefill_repo.clone());
         }
     });
-
+    if let Some(result) = w.result.read().clone() {
+        return rsx! {
+            SubmitConfirmation {
+                result,
+                on_submit_another: move |_| reset_submit_form(w),
+            }
+        };
+    }
     let platforms = w
         .target
         .read()
@@ -313,10 +320,11 @@ fn SubmitForm(game: String, repo: String) -> Element {
                     class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} w-fit",
                     disabled: *w.busy.read() || !*w.rules_ok.read(),
                     onclick: move |_| submit_port(w),
-                    "Submit port"
-                }
-                if let Some(r) = w.result.read().clone() {
-                    SubmitOutcome { result: r }
+                    if *w.busy.read() {
+                        "Submitting…"
+                    } else {
+                        "Submit port"
+                    }
                 }
             }
         }
@@ -660,8 +668,78 @@ fn PreviewSummary(data: RepoPreviewData) -> Element {
     }
 }
 
-/// Result of a submission, or of an edit. Greets the submitter by name when known and tells
-/// them where to check on it, rather than leaving them with one flat status line.
+/// Full confirmation shown after a new-port submission. Replacing the form makes a completed
+/// submission unambiguous and prevents an accidental second click from creating a duplicate.
+#[component]
+fn SubmitConfirmation(result: SubmitResult, on_submit_another: EventHandler<()>) -> Element {
+    let viewer = use_context::<ViewerStore>();
+    let first_name = viewer
+        .me
+        .read()
+        .as_ref()
+        .map(|u| {
+            u.display_name
+                .split_whitespace()
+                .next()
+                .unwrap_or(&u.display_name)
+                .to_string()
+        })
+        .unwrap_or_else(|| "there".to_string());
+    let (heading, detail) = if result.published {
+        (
+            "Your port is live.",
+            "It was published immediately and is now visible on RecompHub.",
+        )
+    } else {
+        (
+            "Submission received.",
+            "Your project is in the moderation queue and will be reviewed before it is published.",
+        )
+    };
+    rsx! {
+        div { class: "mx-auto max-w-2xl space-y-8 py-8",
+            header { class: "space-y-2",
+                p { class: "text-sm font-medium text-success", "Thanks, {first_name}!" }
+                h1 { class: H1, "{heading}" }
+                p { class: LEAD, "{detail}" }
+            }
+            if !result.published {
+                div { class: "rounded-lg border border-success/50 bg-success/10 p-5 text-sm",
+                    p { class: "font-medium", "No need to submit it again — we have it." }
+                    ol { class: "mt-3 list-decimal space-y-1 pl-5 text-muted-foreground",
+                        li { "A moderator checks the project, game match, and submitted details." }
+                        li { "If it is approved, it will appear publicly on RecompHub." }
+                        li { "You can check its status anytime under My submissions." }
+                    }
+                }
+            }
+            div { class: "flex flex-wrap gap-3",
+                if let (Some(game_slug), Some(port_slug)) = (result.game_slug.clone(), result.port_slug.clone()) {
+                    Link {
+                        to: Route::PortPage { game_slug, port_slug },
+                        class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}",
+                        "View the port"
+                    }
+                }
+                if !result.published {
+                    Link {
+                        to: Route::AccountPage {},
+                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
+                        "My submissions"
+                    }
+                }
+                button {
+                    r#type: "button",
+                    class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}",
+                    onclick: move |_| on_submit_another.call(()),
+                    "Submit another port"
+                }
+            }
+        }
+    }
+}
+
+/// Result of an edit submission.
 #[component]
 fn SubmitOutcome(result: SubmitResult) -> Element {
     let viewer = use_context::<ViewerStore>();
@@ -683,9 +761,7 @@ fn SubmitOutcome(result: SubmitResult) -> Element {
     } else {
         (
             "Got it, queued for review.",
-            Some(
-                "A moderator usually looks within a day. You can check on it from your account page.",
-            ),
+            Some("You can check its status from your account page."),
         )
     };
     rsx! {
@@ -708,6 +784,21 @@ fn SubmitOutcome(result: SubmitResult) -> Element {
             }
         }
     }
+}
+
+/// Clears every submission-specific signal before returning to the form. Keeping the reset local
+/// avoids relying on a same-route navigation to remount the component.
+fn reset_submit_form(mut w: Wiz) {
+    w.repo_url.set(String::new());
+    w.preview.set(None);
+    w.already.set(None);
+    w.target.set(None);
+    w.hits.set(Vec::new());
+    w.draft.set(FormState::default());
+    w.busy.set(false);
+    w.error.set(None);
+    w.result.set(None);
+    w.rules_ok.set(false);
 }
 
 fn start_preview(mut w: Wiz, url: String) {
@@ -763,6 +854,10 @@ fn pick_game(mut w: Wiz, choice: GameChoice) {
 }
 
 fn submit_port(mut w: Wiz) {
+    if *w.busy.read() || w.result.read().is_some() {
+        return;
+    }
+
     if !*w.rules_ok.read() {
         w.error
             .set(Some("Confirm the ground rules first.".to_string()));
