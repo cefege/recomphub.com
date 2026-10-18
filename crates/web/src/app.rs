@@ -21,9 +21,6 @@ const FONT_WOFF2: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 
-/// Google Analytics 4 measurement ID for recomphub.com.
-const GOOGLE_TAG_ID: &str = "G-EZ96BDJE3J";
-
 /// Root component. Routing and the shared shell live here.
 #[component]
 pub fn App() -> Element {
@@ -31,17 +28,6 @@ pub fn App() -> Element {
         // Set the theme before first paint, from localStorage (default dark).
         Script {
             "(function(){{var t=localStorage.getItem('theme')||'dark';document.documentElement.dataset.theme=t;}})();"
-        }
-        // One global GA4 tag: every route is rendered beneath this app root.
-        Script {
-            src: "https://www.googletagmanager.com/gtag/js?id={GOOGLE_TAG_ID}",
-            r#async: true,
-        }
-        Script {
-            "window.dataLayer = window.dataLayer || [];
-             function gtag(){{dataLayer.push(arguments);}}
-             gtag('js', new Date());
-             gtag('config', '{GOOGLE_TAG_ID}');"
         }
         Stylesheet { href: asset!("/assets/tailwind.css") }
         Link {
