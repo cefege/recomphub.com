@@ -22,7 +22,7 @@ pub fn PrivacyPage() -> Element {
             Section { heading: "When you visit".to_string(),
                 ul { class: "list-disc space-y-2 pl-6",
                     li { "Page visits are counted for popularity rankings. A visit is stored as a one-way hash of your IP address and browser name, salted with a value that changes every day, so the same visitor cannot be followed from one day to the next. The IP address itself is not stored." }
-                    li { "If you accept analytics in the cookie banner, Google Analytics (delivered through Cloudflare Zaraz) counts page views and referrers. Declining keeps it off. Google's own privacy policy applies to data it receives this way." }
+                    li { "If you accept analytics in the cookie banner, Google Analytics counts page views and referrers. Declining keeps it off. Google's own privacy policy applies to data it receives this way." }
                     li { "Your light or dark theme choice is kept in your browser's local storage." }
                     li { "Gameplay videos load from youtube-nocookie.com only after you press play. YouTube's own privacy policy applies to the player." }
                 }

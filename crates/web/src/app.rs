@@ -21,6 +21,37 @@ const FONT_WOFF2: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 
+const GOOGLE_ANALYTICS_MEASUREMENT_ID: &str = "G-EZ96BDJE3J";
+const GOOGLE_ANALYTICS_BOOTSTRAP: &str = r#"
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('consent', 'default', {analytics_storage: 'denied'});
+(function() {
+    var analyticsPurpose = 'pUSs';
+    var enabled = false;
+    function syncAnalyticsConsent() {
+        var choices = window.zaraz?.consent?.getAll?.();
+        var allowed = choices?.[analyticsPurpose] === true;
+        gtag('consent', 'update', {
+            analytics_storage: allowed ? 'granted' : 'denied'
+        });
+        if (allowed && !enabled) {
+            enabled = true;
+            gtag('config', 'G-EZ96BDJE3J');
+        } else if (!allowed) {
+            enabled = false;
+        }
+    }
+    if (window.zaraz?.consent?.APIReady) {
+        syncAnalyticsConsent();
+    } else {
+        document.addEventListener('zarazConsentAPIReady', syncAnalyticsConsent);
+    }
+    document.addEventListener('zarazConsentChoicesUpdated', syncAnalyticsConsent);
+}());
+"#;
+
 /// Root component. Routing and the shared shell live here.
 #[component]
 pub fn App() -> Element {
@@ -29,6 +60,11 @@ pub fn App() -> Element {
         Script {
             "(function(){{var t=localStorage.getItem('theme')||'dark';document.documentElement.dataset.theme=t;}})();"
         }
+        Script {
+            src: "https://www.googletagmanager.com/gtag/js?id={GOOGLE_ANALYTICS_MEASUREMENT_ID}",
+            r#async: true,
+        }
+        Script { "{GOOGLE_ANALYTICS_BOOTSTRAP}" }
         Stylesheet { href: asset!("/assets/tailwind.css") }
         Link {
             rel: "preload",
