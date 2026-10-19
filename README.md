@@ -35,7 +35,11 @@ cargo run -p recomphub-worker -- describe-ports --dry-run
 cargo run -p recomphub-worker -- describe-games --dry-run --game need-for-speed-most-wanted
 cargo run -p recomphub-worker -- stats-snapshot
 cargo run -p recomphub-worker -- sales-sync
+cargo run -p recomphub-worker --bin discord-setup -- --dry-run --prune --server-icon
+cargo run -p recomphub-worker --bin discord-setup -- --prune --server-icon
 ```
+`discord-setup` maintains five community channels: `#welcome`, `#announcements`, `#general`, `#showcase`, and `#website-bugs`. Their channel topics supply onboarding and posting guidance. `--server-icon` applies the bundled RecompHub logo; `--prune` deletes every other channel and category, so use it only for an intentional clean cutover.
+
 
 Tests:
 
@@ -63,6 +67,7 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
 | `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed gets the admin role |
 | `RUST_LOG` | |
+| `DISCORD_BOT_TOKEN` | Discord bot token for the one-shot `discord-setup` command; grants the bot API access to configure the RecompHub server |
 | `IP` and `PORT` | set by the Dockerfile; dx reads them |
 
 ## Container and deployment
