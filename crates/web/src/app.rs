@@ -21,6 +21,18 @@ const FONT_WOFF2: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 
+const RECOMPHUB_LOGO: Asset = asset!(
+    "/assets/recomphub-logo.svg",
+    AssetOptions::builder().with_hash_suffix(false)
+);
+
+const RECOMPHUB_FAVICON: Asset = asset!(
+    "/assets/recomphub-logo.png",
+    AssetOptions::builder().with_hash_suffix(false)
+);
+
+pub(crate) const DISCORD_INVITE: &str = "https://discord.gg/XJWPAQHEzr";
+
 const GOOGLE_ANALYTICS_MEASUREMENT_ID: &str = "G-EZ96BDJE3J";
 const GOOGLE_ANALYTICS_BOOTSTRAP: &str = r#"
 window.dataLayer = window.dataLayer || [];
@@ -73,6 +85,7 @@ pub fn App() -> Element {
             crossorigin: "anonymous",
             href: "{FONT_WOFF2}",
         }
+        Link { rel: "icon", r#type: "image/png", href: "{RECOMPHUB_FAVICON}" }
         Router::<Route> {}
     }
 }
@@ -130,9 +143,19 @@ pub fn Shell() -> Element {
                             for (href, label) in NAV {
                                 a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
                             }
+                            a {
+                                href: DISCORD_INVITE,
+                                target: "_blank",
+                                rel: "noopener noreferrer",
+                                class: MENU_ITEM,
+                                "Join Discord"
+                            }
                         }
                     }
-                    a { href: "/", class: "text-base font-semibold tracking-tight", "RecompHub" }
+                    a { href: "/", class: "flex items-center gap-2 text-base font-semibold tracking-tight",
+                        img { src: "{RECOMPHUB_LOGO}", alt: "", class: "size-7 rounded-md" }
+                        span { "RecompHub" }
+                    }
                     nav { class: "hidden items-center gap-5 text-sm md:flex", "aria-label": "Main",
                         for (href, label) in NAV {
                             a { key: "{href}", href: "{href}", class: "text-muted-foreground transition-colors hover:text-foreground", "{label}" }
@@ -152,6 +175,13 @@ pub fn Shell() -> Element {
                             SearchIcon { class: "size-4" }
                         }
                         OnlineCount {}
+                        a {
+                            href: DISCORD_INVITE,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} hidden sm:inline-flex",
+                            "Join Discord"
+                        }
                         button {
                             r#type: "button",
                             class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON}",
@@ -228,6 +258,13 @@ pub fn Shell() -> Element {
                         a { href: "/about", class: "transition-colors hover:text-foreground", "About" }
                         a { href: "/about#ground-rules", class: "transition-colors hover:text-foreground", "Ground rules" }
                         a { href: "/submit", class: "transition-colors hover:text-foreground", "Submit a port" }
+                        a {
+                            href: DISCORD_INVITE,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            class: "transition-colors hover:text-foreground",
+                            "Discord"
+                        }
                         a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
                         a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
                     }

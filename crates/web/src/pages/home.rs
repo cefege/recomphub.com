@@ -2,6 +2,8 @@ use dioxus::prelude::*;
 use recomphub_shared::seo::home_title;
 use recomphub_shared::{ActivityItem, HitWindow, PlatformRef, PortCard};
 
+use crate::app::DISCORD_INVITE;
+
 use crate::api;
 use crate::components::listing::WINDOWS;
 use crate::components::styles::{
@@ -55,6 +57,16 @@ fn HomeInner(selected: HitWindow) -> Element {
                 Stat { value: d.stats.games_with_port, label: "games with a native port" }
                 Stat { value: d.stats.ports, label: "ports and recompilations" }
                 Stat { value: d.stats.platforms_with_ports, label: "original platforms" }
+            }
+            div { class: "flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground",
+                span { "Working on a port, sharing a build, or spotted a site bug?" }
+                a {
+                    href: DISCORD_INVITE,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    class: "font-medium text-foreground underline underline-offset-4 hover:text-primary",
+                    "Join the RecompHub Discord"
+                }
             }
         }
 

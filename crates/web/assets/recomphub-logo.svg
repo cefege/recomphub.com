@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">RecompHub</title>
+  <desc id="desc">A modular R mark for recompilations and native ports.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#162a4b"/>
+      <stop offset="1" stop-color="#070d1b"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="124" y1="96" x2="397" y2="416" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a5f3fc"/>
+      <stop offset=".5" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#background)"/>
+  <path d="M128 96h139c72 0 117 40 117 103 0 39-19 71-52 89l69 128h-93l-58-107h-39v107h-83V96Zm83 67v80h51c25 0 40-15 40-40s-15-40-40-40h-51Z" fill="url(#mark)"/>
+  <rect x="363" y="96" width="49" height="49" rx="12" fill="#fbbf24"/>
+  <rect x="399" y="132" width="14" height="14" rx="4" fill="#fde68a"/>
+  <path d="M363 166h25" stroke="#fbbf24" stroke-width="12" stroke-linecap="round"/>
+</svg>
