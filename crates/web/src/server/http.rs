@@ -270,7 +270,7 @@ async fn port_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
             "SELECT g.slug, p.slug, p.updated_at, m.kind, m.public_stem, m.hash, m.render_version, m.width \
              FROM ports p \
              JOIN games g ON g.id = p.game_id \
-             LEFT JOIN port_media pm ON pm.port_id = p.id AND pm.approved_at IS NOT NULL \
+             LEFT JOIN port_media pm ON pm.port_id = p.id AND pm.status = 'approved' \
              LEFT JOIN media m ON m.id = pm.media_id AND m.status = 'ready' \
              WHERE p.status = 'published' \
              ORDER BY g.slug, p.slug, pm.position, pm.id",
