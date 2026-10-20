@@ -59,7 +59,7 @@ spec:
                   - worker-catalog-sync
                   - worker-discover
                   - worker-media-discovery
-                  - worker-media-migrate-v3
+                  - worker-media-migrate-v4
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated

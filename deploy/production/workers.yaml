@@ -799,9 +799,9 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: media-migrate-v3
+  name: media-migrate-v4
   labels:
-    app.kubernetes.io/name: worker-media-migrate-v3
+    app.kubernetes.io/name: worker-media-migrate-v4
     app.kubernetes.io/part-of: recomphub
 spec:
   backoffLimit: 0
@@ -809,7 +809,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: worker-media-migrate-v3
+        app.kubernetes.io/name: worker-media-migrate-v4
         app.kubernetes.io/part-of: recomphub
     spec:
       restartPolicy: Never
