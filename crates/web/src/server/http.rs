@@ -34,6 +34,7 @@ pub fn with_site_routes(router: Router) -> Router {
     let site = Router::new()
         .route("/healthz", get(healthz))
         .route("/robots.txt", get(robots))
+        .route("/ads.txt", get(ads_txt))
         .route("/sitemap.xml", get(sitemap_index))
         .route("/sitemaps/{name}", get(sitemap_file))
         .route("/feed.xml", get(feed))
@@ -73,6 +74,17 @@ async fn healthz() -> Response {
             plain(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")
         }
     }
+}
+
+async fn ads_txt() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        "google.com, pub-6004542868270159, DIRECT, f08c47fec0942fa0\n",
+    )
+        .into_response()
 }
 
 async fn robots() -> Response {

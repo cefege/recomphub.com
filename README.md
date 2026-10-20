@@ -50,6 +50,7 @@ DATABASE_URL=postgres://localhost/recomphub_test cargo test --workspace --featur
 ## Advertising
 
 The shared document head in `crates/web/src/app.rs` loads Google AdSense asynchronously for publisher `ca-pub-6004542868270159`, with `crossorigin="anonymous"`.
+The root `/ads.txt` endpoint authorizes Google as a direct seller with `google.com, pub-6004542868270159, DIRECT, f08c47fec0942fa0`.
 
 ## Environment variables
 
