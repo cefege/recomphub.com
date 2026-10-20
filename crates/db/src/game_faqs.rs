@@ -9,6 +9,9 @@ use sqlx::{FromRow, PgExecutor};
 
 use crate::DbResult;
 
+/// Prefix for generated FAQs built under the current content policy.
+pub const CONTENT_POLICY_PREFIX: &str = "facts-v2:";
+
 /// A generated FAQ ready to store.
 pub struct NewGameFaq<'a> {
     pub game_id: i64,
@@ -27,13 +30,15 @@ pub struct FaqAttempt {
     pub error: String,
 }
 
-/// Stored FAQ items for a game. Empty when none has been generated.
+/// Stored FAQ items for a game. Older policy versions are hidden until regenerated.
 pub async fn items(ex: impl PgExecutor<'_>, game_id: i64) -> DbResult<Vec<FaqItem>> {
-    let stored: Option<serde_json::Value> =
-        sqlx::query_scalar("SELECT items FROM game_faqs WHERE game_id = $1")
-            .bind(game_id)
-            .fetch_optional(ex)
-            .await?;
+    let stored: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT items FROM game_faqs WHERE game_id = $1 AND starts_with(source_hash, $2)",
+    )
+    .bind(game_id)
+    .bind(CONTENT_POLICY_PREFIX)
+    .fetch_optional(ex)
+    .await?;
     match stored {
         Some(value) => match serde_json::from_value(value) {
             Ok(items) => Ok(items),

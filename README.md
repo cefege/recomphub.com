@@ -52,6 +52,23 @@ DATABASE_URL=postgres://localhost/recomphub_test cargo test --workspace --featur
 The shared document head in `crates/web/src/app.rs` loads Google AdSense asynchronously for publisher `ca-pub-6004542868270159`, with `crossorigin="anonymous"`.
 The root `/ads.txt` endpoint authorizes Google as a direct seller with `google.com, pub-6004542868270159, DIRECT, f08c47fec0942fa0`.
 
+Consent defaults deny analytics storage, ad storage, ad user data and ad personalization before the Google tags load. Google Analytics remains disabled until Zaraz purpose `pUSs` is accepted and is disabled again on withdrawal. Zaraz analytics permission never grants advertising permission. The privacy page and footer expose separate analytics and advertising settings.
+
+Google's certified consent message must be configured in the **AdSense account**, not replaced with the Zaraz analytics banner:
+
+1. Deploy the updated privacy page, then open **Privacy & messaging → European regulations** in AdSense.
+2. Create a message for `recomphub.com`, set `https://recomphub.com/privacy` as the privacy URL, enable **Do not consent**, and publish it.
+3. Enable **Consent mode for advertising purposes** in the message settings. Leave its separate analytics consent mode off: Zaraz remains the analytics consent source.
+4. Verify the published message, decline and withdrawal on the deployed site. Google's message preview query is `?fc=alwaysshow&fctype=gdpr`; do not mistake a preview for production-region verification. The existing AdSense script loads the published message; no second CMP script is required.
+
+Publishing the message requires authenticated account access. Until it is published and loads, the advertising settings control reports that it is unavailable; the repository does not contain an alternative certified CMP.
+
+### Catalog review and copyright
+
+Imported game descriptions are attributed to IGDB. FAQ comparisons describe recorded targets and community playability labels, not independent testing or editorial recommendations. Generated FAQs use the `facts-v2:` source-hash prefix; older cached answers are excluded until the existing ingest job regenerates them. This cutover requires no migration or manual database write.
+
+About, report dialogs and port download panels explain external releases, original game assets and copyright reporting. Reports can be emailed to `mateiasmihaiandrei@gmail.com` without signing in. These disclosures do not verify linked files or replace editorial review. Trusted-submitters' existing publication behavior is unchanged; review questionable listings and releases before seeking AdSense approval.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` for local development. In production, these come from the `recomphub-secrets` Secret.

@@ -34,7 +34,7 @@ const RETRY_AFTER: chrono::Duration = chrono::Duration::days(3);
 const CALL_SPACING: Duration = Duration::from_secs(1);
 const MAX_TOKENS: u32 = 1536;
 /// Bumping this regenerates every FAQ, for example after a change to the facts layout.
-pub const PROMPT_VERSION: u32 = 1;
+pub const PROMPT_VERSION: u32 = 2;
 const TOOL_NAME: &str = "record_faq";
 const TOOL_DESCRIPTION: &str = "Record the FAQ for one game as questions and answers.";
 
@@ -130,22 +130,24 @@ const STOPLIST: &[&str] = &[
 
 const SYSTEM_PROMPT: &str = "\
 You write the FAQ for one game page on RecompHub, a directory of fan projects that run classic \
-games on modern systems: recompilations, source ports and decompilation ports. The readers are \
-players deciding whether they can play this game and which version to use. You get the game's \
-facts as one JSON object. Write 3 to 7 questions and answers a curious player would actually ask.
+games on modern systems: recompilations, source ports and decompilation ports. Readers are \
+players comparing recorded project details. You get the game's facts as one JSON object. Write 3 to \
+7 questions and answers a curious player would actually ask.
 
 Rules:
 - Use only the facts. Do not add anything from memory. Do not guess versions, dates, platforms, \
-ratings or features the facts do not state. Skip a question the facts cannot answer properly.
+ratings or features the facts do not state. Skip a question the facts cannot answer properly. Treat \
+playability ratings as community-reported status, not evidence of independent testing.
 - Write like a knowledgeable friend, not a form. Plain conversational English. Vary sentence \
 shapes and openings. Never begin an answer with Yes, No, Not yet or Not natively.
 - Each answer is 1 to 3 sentences. Do not put statistics in parentheses. Use a number only when \
-it helps a reader decide, such as a rating, a release version or how many people asked for a port.
+it helps a reader understand a recorded fact, such as a rating, release version or request count.
 - Name projects exactly as the facts name them. Do not write URLs, and do not name any website, \
 store or ROM source.
-- Do not explain how to get game files, ROMs or keys. If the game's data comes up, say the player \
-needs their own copy.
-- No marketing words, no superlatives, no comparisons of projects with each other.
+- Do not explain how to get game files, ROMs or keys. State original-game requirements only \
+when the facts specify them. If those assets are required, say to use a copy the player is entitled to use.
+- No marketing words, no superlatives, no recommendations or comparisons of projects with each \
+other. Do not present catalog ordering as an assessment of which project is best.
 - Each question ends with a question mark, is under 120 characters, and no two questions are alike.
 
 Good, for a made-up game \"Example Quest\" with one port \"Questkit\" (Windows, release v1.2, last \
@@ -280,7 +282,11 @@ pub fn output_schema() -> Value {
 /// Hash of everything a FAQ is built from: the prompt, its version, and the facts. A changed
 /// hash means the stored FAQ is stale.
 pub fn facts_hash(facts_json: &str) -> String {
-    digest(&[&PROMPT_VERSION.to_string(), SYSTEM_PROMPT, facts_json])
+    format!(
+        "{}{}",
+        game_faqs::CONTENT_POLICY_PREFIX,
+        digest(&[&PROMPT_VERSION.to_string(), SYSTEM_PROMPT, facts_json])
+    )
 }
 
 fn month(t: DateTime<Utc>) -> String {

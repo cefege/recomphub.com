@@ -27,6 +27,9 @@ pub fn ReportDialog(game_id: i64, #[props(default)] port_id: Option<i64>) -> Ele
                     div { class: "grid gap-6 p-5",
                         div { class: "grid gap-2",
                             h2 { id: "report-title", class: "text-lg font-semibold tracking-tight", "Report a problem" }
+                            p { class: "text-sm text-muted-foreground",
+                                "Tell us what needs attention. For copyright or linked-file concerns, include this listing's URL and identify the specific material. You can also email mateiasmihaiandrei@gmail.com without signing in."
+                            }
                             textarea {
                                 class: TEXTAREA,
                                 rows: "5",

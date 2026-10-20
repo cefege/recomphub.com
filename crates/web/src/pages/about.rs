@@ -69,9 +69,17 @@ pub fn About() -> Element {
                     li { "Gameplay videos are YouTube search results, shown with YouTube's privacy-enhanced embeds." }
                 }
             }
-            Section { heading: "What RecompHub does not host".to_string(),
+            Section { heading: "Downloads, copyright and reports".to_string(),
                 p {
-                    "RecompHub never hosts or links to game ROMs, disc images or other copyrighted game files. Download buttons link only to the ports' own GitHub release pages. Moderators reject any submission that links to ROMs."
+                    "RecompHub lists projects and links to their repositories and release pages; it does not host game ROMs or disc images. External repositories and release contents can change, and we do not verify every listing or file. Some ports require game assets, which RecompHub does not provide. Use only assets from an original game copy you are entitled to use."
+                }
+                p { class: "mt-3",
+                    "If you believe a listing or linked material infringes your copyright, email "
+                    a { href: "mailto:mateiasmihaiandrei@gmail.com", class: "underline underline-offset-4", "mateiasmihaiandrei@gmail.com" }
+                    ". Include the listing URL and identify the material and your concern so we can review it. No sign-in is needed to contact us."
+                }
+                p { class: "mt-3",
+                    "You can also use “Report a problem” on a listing to flag inaccurate or concerning information."
                 }
             }
             GroundRules { class: "mt-12" }

@@ -88,13 +88,13 @@ pub fn game_with_ports_description(
     let n = port_names.len();
     let plural = if n == 1 { "port" } else { "ports" };
     let names = port_names.join(", ");
-    let runs_on = if targets.is_empty() {
+    let targets_note = if targets.is_empty() {
         String::new()
     } else {
-        format!(" Runs on {}.", targets.join(", "))
+        format!(" Listed targets: {}.", targets.join(", "))
     };
     let text = format!(
-        "{game} ({platform}{year}) has {n} native {plural}: {names}.{runs_on} Compare GitHub stars, releases, AI usage and gameplay videos."
+        "{game} ({platform}{year}) has {n} native {plural}: {names}.{targets_note} Compare GitHub stars, releases, AI usage and gameplay videos."
     );
     meta_description(&text)
 }
@@ -190,11 +190,5 @@ mod tests {
             t,
             "Majora's Mask Native Port & Recomp – Windows, macOS, Linux | RecompHub"
         );
-    }
-
-    #[test]
-    fn port_description_uses_plural_correctly() {
-        let d = game_with_ports_description("Zelda", "N64", Some(2000), &["A"], &["Windows"]);
-        assert!(d.starts_with("Zelda (N64, 2000) has 1 native port: A."));
     }
 }

@@ -414,6 +414,11 @@ pub(crate) fn PortMainContent(
                 }
                 a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
             }
+            if download.is_some() {
+                p { class: "basis-full text-sm text-muted-foreground",
+                    "Downloads open an external release page; RecompHub does not verify its files. Some ports require game assets; RecompHub does not provide them. Use only assets from an original game copy you are entitled to use."
+                }
+            }
         }
 
         if let Some(about) = about {

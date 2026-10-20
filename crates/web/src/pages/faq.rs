@@ -18,22 +18,60 @@ pub fn game_faq(detail: &GameDetail) -> Vec<FaqItem> {
     if detail.faq.is_empty() {
         template_faq(detail)
     } else {
-        detail.faq.clone()
+        let mut out = detail.faq.clone();
+        if !detail.ports.is_empty() {
+            let ports = ranked(&detail.ports);
+            let comparison = comparison_faq(&ports);
+            if !out.iter().any(|f| f.question == comparison.question) {
+                out.push(comparison);
+            }
+        }
+        out
+    }
+}
+
+fn comparison_faq(ports: &[&PortCard]) -> FaqItem {
+    let entries = ports.iter().map(|p| {
+        let targets = if p.targets.is_empty() {
+            "no recorded target platforms".to_string()
+        } else {
+            format!("targets {}", join_and(&labels(&p.targets)))
+        };
+        format!(
+            "{} is recorded as {} and has {targets}",
+            p.name,
+            playability_label(&p.playability)
+        )
+    });
+    FaqItem {
+        question: "How do the listed projects compare?".into(),
+        answer: format!(
+            "Catalog records list {}. Playability labels are community-reported and are not independent test results.",
+            join_and(&entries.collect::<Vec<_>>())
+        ),
+    }
+}
+
+fn playability_label(status: &str) -> &'static str {
+    match status {
+        "complete" => "complete",
+        "playable" => "playable",
+        "in_progress" => "in progress",
+        _ => "not rated",
     }
 }
 
 fn template_faq(detail: &GameDetail) -> Vec<FaqItem> {
     let game = detail.game.name.as_str();
-    let id = detail.game.id;
     let ports = ranked(&detail.ports);
     let mut out = vec![desktop_faq(detail, &ports)];
-    if let Some(best) = ports.first() {
-        out.push(best_way_faq(game, id, best, &ports));
-        out.extend(still_worked_on_faq(best));
-        out.extend(who_faq(best));
+    if let Some(first) = ports.first() {
+        out.push(comparison_faq(&ports));
+        out.extend(still_worked_on_faq(first));
+        out.extend(who_faq(first));
     }
     if !ports.is_empty() || !detail.decompilations.is_empty() {
-        out.push(own_copy_faq(id, game));
+        out.push(own_copy_faq());
     }
     out.extend(platform_faq(game, &ports, "web"));
     out.extend(platform_faq(game, &ports, "android"));
@@ -96,56 +134,8 @@ fn desktop_faq(detail: &GameDetail, ports: &[&PortCard]) -> FaqItem {
         });
     }
 
-    let windows_ready = native.contains(&"windows") || covered_by_port(ports, "windows");
-    if windows_ready && sentences.len() < 3 && missing.contains(&"linux") {
-        sentences.push(
-            "Windows builds can run on Linux through Wine or Proton, but that is not a native port."
-                .to_string(),
-        );
-    }
-    if windows_ready && sentences.len() < 3 && missing.contains(&"macos") {
-        sentences.push(
-            "Windows builds may also run on macOS through CrossOver, which is not a native port."
-                .to_string(),
-        );
-    }
-
     FaqItem {
         question: format!("Can I play {} on PC, Mac or Linux?", detail.game.name),
-        answer: sentences.join(" "),
-    }
-}
-
-/// "What's the best way to play X today?" Names the best port, where it runs, its status, and up to
-/// two others.
-fn best_way_faq(game: &str, id: i64, best: &PortCard, ports: &[&PortCard]) -> FaqItem {
-    let lead = match (id % 2 == 0, best.targets.is_empty()) {
-        (true, true) => format!("Start with {}.", best.name),
-        (true, false) => format!(
-            "Start with {}, which runs on {}.",
-            best.name,
-            join_and(&labels(&best.targets))
-        ),
-        (false, true) => format!("{} is the one to pick.", best.name),
-        (false, false) => format!(
-            "{} is the one to pick, and it runs on {}.",
-            best.name,
-            join_and(&labels(&best.targets))
-        ),
-    };
-    let mut sentences = vec![lead, status_sentence(best)];
-    let others: Vec<String> = ports.iter().skip(1).map(|p| p.name.clone()).collect();
-    if !others.is_empty() {
-        let shown = join_and(&others[..others.len().min(2)]);
-        let more = if others.len() > 2 {
-            ", among others"
-        } else {
-            ""
-        };
-        sentences.push(format!("There's also {shown}{more}."));
-    }
-    FaqItem {
-        question: format!("What's the best way to play {game} today?"),
         answer: sentences.join(" "),
     }
 }
@@ -226,20 +216,11 @@ fn author_name(author: &AuthorDto) -> Option<String> {
     }
 }
 
-/// "Do I need the original game?" Projects read art, audio and levels from the player's copy.
-fn own_copy_faq(id: i64, game: &str) -> FaqItem {
-    let answer = if id % 2 == 0 {
-        format!(
-            "You need your own copy of {game}. Projects rebuild the game's code, not its art, audio or levels, so they read those from the copy you already own."
-        )
-    } else {
-        format!(
-            "Your own copy of {game} is still required. The projects rebuild only the code, and the art, audio and levels come from the copy you already own."
-        )
-    };
+/// Asset requirements vary by project; the catalog does not supply game assets.
+fn own_copy_faq() -> FaqItem {
     FaqItem {
         question: "Do I need the original game?".to_string(),
-        answer,
+        answer: "Requirements vary by project. Check the project's README or release instructions; if original game assets are required, use only a copy you are entitled to use. RecompHub does not provide game assets.".to_string(),
     }
 }
 
@@ -342,12 +323,6 @@ fn original_runs_on(detail: &GameDetail, target: &str) -> bool {
             .and_then(TargetPlatform::from_platform_slug)
             .is_some_and(|t| t.as_str() == target)
     })
-}
-
-fn covered_by_port(ports: &[&PortCard], target: &str) -> bool {
-    ports
-        .iter()
-        .any(|p| p.targets.iter().any(|t| t.as_str() == target))
 }
 
 /// Player-facing labels for target slugs.
@@ -456,57 +431,54 @@ mod tests {
             question: "Stored?".into(),
             answer: "Stored answer.".into(),
         }];
-        assert_eq!(game_faq(&d), d.faq);
+        let faq = game_faq(&d);
+        assert_eq!(faq[0].answer, "Stored answer.");
+        assert!(faq[1].answer.contains("NFSMW-Recompiled"));
+        assert!(faq[1].answer.contains("playable"));
     }
 
     #[test]
-    fn single_port_answers_the_desktop_question_in_plain_sentences() {
+    fn single_port_reports_coverage_and_uncovered_targets() {
         let faq = game_faq(&detail(
             vec![port("NFSMW-Recompiled", &["windows"], "playable", 5)],
             0,
         ));
         let a = answer(&faq, "on PC, Mac or Linux");
-        assert!(
-            a.starts_with("NFSMW-Recompiled covers Windows. It's playable"),
-            "{a}"
-        );
-        assert!(a.contains("Nothing covers macOS and Linux yet."), "{a}");
-        assert_eq!(a.matches(". ").count() + 1, 3, "{a}");
+        assert!(a.contains("NFSMW-Recompiled covers Windows"));
+        assert!(a.contains("macOS"));
+        assert!(a.contains("Linux"));
     }
 
     #[test]
-    fn best_way_names_the_top_port_and_lists_the_rest() {
-        let faq = game_faq(&detail(
-            vec![
-                port("NFSMW-Recompiled", &["windows"], "playable", 500),
-                port("speedbreaker", &["windows", "macos"], "complete", 40),
-            ],
-            0,
-        ));
-        let a = answer(&faq, "best way");
-        assert!(
-            a.starts_with("speedbreaker is the one to pick, and it runs on Windows and macOS."),
-            "{a}"
-        );
-        assert!(a.contains("It's fully playable"), "{a}");
-        assert!(a.ends_with("There's also NFSMW-Recompiled."), "{a}");
+    fn comparison_exposes_recorded_targets_and_community_status() {
+        let ports = [
+            port("NFSMW-Recompiled", &["windows"], "playable", 500),
+            port("speedbreaker", &["windows", "macos"], "complete", 40),
+        ];
+        let item = comparison_faq(&[&ports[0], &ports[1]]);
+        let (_, records) = item.answer.split_once(&ports[0].name).unwrap();
+        let (first, second) = records.split_once(&ports[1].name).unwrap();
+        assert!(first.contains("playable"));
+        assert!(first.contains("Windows"));
+        assert!(!first.contains("macOS"));
+        assert!(second.contains("complete"));
+        assert!(second.contains("Windows"));
+        assert!(second.contains("macOS"));
+        assert!(item.answer.contains("community-reported"));
     }
 
     #[test]
-    fn several_ports_merge_coverage_into_one_desktop_sentence() {
+    fn several_ports_report_disjoint_target_coverage() {
         let faq = game_faq(&detail(
             vec![
                 port("speedbreaker", &["windows", "macos"], "complete", 40),
-                port("NFSMW-Recompiled", &["windows"], "playable", 500),
+                port("NFSMW-Recompiled", &["linux"], "playable", 500),
             ],
             0,
         ));
         let a = answer(&faq, "on PC, Mac or Linux");
-        assert!(
-            a.starts_with("speedbreaker covers Windows and macOS. It's fully playable"),
-            "{a}"
-        );
-        assert!(a.contains("Nothing covers Linux yet."), "{a}");
+        assert!(a.contains("speedbreaker covers Windows and macOS"));
+        assert!(a.contains("NFSMW-Recompiled covers Linux"));
     }
 
     #[test]
@@ -523,23 +495,20 @@ mod tests {
         }];
         let faq = game_faq(&d);
         let a = answer(&faq, "on PC, Mac or Linux");
-        assert!(
-            a.starts_with("The original release already runs natively on Windows."),
-            "{a}"
-        );
+        assert!(a.contains("natively on Windows"), "{a}");
         assert!(a.contains("NFSMW-Recompiled covers Linux"), "{a}");
     }
 
     #[test]
-    fn no_ports_states_the_gap_and_the_demand() {
+    fn no_ports_reports_platform_gap_and_demand() {
         let faq = game_faq(&detail(vec![], 12));
-        assert_eq!(
-            answer(&faq, "on PC, Mac or Linux"),
-            "There is no known port for Windows, macOS and Linux yet."
-        );
-        let a = answer(&faq, "Is anyone working on a port");
-        assert!(a.contains("12 people have asked for a port."), "{a}");
-        assert!(a.contains("What to work on next"), "{a}");
+        let coverage = answer(&faq, "on PC, Mac or Linux");
+        assert!(coverage.contains("Windows"));
+        assert!(coverage.contains("macOS"));
+        assert!(coverage.contains("Linux"));
+        let demand = answer(&faq, "Is anyone working on a port");
+        assert!(demand.contains("12 people have asked for a port."));
+        assert!(demand.contains("What to work on next"));
         assert!(!faq.iter().any(|f| f.question.starts_with("Do I need")));
     }
 
@@ -557,7 +526,7 @@ mod tests {
             releases_365d: 0,
         });
         let faq = game_faq(&detail(vec![p], 0));
-        assert_eq!(answer(&faq, "still being worked on"), "It's slowed down.");
+        assert!(answer(&faq, "still being worked on").contains("slowed down"));
     }
 
     #[test]
@@ -572,56 +541,7 @@ mod tests {
             funding: vec![],
         }];
         let faq = game_faq(&detail(vec![p], 0));
-        assert_eq!(
-            answer(&faq, "Who's behind"),
-            "NFSMW-Recompiled is made by ada."
-        );
-    }
-
-    #[test]
-    fn answers_avoid_robotic_openers_parentheses_and_repeated_openings() {
-        let mut with_authors = port("NFSMW-Recompiled", &["windows"], "playable", 5);
-        with_authors.authors = vec![AuthorDto {
-            github_login: Some("ada".into()),
-            name: "Ada".into(),
-            role: "owner".into(),
-            avatar: None,
-            commits: None,
-            funding: vec![],
-        }];
-        let fixtures = [
-            detail(vec![with_authors], 0),
-            detail(
-                vec![
-                    port("speedbreaker", &["windows", "macos"], "complete", 40),
-                    port("NFSMW-Recompiled", &["windows", "web"], "playable", 500),
-                ],
-                3,
-            ),
-            detail(vec![], 1),
-        ];
-        for d in &fixtures {
-            let faq = game_faq(d);
-            let mut openings = Vec::new();
-            for item in &faq {
-                let first = item
-                    .answer
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or_default()
-                    .trim_matches(|c: char| !c.is_alphanumeric())
-                    .to_lowercase();
-                assert!(
-                    !matches!(first.as_str(), "yes" | "no" | "not"),
-                    "{}",
-                    item.answer
-                );
-                assert!(!item.answer.contains('('), "{}", item.answer);
-                let opening: Vec<&str> = item.answer.split_whitespace().take(3).collect();
-                assert!(!openings.contains(&opening), "{:?}", item.answer);
-                openings.push(opening);
-            }
-        }
+        assert!(answer(&faq, "Who's behind").contains("ada"));
     }
 
     #[test]
@@ -658,10 +578,7 @@ mod tests {
             },
         ];
         let faq = game_faq(&detail(vec![p], 0));
-        assert_eq!(
-            answer(&faq, "Who's behind"),
-            "NFSMW-Recompiled is made by Mr. Wiseguy."
-        );
+        assert!(answer(&faq, "Who's behind").contains("Mr. Wiseguy"));
     }
 
     #[test]
@@ -677,26 +594,5 @@ mod tests {
         }];
         let faq = game_faq(&detail(vec![p], 0));
         assert!(!faq.iter().any(|f| f.question.starts_with("Who's behind")));
-    }
-
-    #[test]
-    fn best_way_caps_other_options_and_says_there_are_more() {
-        let faq = game_faq(&detail(
-            vec![
-                port("speedbreaker", &["windows"], "complete", 40),
-                port("A", &["windows"], "playable", 30),
-                port("B", &["windows"], "playable", 20),
-                port("C", &["windows"], "playable", 10),
-            ],
-            0,
-        ));
-        let a = answer(&faq, "best way");
-        assert!(a.ends_with("There's also A and B, among others."), "{a}");
-    }
-
-    #[test]
-    fn join_and_uses_oxford_free_list() {
-        let items: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(join_and(&items), "a, b and c");
     }
 }

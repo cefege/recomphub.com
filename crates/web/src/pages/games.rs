@@ -312,16 +312,13 @@ fn blurb(game: &GameCard, platform: &str, ports: &[PortCard], primary: &[String]
     );
     if let Some(top) = ports.iter().max_by_key(|p| p.github_stars) {
         text.push_str(&format!(
-            " The most popular is {} with {}.",
+            " The most-starred repository is {} with {}.",
             top.name,
             counted(i64::from(top.github_stars), "GitHub star", "GitHub stars")
         ));
     }
     if !primary.is_empty() {
-        text.push_str(&format!(
-            " You can play it natively on {}.",
-            primary.join(", ")
-        ));
+        text.push_str(&format!(" Listed projects target {}.", primary.join(", ")));
     }
     text
 }
@@ -643,12 +640,14 @@ fn GameBody(detail: GameDetail) -> Element {
 
         if let Some(text) = summary {
             Section { heading: "About".to_string(), class: "mt-12".to_string(),
+                p { class: "text-xs text-muted-foreground", "Game description supplied by IGDB." }
                 p { class: "mt-2 max-w-3xl leading-relaxed", "{text}" }
             }
         }
 
         if !faqs.is_empty() {
             Section { heading: "Frequently asked questions".to_string(), class: "mt-12".to_string(),
+                p { class: "mb-3 text-xs text-muted-foreground", "Catalog details and generated FAQ answers are based on recorded project data. Playability labels are community-reported, not independently tested." }
                 dl {
                     for (index, item) in faqs.iter().enumerate() {
                         div { key: "{index}", class: "border-b py-4",

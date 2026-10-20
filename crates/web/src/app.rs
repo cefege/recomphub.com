@@ -35,16 +35,23 @@ pub(crate) const DISCORD_INVITE: &str = "https://discord.gg/XJWPAQHEzr";
 
 const GOOGLE_ANALYTICS_MEASUREMENT_ID: &str = "G-EZ96BDJE3J";
 const GOOGLE_ANALYTICS_BOOTSTRAP: &str = r#"
+window['ga-disable-G-EZ96BDJE3J'] = true;
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('consent', 'default', {analytics_storage: 'denied'});
+gtag('consent', 'default', {
+    analytics_storage: 'denied',
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+});
 (function() {
     var analyticsPurpose = 'pUSs';
     var enabled = false;
     function syncAnalyticsConsent() {
         var choices = window.zaraz?.consent?.getAll?.();
         var allowed = choices?.[analyticsPurpose] === true;
+        window['ga-disable-G-EZ96BDJE3J'] = !allowed;
         gtag('consent', 'update', {
             analytics_storage: allowed ? 'granted' : 'denied'
         });
@@ -72,11 +79,11 @@ pub fn App() -> Element {
         Script {
             "(function(){{var t=localStorage.getItem('theme')||'dark';document.documentElement.dataset.theme=t;}})();"
         }
+        Script { "{GOOGLE_ANALYTICS_BOOTSTRAP}" }
         Script {
             src: "https://www.googletagmanager.com/gtag/js?id={GOOGLE_ANALYTICS_MEASUREMENT_ID}",
             r#async: true,
         }
-        Script { "{GOOGLE_ANALYTICS_BOOTSTRAP}" }
         Script {
             src: "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6004542868270159",
             r#async: true,
@@ -272,6 +279,7 @@ pub fn Shell() -> Element {
                         }
                         a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
                         a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
+                        a { href: "/privacy#privacy-choices", class: "transition-colors hover:text-foreground", "Cookie settings" }
                     }
                 }
             }
