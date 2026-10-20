@@ -256,8 +256,9 @@ async fn remove_legacy_outputs(dir: &Path, row: &MediaRow) {
     }
 }
 
-/// Processes one queued row. A v2 refresh first re-fetches its source; if that is unavailable it
-/// decodes the largest existing local AVIF. Failed refreshes retain their old ready metadata.
+/// Processes one queued row. A renderer refresh first re-encodes the largest local rendition;
+/// this makes version migrations independent of source-host availability. It falls back to the
+/// source only when local output is absent. Failed refreshes retain their old ready metadata.
 pub async fn process_row(
     pool: &PgPool,
     http: &reqwest::Client,
@@ -266,21 +267,32 @@ pub async fn process_row(
 ) -> Result<bool> {
     let upload_hash = row.source_url.strip_prefix("upload:");
     let outcome = async {
-        let source = match upload_hash {
-            Some(hash) => {
-                let path = upload_path(dir, hash);
-                tokio::fs::read(&path)
-                    .await
-                    .with_context(|| format!("reading uploaded file {}", path.display()))
+        let source = async {
+            match upload_hash {
+                Some(hash) => {
+                    let path = upload_path(dir, hash);
+                    tokio::fs::read(&path)
+                        .await
+                        .with_context(|| format!("reading uploaded file {}", path.display()))
+                }
+                None => download(http, &row.source_url).await,
             }
-            None => download(http, &row.source_url).await,
         };
-        let bytes = match source {
-            Ok(bytes) => bytes,
-            Err(source_error) if row.status == "ready" => existing_avif(dir, row)
-                .await
-                .with_context(|| format!("source refresh failed: {source_error:#}"))?,
-            Err(error) => return Err(error),
+        let bytes = if row.status == "ready" && row.render_version < MEDIA_RENDER_VERSION {
+            match existing_avif(dir, row).await {
+                Ok(bytes) => bytes,
+                Err(existing_error) => source
+                    .await
+                    .with_context(|| format!("reading prior rendition failed: {existing_error:#}"))?,
+            }
+        } else {
+            match source.await {
+                Ok(bytes) => bytes,
+                Err(source_error) if row.status == "ready" => existing_avif(dir, row)
+                    .await
+                    .with_context(|| format!("source refresh failed: {source_error:#}"))?,
+                Err(error) => return Err(error),
+            }
         };
         render(
             dir.to_path_buf(),
