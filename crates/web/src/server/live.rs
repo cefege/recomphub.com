@@ -548,6 +548,8 @@ fn media_ref(row: &MediaRow) -> MediaRef {
         id: row.id,
         kind: row.kind.clone(),
         hash: row.hash.clone(),
+        public_stem: row.public_stem.clone(),
+        render_version: row.render_version,
         widths: row.widths.clone(),
         width: row.width,
         height: row.height,

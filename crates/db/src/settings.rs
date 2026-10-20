@@ -8,7 +8,6 @@ use sqlx::PgExecutor;
 pub const KNOWN_KEYS: &[&str] = &[
     "catalog_target_size",
     "trust_threshold",
-    "youtube_daily_searches",
     "submission_daily_limit",
     "live_minutes_per_point",
 ];

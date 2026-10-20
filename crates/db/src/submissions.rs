@@ -4,7 +4,7 @@ use crate::games::IgdbGame;
 use crate::ports::{PortFull, normalize_repo_url};
 use crate::{DbError, DbResult, activity, games, ports, settings, users_sessions};
 use chrono::{DateTime, Utc};
-use recomphub_shared::{PortKind, Role, SubmissionKind, SubmissionStatus};
+use recomphub_shared::{ModerationQueueCounts, ModerationQueueQuery, QueueLane, TriageStateFilter, PortKind, Role, SubmissionKind, SubmissionStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sqlx::{PgConnection, PgPool};
@@ -35,6 +35,10 @@ pub struct SubmissionRow {
     pub review_note: Option<String>,
     pub created_at: DateTime<Utc>,
     pub reviewed_at: Option<DateTime<Utc>>,
+    pub triage: Option<Value>,
+    pub triage_revision: i64,
+    pub triage_attempted_at: Option<DateTime<Utc>>,
+    pub triage_error: Option<String>,
 }
 
 impl SubmissionRow {
@@ -58,6 +62,114 @@ pub struct PendingRow {
     pub submitter_approved: Option<i64>,
 }
 
+/// Server-filtered page of pending moderation rows.
+#[derive(Debug, Clone)]
+pub struct PendingPage {
+    pub items: Vec<PendingRow>,
+    pub page: i64,
+    pub pages: i64,
+    pub total: i64,
+    pub counts: ModerationQueueCounts,
+}
+
+/// One eligible row selected for evidence preparation.
+#[derive(Debug, Clone)]
+pub struct TriageDueRow {
+    pub submission: SubmissionRow,
+    pub reason: String,
+}
+
+/// Select pending rows in the required priority order. Explicit IDs bypass due timing.
+pub async fn due_for_triage(
+    pool: &PgPool,
+    limit: i64,
+    explicit_ids: Option<&[i64]>,
+) -> DbResult<Vec<TriageDueRow>> {
+    let ids = explicit_ids.map(<[i64]>::to_vec);
+    let rows = sqlx::query_as::<_, SubmissionRow>(
+        "SELECT * FROM submissions s
+         WHERE s.status = 'pending'
+           AND (s.kind = 'candidate' OR (s.source = 'user' AND s.kind = 'new_port'))
+           AND ($2::bigint[] IS NULL OR s.id = ANY($2))
+           AND (
+             $2::bigint[] IS NOT NULL
+             OR (
+               s.triage_error IS NULL
+               AND (
+                 s.triage IS NULL
+                 OR s.triage->>'assessment' IS NULL
+                 OR COALESCE(s.triage->>'version', '') <> $3::text
+                 OR s.triage_attempted_at < now() - interval '7 days'
+               )
+             )
+             OR (s.triage_error IS NOT NULL AND s.triage_attempted_at < now() - interval '3 days')
+           )
+         ORDER BY
+           CASE
+             WHEN s.triage_error IS NULL AND s.triage IS NULL AND s.source = 'user' THEN 0
+             WHEN s.triage_error IS NULL AND (s.triage IS NULL OR s.triage->>'assessment' IS NULL) AND s.kind = 'candidate' THEN 1
+             WHEN s.triage_error IS NOT NULL THEN 2
+             ELSE 3
+           END,
+           s.created_at, s.id
+         LIMIT $1",
+    )
+    .bind(limit)
+    .bind(ids)
+    .bind(recomphub_shared::TRIAGE_VERSION.to_string())
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|submission| {
+            let reason = if explicit_ids.is_some() {
+                "explicit"
+            } else if submission.triage_error.is_some() {
+                "retry_failed"
+            } else if submission.triage.is_none()
+                || submission
+                    .triage
+                    .as_ref()
+                    .is_some_and(|v| v.get("assessment").is_none_or(Value::is_null))
+            {
+                if submission.source == "user" { "unclassified_member" } else { "unclassified_candidate" }
+            } else {
+                "refresh"
+            };
+            TriageDueRow { submission, reason: reason.to_string() }
+        })
+        .collect())
+}
+
+/// Persist only triage context, guarded against a concurrent moderator or worker update.
+pub async fn save_triage(
+    pool: &PgPool,
+    id: i64,
+    original_payload: &Value,
+    expected_revision: i64,
+    triage: Option<&Value>,
+    error: Option<&str>,
+) -> DbResult<bool> {
+    let changed = sqlx::query(
+        "UPDATE submissions
+         SET triage = $4,
+             triage_error = $5,
+             triage_attempted_at = now(),
+             triage_revision = triage_revision + CASE
+               WHEN triage IS DISTINCT FROM $4 OR triage_error IS DISTINCT FROM $5 THEN 1 ELSE 0 END
+         WHERE id = $1 AND status = 'pending' AND payload = $2 AND triage_revision = $3",
+    )
+    .bind(id)
+    .bind(original_payload)
+    .bind(expected_revision)
+    .bind(triage)
+    .bind(error)
+    .execute(pool)
+    .await?
+    .rows_affected() == 1;
+    Ok(changed)
+}
+
 /// A new submission before trust is applied.
 #[derive(Debug, Clone)]
 pub struct NewSubmission {
@@ -79,6 +191,8 @@ pub struct ApproveOverrides {
     pub new_game: Option<IgdbGame>,
     /// Port kind for candidates, which carry none.
     pub kind: Option<PortKind>,
+    pub playability: Option<recomphub_shared::Playability>,
+    pub declared_platforms: Option<Vec<recomphub_shared::TargetPlatform>>,
 }
 
 /// Payload of a `new_port` or `candidate` submission.
@@ -243,6 +357,35 @@ pub async fn apply(conn: &mut PgConnection, id: i64, ov: &ApproveOverrides) -> D
     Ok(())
 }
 
+fn triage_repository_identity(sub: &SubmissionRow) -> Option<(String, i64)> {
+    if sub.triage_error.is_some() {
+        return None;
+    }
+    let triage = sub.triage.as_ref()?;
+    if triage.get("version")?.as_u64()? != recomphub_shared::TRIAGE_VERSION as u64 {
+        return None;
+    }
+    let snapshot = triage.get("snapshot")?;
+    let repo_url = snapshot.get("repo_url")?.as_str()?.to_owned();
+    let github_repo_id = snapshot.get("github_repo_id")?.as_i64()?;
+    (github_repo_id > 0).then_some((repo_url, github_repo_id))
+}
+
+fn map_port_identity_conflict(error: DbError) -> DbError {
+    match &error {
+        DbError::Sql(sqlx::Error::Database(database))
+            if database.code().as_deref() == Some("23505")
+                && matches!(
+                    database.constraint(),
+                    Some("ports_repo_url_key" | "ports_github_repo_id_key")
+                ) =>
+        {
+            DbError::Conflict("This repository is already listed.".to_string())
+        }
+        _ => error,
+    }
+}
+
 async fn apply_new_port(
     conn: &mut PgConnection,
     sub: &SubmissionRow,
@@ -252,6 +395,35 @@ async fn apply_new_port(
     if let Some(kind) = ov.kind {
         ps.port.input.kind = kind.as_str().to_string();
     }
+    if let Some(playability) = ov.playability {
+        ps.port.input.playability = playability.as_str().to_string();
+    }
+    if let Some(targets) = &ov.declared_platforms {
+        ps.port.input.declared_platforms = targets.iter().map(|target| target.as_str().to_string()).collect();
+    }
+    let original_repo = ports::normalize_repo_url(&ps.port.input.repo_url)?;
+    if let Some(existing) = ports::find_by_repo_url(&mut *conn, &original_repo).await? {
+        return Err(DbError::Conflict(format!(
+            "Repository is already listed as port {}.",
+            existing.id
+        )));
+    }
+    let triage_identity = triage_repository_identity(sub);
+    if let Some((canonical_repo, github_repo_id)) = &triage_identity {
+        if let Some(existing) = ports::find_by_repo_url(&mut *conn, canonical_repo).await? {
+            return Err(DbError::Conflict(format!(
+                "Canonical repository is already listed as port {}.",
+                existing.id
+            )));
+        }
+        if let Some(existing) =
+            ports::other_port_with_repo(&mut *conn, 0, *github_repo_id, canonical_repo).await?
+        {
+            return Err(DbError::Conflict(format!(
+                "GitHub repository is already listed as port {existing}."
+            )));
+        }
+    }
     let game_id = resolve_game(&mut *conn, ov, &ps).await?;
     let port_id = ports::insert_port(
         &mut *conn,
@@ -259,7 +431,16 @@ async fn apply_new_port(
         &ps.port,
         std::slice::from_ref(&sub.source),
     )
-    .await?;
+    .await
+    .map_err(map_port_identity_conflict)?;
+    if let Some((_, github_repo_id)) = triage_identity {
+        sqlx::query("UPDATE ports SET github_repo_id = $2 WHERE id = $1")
+            .bind(port_id)
+            .bind(github_repo_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|error| map_port_identity_conflict(DbError::Sql(error)))?;
+    }
     activity::insert(
         &mut *conn,
         "port_added",
@@ -334,10 +515,16 @@ pub async fn approve(
     id: i64,
     reviewer_id: i64,
     ov: &ApproveOverrides,
+    expected_triage_revision: Option<i64>,
 ) -> DbResult<SubmissionRow> {
     let mut tx = pool.begin().await?;
     let sub = lock(&mut tx, id).await?;
     require_status(&sub, &[SubmissionStatus::Pending])?;
+    if let Some(expected) = expected_triage_revision
+        && sub.triage_revision != expected
+    {
+        return Err(DbError::Conflict("Submission evidence changed; reload before reviewing.".to_string()));
+    }
     apply(&mut tx, id, ov).await?;
     if let Some(uid) = sub.submitter_id {
         users_sessions::increment_approved(&mut *tx, uid).await?;
@@ -360,10 +547,16 @@ pub async fn reject(
     id: i64,
     reviewer_id: i64,
     note: Option<&str>,
+    expected_triage_revision: Option<i64>,
 ) -> DbResult<SubmissionRow> {
     let mut tx = pool.begin().await?;
     let sub = lock(&mut tx, id).await?;
     require_status(&sub, &[SubmissionStatus::Pending])?;
+    if let Some(expected) = expected_triage_revision
+        && sub.triage_revision != expected
+    {
+        return Err(DbError::Conflict("Submission evidence changed; reload before reviewing.".to_string()));
+    }
     let row = sqlx::query_as::<_, SubmissionRow>(
         "UPDATE submissions SET status = 'rejected', reviewer_id = $2, review_note = $3, reviewed_at = now()
          WHERE id = $1 RETURNING *",
@@ -475,23 +668,50 @@ pub async fn get(conn: &mut PgConnection, id: i64) -> DbResult<SubmissionRow> {
         .ok_or_else(|| DbError::NotFound(format!("submission {id}")))
 }
 
-/// Pending submissions: a real member's submission first (oldest first within that group), then
-/// anything found by discovery or import (oldest first). A crawler backlog of thousands never
-/// buries the handful of things a person is waiting on.
-pub async fn list_pending(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Vec<PendingRow>> {
-    let rows = sqlx::query_as::<_, PendingRow>(
-        "SELECT s.*, u.display_name AS submitter_name, u.approved_count::bigint AS submitter_approved
-         FROM submissions s
-         LEFT JOIN users u ON u.id = s.submitter_id
-         WHERE s.status = 'pending'
-         ORDER BY (s.source <> 'user'), s.created_at, s.id
-         LIMIT $1 OFFSET $2",
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows)
+
+/// Loads one fixed-size pending queue lane plus global moderator counts.
+pub async fn list_pending_page(pool: &PgPool, query: &ModerationQueueQuery) -> DbResult<PendingPage> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    const PAGE_SIZE: i64 = 50;
+    let category = query.category.map(enum_wire);
+    let confidence = query.confidence.map(enum_wire);
+    let target = query.target.map(enum_wire);
+    let playability = query.playability.map(enum_wire);
+    let state = match query.triage_state { TriageStateFilter::All => "all", TriageStateFilter::Untriaged => "untriaged", TriageStateFilter::Classified => "classified", TriageStateFilter::Failed => "failed" };
+    let member_lane = query.lane == QueueLane::Members;
+    let version = recomphub_shared::TRIAGE_VERSION.to_string();
+    let predicate = "s.status = 'pending' AND (s.source = 'user') = $1
+        AND ($2::text IS NULL OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->'assessment'->>'category' = $2)
+        AND ($4::text IS NULL OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->'assessment'->>'confidence' = $4)
+        AND ($5::text IS NULL OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->'assessment'->>'playability' = $5)
+        AND ($6::text IS NULL OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->'assessment'->'targets' @> jsonb_build_array(to_jsonb($6::text)))
+        AND (NOT $7 OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND jsonb_array_length(COALESCE(s.triage->'assessment'->'warnings', '[]'::jsonb)) > 0)
+        AND ($8 = 'all' OR ($8 = 'failed' AND s.triage_error IS NOT NULL) OR ($8 = 'classified' AND s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->>'assessment' IS NOT NULL) OR ($8 = 'untriaged' AND s.triage_error IS NULL AND (s.triage IS NULL OR s.triage->>'version' <> $3 OR s.triage->>'assessment' IS NULL)))";
+    let total: i64 = sqlx::query_scalar(&format!("SELECT count(*)::bigint FROM submissions s WHERE {predicate}"))
+        .bind(member_lane).bind(category.as_deref()).bind(&version).bind(confidence.as_deref()).bind(playability.as_deref()).bind(target.as_deref()).bind(query.flagged_only).bind(state).fetch_one(&mut *tx).await?;
+    let pages = ((total + PAGE_SIZE - 1) / PAGE_SIZE).max(1);
+    let page = query.page.clamp(1, pages);
+    let items = sqlx::query_as::<_, PendingRow>(&format!("SELECT s.*, u.display_name AS submitter_name, u.approved_count::bigint AS submitter_approved FROM submissions s LEFT JOIN users u ON u.id=s.submitter_id WHERE {predicate} ORDER BY s.created_at, s.id LIMIT $9 OFFSET $10"))
+        .bind(member_lane).bind(category.as_deref()).bind(&version).bind(confidence.as_deref()).bind(playability.as_deref()).bind(target.as_deref()).bind(query.flagged_only).bind(state).bind(PAGE_SIZE).bind((page - 1) * PAGE_SIZE).fetch_all(&mut *tx).await?;
+    let counts = sqlx::query_as::<_, (i64,i64,i64,i64,i64,i64,i64,i64,i64)>(
+        "SELECT count(*) FILTER (WHERE source='user')::bigint, count(*) FILTER (WHERE source<>'user')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND triage->>'version'=$1 AND triage->'assessment'->>'category'='game_project')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND triage->>'version'=$1 AND triage->'assessment'->>'category'='tooling')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND triage->>'version'=$1 AND triage->'assessment'->>'category'='reference')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND triage->>'version'=$1 AND triage->'assessment'->>'category'='unrelated')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND triage->>'version'=$1 AND triage->'assessment'->>'category'='uncertain')::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NULL AND (triage IS NULL OR triage->>'version'<>$1 OR triage->>'assessment' IS NULL))::bigint,
+          count(*) FILTER (WHERE source<>'user' AND triage_error IS NOT NULL)::bigint FROM submissions WHERE status='pending'",
+    ).bind(&version).fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(PendingPage { items, page, pages, total, counts: ModerationQueueCounts { members: counts.0, found: counts.1, game_project: counts.2, tooling: counts.3, reference: counts.4, unrelated: counts.5, uncertain: counts.6, untriaged: counts.7, failed: counts.8 } })
+}
+
+fn enum_wire<T: Serialize>(value: T) -> String {
+    serde_json::to_value(value).expect("triage enum serialization").as_str().expect("triage enum string").to_string()
 }
 
 /// Count of pending submissions from real members (not discovery/import), for the admin nav badge.
@@ -507,7 +727,7 @@ pub async fn pending_member_count(pool: &PgPool) -> DbResult<i64> {
 pub async fn list_log(pool: &PgPool, limit: i64, offset: i64) -> DbResult<Vec<SubmissionRow>> {
     let rows = sqlx::query_as::<_, SubmissionRow>(
         "SELECT * FROM submissions
-         WHERE status IN ('approved', 'auto_approved', 'reverted')
+         WHERE status IN ('approved', 'auto_approved', 'rejected', 'reverted')
          ORDER BY COALESCE(reviewed_at, created_at) DESC, id DESC
          LIMIT $1 OFFSET $2",
     )

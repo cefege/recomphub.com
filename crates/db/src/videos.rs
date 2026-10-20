@@ -58,34 +58,42 @@ fn validate_target(target: &str) -> DbResult<()> {
         .map_err(DbError::from)
 }
 
-/// Inserts or refreshes a video found by the sync job. A row that moderators hid stays hidden;
-/// a row a member submitted (`pending`) is left untouched here, so a coincidental rediscovery
-/// never bypasses review.
+/// Inserts or refreshes a public video. Per-port and game-level legacy videos have separate
+/// partial identities, so a video may serve distinct ports of the same game.
 pub async fn upsert_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64> {
     validate_target(&v.target)?;
-    let id = sqlx::query_scalar::<_, i64>(
+    let sql = if v.port_id.is_some() {
         "INSERT INTO videos (game_id, port_id, target, youtube_id, title, channel, published_at, thumb_media_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (game_id, target, youtube_id) DO UPDATE
+         ON CONFLICT (game_id, port_id, target, youtube_id) WHERE port_id IS NOT NULL DO UPDATE
            SET title = EXCLUDED.title,
                channel = EXCLUDED.channel,
                published_at = COALESCE(EXCLUDED.published_at, videos.published_at),
                thumb_media_id = COALESCE(EXCLUDED.thumb_media_id, videos.thumb_media_id),
-               port_id = COALESCE(EXCLUDED.port_id, videos.port_id),
                fetched_at = now()
-         RETURNING id",
-    )
-    .bind(v.game_id)
-    .bind(v.port_id)
-    .bind(v.target.clone())
-    .bind(v.youtube_id.clone())
-    .bind(v.title.clone())
-    .bind(v.channel.clone())
-    .bind(v.published_at)
-    .bind(v.thumb_media_id)
-    .fetch_one(ex)
-    .await?;
-    Ok(id)
+         RETURNING id"
+    } else {
+        "INSERT INTO videos (game_id, port_id, target, youtube_id, title, channel, published_at, thumb_media_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (game_id, target, youtube_id) WHERE port_id IS NULL DO UPDATE
+           SET title = EXCLUDED.title,
+               channel = EXCLUDED.channel,
+               published_at = COALESCE(EXCLUDED.published_at, videos.published_at),
+               thumb_media_id = COALESCE(EXCLUDED.thumb_media_id, videos.thumb_media_id),
+               fetched_at = now()
+         RETURNING id"
+    };
+    Ok(sqlx::query_scalar::<_, i64>(sql)
+        .bind(v.game_id)
+        .bind(v.port_id)
+        .bind(v.target.clone())
+        .bind(v.youtube_id.clone())
+        .bind(v.title.clone())
+        .bind(v.channel.clone())
+        .bind(v.published_at)
+        .bind(v.thumb_media_id)
+        .fetch_one(ex)
+        .await?)
 }
 
 /// Videos for a game, newest first. Hidden and member-submitted-but-unreviewed rows are
@@ -107,29 +115,33 @@ pub async fn list_for_game(
     Ok(rows)
 }
 
-/// A member-submitted video, pending moderator approval. Reuses the sync job's
-/// `(game, target, youtube_id)` uniqueness: resubmitting a known video just touches it and
-/// never resets an already-approved video back to pending.
+/// A member-submitted video, pending moderator approval. It is deliberately separate from
+/// machine discovery candidates, whose rejections persist in `video_discovery_candidates`.
 pub async fn submit_user_video(ex: impl PgExecutor<'_>, v: &NewVideo) -> DbResult<i64> {
     validate_target(&v.target)?;
-    let id = sqlx::query_scalar::<_, i64>(
+    let sql = if v.port_id.is_some() {
         "INSERT INTO videos (game_id, port_id, target, youtube_id, title, channel, thumb_media_id, pending)
          VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-         ON CONFLICT (game_id, target, youtube_id) DO UPDATE
-           SET port_id = COALESCE(videos.port_id, EXCLUDED.port_id),
-               fetched_at = now()
-         RETURNING id",
-    )
-    .bind(v.game_id)
-    .bind(v.port_id)
-    .bind(v.target.clone())
-    .bind(v.youtube_id.clone())
-    .bind(v.title.clone())
-    .bind(v.channel.clone())
-    .bind(v.thumb_media_id)
-    .fetch_one(ex)
-    .await?;
-    Ok(id)
+         ON CONFLICT (game_id, port_id, target, youtube_id) WHERE port_id IS NOT NULL DO UPDATE
+           SET fetched_at = now()
+         RETURNING id"
+    } else {
+        "INSERT INTO videos (game_id, port_id, target, youtube_id, title, channel, thumb_media_id, pending)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+         ON CONFLICT (game_id, target, youtube_id) WHERE port_id IS NULL DO UPDATE
+           SET fetched_at = now()
+         RETURNING id"
+    };
+    Ok(sqlx::query_scalar::<_, i64>(sql)
+        .bind(v.game_id)
+        .bind(v.port_id)
+        .bind(v.target.clone())
+        .bind(v.youtube_id.clone())
+        .bind(v.title.clone())
+        .bind(v.channel.clone())
+        .bind(v.thumb_media_id)
+        .fetch_one(ex)
+        .await?)
 }
 
 /// A pending, member-submitted video with enough to review it.

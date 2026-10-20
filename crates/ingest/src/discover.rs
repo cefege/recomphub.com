@@ -1,4 +1,4 @@
-//! Discovery of new recompilation repositories from GitHub search and r/recomps.
+//! Discovery of new recompilation repositories from GitHub search and Reddit.
 //!
 //! Every hit becomes a `candidate` submission for moderators. Nothing is published here.
 
@@ -39,16 +39,13 @@ pub const GITHUB_QUERIES: &[&str] = &[
 ];
 
 /// Subreddit Atom feeds scanned for linked GitHub repositories.
-pub const REDDIT_FEED_URLS: [&str; 2] = [
+pub const REDDIT_FEED_URLS: [&str; 3] = [
     "https://www.reddit.com/r/recomps/new/.rss?limit=100",
     "https://www.reddit.com/r/decomps/new/.rss?limit=100",
+    "https://www.reddit.com/r/macgaming/new/.rss?limit=100",
 ];
 pub const REDDIT_USER_AGENT: &str = "recomphub/1.0 (+https://recomphub.com)";
-/// A GitHub search hit is kept when it has at least this many stars, or any release.
-pub const KEEP_MIN_STARS: i64 = 5;
-/// Result pages read per query (100 repositories each). Page 1 holds the most recently updated
-/// repositories and gets the release check; deeper pages reach older projects and keep only
-/// repositories with `KEEP_MIN_STARS`, so a broad query cannot trigger thousands of calls.
+/// Result pages read per query (100 repositories each).
 pub const SEARCH_PAGES: u32 = 5;
 /// Spacing between GitHub search calls, to stay under the search rate limit.
 pub const REQUEST_SPACING: Duration = Duration::from_millis(2500);
@@ -59,7 +56,7 @@ const REDDIT_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct DiscoverReport {
     /// Distinct GitHub repositories returned by the searches.
     pub seen: usize,
-    /// GitHub repositories that passed the keep filter.
+    /// GitHub repositories queued as candidates.
     pub kept: usize,
     /// Candidate submissions created (GitHub and Reddit together).
     pub inserted: usize,
@@ -67,10 +64,6 @@ pub struct DiscoverReport {
     pub reddit_skipped: bool,
 }
 
-/// The keep rule: `stars >= KEEP_MIN_STARS` or the repository has a release.
-pub fn keep(stars: i64, has_release: bool) -> bool {
-    stars >= KEEP_MIN_STARS || has_release
-}
 
 /// Payload stored on a GitHub-discovered candidate.
 pub fn github_payload(repo: &SearchRepo) -> Value {
@@ -103,7 +96,7 @@ pub fn reddit_payload(repo: &reddit::RedditRepo) -> Value {
     })
 }
 
-/// Runs every GitHub query, then the r/recomps and r/decomps feeds.
+/// Runs every GitHub query, then the configured subreddit feeds.
 ///
 /// Requires `GITHUB_TOKEN` through `client`: unauthenticated search is limited to 10 requests a
 /// minute, which the queries exceed.
@@ -133,21 +126,6 @@ pub async fn run_discover(pool: &PgPool, client: &GithubClient) -> Result<Discov
                     continue;
                 }
                 report.seen += 1;
-                let kept = if repo.stars >= KEEP_MIN_STARS {
-                    true
-                } else if page == 1 {
-                    tokio::time::sleep(REQUEST_SPACING).await;
-                    let has_release = client
-                        .has_release(&repo.full_name)
-                        .await
-                        .with_context(|| format!("checking releases of {}", repo.full_name))?;
-                    keep(repo.stars, has_release)
-                } else {
-                    false
-                };
-                if !kept {
-                    continue;
-                }
                 report.kept += 1;
                 if submissions::add_candidate(pool, "discovery:github", &github_payload(&repo))
                     .await?

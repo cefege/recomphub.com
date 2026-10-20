@@ -6,7 +6,7 @@ The site is a Rust workspace:
 
 - `crates/shared`: serde DTOs, enums, slug helpers and SEO text builders (compiles to wasm).
 - `crates/db`: sqlx Postgres pool, migrations, queries and submission logic.
-- `crates/ingest`: IGDB, GitHub, YouTube, Reddit and seed-import clients, AI and platform detection, media pipeline.
+- `crates/ingest`: IGDB, GitHub, Reddit and seed-import clients, AI and platform detection, media pipeline.
 - `crates/web`: the Dioxus 0.7 fullstack app (binary `server` when built with `dx`).
 - `crates/worker`: the `worker` CLI that runs sync and import jobs.
 
@@ -28,9 +28,10 @@ cargo run -p recomphub-worker -- import-recompendium
 cargo run -p recomphub-worker -- import-portsdr
 cargo run -p recomphub-worker -- github-sync
 cargo run -p recomphub-worker -- media-sync
-cargo run -p recomphub-worker -- youtube-sync
+cargo run -p recomphub-worker -- media-discovery
 cargo run -p recomphub-worker -- discover
-cargo run -p recomphub-worker -- port-videos
+cargo run -p recomphub-worker -- triage-candidates --dry-run --limit 100
+cargo run -p recomphub-worker -- triage-candidates --offline crates/ingest/tests/fixtures/candidate-triage.json
 cargo run -p recomphub-worker -- describe-ports --dry-run
 cargo run -p recomphub-worker -- describe-games --dry-run --game need-for-speed-most-wanted
 cargo run -p recomphub-worker -- stats-snapshot
@@ -39,6 +40,8 @@ cargo run -p recomphub-worker --bin discord-setup -- --dry-run --prune --server-
 cargo run -p recomphub-worker --bin discord-setup -- --prune --server-icon
 ```
 `discord-setup` maintains five community channels: `#welcome`, `#announcements`, `#general`, `#showcase`, and `#website-bugs`. Their channel topics supply onboarding and posting guidance. `--server-icon` applies the bundled RecompHub logo; `--prune` deletes every other channel and category, so use it only for an intentional clean cutover.
+
+`triage-candidates` prepares evidence-backed moderation context; it does not publish or reject submissions. Normal mode requires `DATABASE_URL`, `GITHUB_TOKEN`, `SECRETS_KEY`, and configured enabled AI providers. `--limit` accepts 1–100 and defaults to 100; it caps both preparations and model completion attempts, including provider fallbacks. Repeat `--id <submission-id>` to deliberately select a calibration/retry set. `--dry-run` requires only `DATABASE_URL`: it lists due rows and cached prompts without fetching GitHub evidence, calling a model, or writing data. `--offline <path>` reads a fixture only, requires no database, credentials, or HTTP client, and validates supplied untrusted responses; it does not exercise AI. The exact offline fixture command is shown above. Live commands access external services or write records and require separate explicit operational authorization.
 
 
 Tests:
@@ -81,10 +84,9 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `GITHUB_TOKEN` | |
 | `TWITCH_CLIENT_ID` | |
 | `TWITCH_CLIENT_SECRET` | |
-| `YOUTUBE_API_KEY` | |
+| `DATAFORSEO_LOGIN` | DataForSEO account login; required by the paused `media-discovery` worker |
+| `DATAFORSEO_PASSWORD` | DataForSEO API password; required by the paused `media-discovery` worker |
 | `SECRETS_KEY` | 32 bytes, base64 (`openssl rand -base64 32`); encrypts AI provider credentials at rest. Web and workers need the same value |
-| `YTDLP_BIN` | `yt-dlp` |
-| `YTDLP_COOKIES` | optional path to a Netscape cookies.txt; copied to a temp file, never logged |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Web application); the only sign-in method. `/auth/google` returns 503 without it. Redirect URI: `${SITE_URL}/auth/google/callback` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
 | `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed gets the admin role |
@@ -96,8 +98,10 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 
 - `Dockerfile` builds the site with `dx bundle --web --release --package recomphub` and the worker with `cargo build --release -p recomphub-worker`. The runtime image puts the bundle in `/usr/local/app/` (entrypoint `server`) and the worker at `/usr/local/app/worker`. If the bundle path printed by `dx bundle` differs from `target/dx/recomphub/release/web/`, update the `COPY` line in the Dockerfile.
 - CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests against a `postgres:17-alpine` service.
-- `port-videos` (CronJob `port-videos`, daily 04:30 UTC) finds gameplay videos for each port with yt-dlp, not the YouTube Data API. Sources: YouTube links in each port's README (IDs recorded by `github-sync`) and relevance-filtered `ytsearch` results per port. Searches are throttled and capped per run. The optional Secret `recomphub-ytdlp-cookies` (key `cookies.txt`) is mounted read-only at `/secrets/ytdlp`; it is only needed when YouTube blocks anonymous requests. Upgrade the pinned `YTDLP_VERSION` in the Dockerfile when YouTube breaks extraction.
-- `github-sync`'s weekly AI/author scan also reads each port's README for screenshots: markdown and `<img>` images, filtered of badges, shields, stat cards and logos (`recomphub_ingest::readme_images`), resolved to absolute URLs and capped at 6 per port. They are attached as already-approved `port_media` rows, trusted the same way README-linked videos are, and show in the port's gallery ahead of the game's IGDB screenshots. Member-uploaded screenshots still go through moderation separately.
+- `discover` is intake: it searches GitHub and scans the newest 100 posts from each of r/recomps, r/decomps and r/macgaming for linked GitHub repositories, placing distinct new repositories in the pending candidate queue. `triage-candidates` is the separate evidence-preparation stage: it fetches bounded repository evidence, proposes a category and review hints, and records citations for moderators. Popularity, releases, recent activity, archive status, or unfinished work are not admission requirements; substantive game-specific implementation or documented progress can qualify even when source-only or archived. Missing or insufficient evidence remains uncertain rather than being automatically rejected.
+- The `candidate-triage` CronJob is intentionally paused (`suspend: true`), with schedule `15 */6 * * *` (four times daily), `Forbid` concurrency, at most 100 preparations and 100 completion attempts per run including provider fallbacks. Keep it paused through the reviewed calibration process below. Candidates remain pending until human moderators publish or reject them using the server-filtered, 50-row review pages; triage never decides lifecycle outcomes.
+- `media-discovery` (CronJob `media-discovery`, daily 03:00 UTC) is intentionally paused. It submits bounded normal-priority Google Organic tasks to DataForSEO and later collects only task IDs recorded by RecompHub. Candidates are limited to ordinary YouTube watch URLs. Rank 1–3 results that name the game and port are published; ambiguous results stay in moderator review. It never opens YouTube pages or uses browser cookies. Enable it only after `DATAFORSEO_LOGIN` and `DATAFORSEO_PASSWORD` are configured.
+- `github-sync`'s weekly AI/author scan also reads each port's README for screenshots: markdown and `<img>` images, filtered of badges, shields, stat cards and logos (`recomphub_ingest::readme_images`), resolved to absolute URLs and capped at 6 per port. They enter moderation as pending `port_media` rows after rendering validates their dimensions; only approved images show in the port gallery.
 - `sales-sync` (CronJob `sales-sync`, Mondays 04:00 UTC) matches Wikipedia's best-selling game lists (per platform, overall, and per year) to catalog games. Each game's `sales_score` is `round(300 * log2(1 + best units in millions))` across its matches, so a million-seller sits near the 90th percentile of IGDB popularity. `games.importance` is the generated column `popularity + sales_score`, and all catalog ordering uses it. A list that fails to fetch or parse keeps its previous matches and fails the run. `cargo run -p recomphub-worker -- sales-sync --dry-run` prints the parsed rows without writing.
 - `describe-ports` (CronJob `describe-ports`, daily 06:30 UTC) writes a short description of each port from the repository text that `github-sync` stores: README, topics and latest release notes. It uses the AI providers configured at `/admin` → AI providers (Anthropic or OpenAI API keys, or Claude / ChatGPT subscription logins), tried in the order shown there with fallback to the next on any failure, and accepts only output that matches the schema and names no ROM download site. Each run makes at most 200 calls, least recently attempted first, and regenerates a description only when its stored text or port facts change. With no enabled provider, or without `SECRETS_KEY`, the job logs and exits. `describe-ports --dry-run` prints the next request and calls nothing.
 - `describe-games` (CronJob `describe-games`, daily 06:45 UTC) writes each game page's FAQ from the facts the database holds: original platforms, ports, decompilations, release, maintenance level, authors and requirements. It runs only for games with a port or decompilation, uses the same AI providers as `describe-ports`, and stores the first answer that passes the checks (3 to 7 items, no yes/no openers, no names or numbers missing from the facts, no URLs or ROM-source wording). Otherwise the page keeps the built-in FAQ. Each run makes at most 60 calls, and a game whose last attempt failed on the same facts is retried after 3 days. `describe-games --dry-run --game <slug>` prints the prompt, facts and schema and calls nothing.
@@ -129,7 +133,8 @@ These need your Cloudflare (DNS and tunnel), Google Cloud, cluster and GitHub ac
      --from-literal=GITHUB_TOKEN=... \
      --from-literal=TWITCH_CLIENT_ID=... \
      --from-literal=TWITCH_CLIENT_SECRET=... \
-     --from-literal=YOUTUBE_API_KEY=... \
+     --from-literal=DATAFORSEO_LOGIN=... \
+     --from-literal=DATAFORSEO_PASSWORD=... \
      --from-literal=SECRETS_KEY="$(openssl rand -base64 32)" \
      --from-literal=ADMIN_EMAILS=mateiasmihaiandrei@gmail.com
    ```
@@ -138,6 +143,16 @@ These need your Cloudflare (DNS and tunnel), Google Cloud, cluster and GitHub ac
 5. On `ovh1`, apply the Flux bootstrap: `kubectl apply -f deploy/flux/bootstrap.yaml`. Then run `kubectl -n recomphub create job --from=cronjob/postgres-backup postgres-backup-init` once: the `local-path` backup volume binds only when a pod first uses it, and Flux reports the Kustomization unhealthy until it is bound.
 6. Run each worker once, in this order, with `kubectl -n recomphub create job --from=cronjob/<name> <name>-init`: `catalog-sync`, `import-recompendium`, `import-portsdr`, `github-sync`, `sales-sync`, `media-sync`.
 7. Check `curl -s https://recomphub.com/healthz`; it should return `ok`.
+8. Candidate preparation requires a separate, explicitly authorized operational run. First deploy the implementation and apply its migration through the normal approved deployment path; the triage worker does not run migrations. Keep `candidate-triage` suspended. Ensure the secret supplies `DATABASE_URL`, `GITHUB_TOKEN`, and `SECRETS_KEY`, and configure enabled AI providers in the application; dry-run needs only `DATABASE_URL`. With separate authorization for production access, run `worker triage-candidates --dry-run --limit 100`; verify due counts and confirm that lifecycle, triage, and provider records are unchanged. Dry-run only inspects database state and cached evidence; it does not scan GitHub.
+9. With explicit authorization for GitHub/provider access and triage writes, run a calibration batch limited to 20 deliberately selected rows using `worker triage-candidates --limit 20 --id <ID> ...`. Include member submissions, source-only/no-release and archived work, likely tools/lists, sparse evidence, and conflicting claims. Inspect all results, citations, provider/model provenance, completion-request count and fetched timestamps. The only permitted changes are triage context and provider credential/health records; approvals, rejections, and trust must remain unchanged. If fallbacks exhaust the completion budget, rerun the same explicit IDs: successful cached assessments are reused and unfinished work is processed within the same per-run limit.
+10. If any genuine unfinished/archived game project is treated as unrelated due to incompleteness, stars, or age, or a citation is fabricated, keep the schedule suspended, correct the prompt/validator, bump `TRIAGE_VERSION`, and rerun the sample. Once the policy check passes, obtain explicit operator confirmation before changing `suspend` to `false` in the deployment repository. Then process the backlog only through the same bounded command, not an unbounded script. Every pending lead remains reachable as classified, uncertain, untriaged, or failed.
+11. Moderators review the member priority lane first, then game projects, and reject selected unrelated/supporting entries only with human-entered reasons. Tools and references remain in pending/rejected records, not deleted or auto-published. Uncertain and failed items stay pending for investigation; reducing queue size is not a reason to reject them.
+
+## Search data access
+
+- Search Console analysis uses separate read-only OAuth credentials, not the site's Google sign-in client. The local authorized-user credential file is `~/.config/recomphub/google-search-console.json` (permissions `0600`), with scope `https://www.googleapis.com/auth/webmasters.readonly` and property `sc-domain:recomphub.com`. It includes a refresh token; keep it outside the repository.
+- For tools using Google Application Default Credentials, set `GOOGLE_APPLICATION_CREDENTIALS` to that file's absolute path. The web app and worker do not currently consume these credentials.
+- The official [Google Trends API](https://developers.google.com/search/apis/trends) requires alpha approval. A generic Google Cloud API key does not grant access.
 
 ## Attribution
 

@@ -9,16 +9,18 @@ use recomphub_shared::{GameCard, GameDetail, Playability, PortCard, PortDetail, 
 use super::jsonld;
 use crate::api;
 use crate::api::games::GamesQuery;
+use crate::app::DISCORD_INVITE_LISTING;
 use crate::components::cards::GameCardView;
 use crate::components::comments::PortComments;
+use crate::components::discord::{DiscordCount, DiscordLink};
 use crate::components::listing::{GameListTable, PRIMARY_TARGETS, parse_page, query_string};
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::picture::Picture;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
 use crate::components::styles::{
-    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_MD, BUTTON_OUTLINE, CARD_SURFACE, H1, H2, LEAD, TAB,
-    TAB_ACTIVE, TABS_LIST,
+    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_DISCORD, BUTTON_MD, BUTTON_OUTLINE, CARD_SURFACE, H1,
+    H2, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
 };
 use crate::components::ui::{
     Breadcrumb, CardGrid, Chip, EmptyState, Pager, PortCardView, Rail, Section, TargetIcon,
@@ -436,7 +438,7 @@ fn GameBody(detail: GameDetail) -> Element {
         .og
         .as_ref()
         .filter(|m| m.ready && m.widths.contains(&1200))
-        .map(|m| format!("{site}/media/og/{}-1200.jpg", m.hash));
+        .map(|m| format!("{site}/media/og/{}-{}-v{}-1200.avif", m.public_stem, m.hash, m.render_version));
     let json_ld = jsonld::game_json_ld(&site, &detail);
     let path = format!("/games/{}", game.slug);
     let crumbs = game_crumbs(&detail);
@@ -563,6 +565,19 @@ fn GameBody(detail: GameDetail) -> Element {
                     }
                 }
             }
+            div { class: "{CARD_SURFACE} mt-6 flex flex-wrap items-center justify-between gap-4 p-4",
+                span { class: "text-sm text-muted-foreground",
+                    "Comparing ports, or stuck picking one? Ask in the Discord."
+                }
+                div { class: "flex shrink-0 items-center gap-3",
+                    DiscordCount {}
+                    DiscordLink {
+                        href: DISCORD_INVITE_LISTING,
+                        label: "Join Discord",
+                        class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_MD}",
+                    }
+                }
+            }
         } else {
             div { class: "{CARD_SURFACE} mt-12 p-8 text-center",
                 h2 { class: H2, "No native port yet" }
@@ -573,7 +588,14 @@ fn GameBody(detail: GameDetail) -> Element {
                     }
                     {keyed(rsx! { WantButton { key: "{game_id}-{want}", game_id, count: want } })}
                 }
-                a { href: "{submit_href}", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} mt-4", "Know of one? Submit it" }
+                div { class: "mt-4 flex flex-wrap items-center justify-center gap-3",
+                    a { href: "{submit_href}", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Know of one? Submit it" }
+                    DiscordLink {
+                        href: DISCORD_INVITE_LISTING,
+                        label: "Ask in Discord",
+                        class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_MD}",
+                    }
+                }
             }
         }
 

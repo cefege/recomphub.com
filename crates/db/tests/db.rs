@@ -129,7 +129,7 @@ async fn approve_increments_submitter_approved_count(pool: PgPool) -> DbResult<(
     .await?;
     assert_eq!(sub.status, "pending");
     let approved =
-        submissions::approve(&pool, sub.id, moderator, &ApproveOverrides::default()).await?;
+        submissions::approve(&pool, sub.id, moderator, &ApproveOverrides::default(), None).await?;
     assert_eq!(approved.status, "approved");
     assert!(approved.target_port_id.is_some());
     let count = sqlx::query_scalar::<_, i32>("SELECT approved_count FROM users WHERE id = $1")

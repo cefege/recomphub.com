@@ -202,16 +202,18 @@ type FeedRow = (
     String,
 );
 
-/// One `<url>` entry: a path on the site, with an optional `lastmod` date.
+/// One `<url>` entry, optionally with last-modified and approved AVIF image URLs.
 struct Entry {
     path: String,
     lastmod: Option<String>,
+    images: Vec<String>,
 }
 
 fn entry(path: String, lastmod: Option<DateTime<Utc>>) -> Entry {
     Entry {
         path,
         lastmod: lastmod.map(|at| at.format("%Y-%m-%d").to_string()),
+        images: Vec::new(),
     }
 }
 
@@ -219,6 +221,7 @@ fn static_entry(path: &str) -> Entry {
     Entry {
         path: path.to_string(),
         lastmod: None,
+        images: Vec::new(),
     }
 }
 
@@ -262,17 +265,40 @@ async fn game_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
 }
 
 async fn port_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
-    let rows: Vec<(String, String, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT g.slug, p.slug, p.updated_at FROM ports p \
-         JOIN games g ON g.id = p.game_id \
-         WHERE p.status = 'published' ORDER BY g.slug, p.slug",
-    )
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(game, port, updated)| entry(format!("/games/{game}/{port}"), Some(updated)))
-        .collect())
+    let rows: Vec<(String, String, DateTime<Utc>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> =
+        sqlx::query_as(
+            "SELECT g.slug, p.slug, p.updated_at, m.kind, m.public_stem, m.hash, m.render_version, m.width \
+             FROM ports p \
+             JOIN games g ON g.id = p.game_id \
+             LEFT JOIN port_media pm ON pm.port_id = p.id AND pm.approved_at IS NOT NULL \
+             LEFT JOIN media m ON m.id = pm.media_id AND m.status = 'ready' \
+             WHERE p.status = 'published' \
+             ORDER BY g.slug, p.slug, pm.position, pm.id",
+        )
+        .fetch_all(pool)
+        .await?;
+    let mut entries = Vec::new();
+    for (game, port, updated, kind, stem, hash, render_version, width) in rows {
+        let path = format!("/games/{game}/{port}");
+        let image = match (kind, stem, hash, render_version) {
+            (Some(kind), Some(stem), Some(hash), Some(render_version)) => {
+                sitemap_image_path(&kind, &stem, &hash, render_version, width)
+            }
+            _ => None,
+        };
+        if let Some(entry) = entries.last_mut().filter(|entry: &&mut Entry| entry.path == path) {
+            if let Some(image) = image {
+                entry.images.push(image);
+            }
+        } else {
+            let mut entry = entry(path, Some(updated));
+            if let Some(image) = image {
+                entry.images.push(image);
+            }
+            entries.push(entry);
+        }
+    }
+    Ok(entries)
 }
 
 async fn hub_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
@@ -345,7 +371,9 @@ async fn author_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
 
 fn urlset(site: &str, entries: &[Entry]) -> String {
     let mut body = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" \
+         xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\">\n",
     );
     for entry in entries {
         body.push_str("<url><loc>");
@@ -356,10 +384,34 @@ fn urlset(site: &str, entries: &[Entry]) -> String {
             body.push_str(lastmod);
             body.push_str("</lastmod>");
         }
+        for image in &entry.images {
+            body.push_str("<image:image><image:loc>");
+            body.push_str(&xml_escape(&format!("{site}{image}")));
+            body.push_str("</image:loc></image:image>");
+        }
         body.push_str("</url>\n");
     }
     body.push_str("</urlset>\n");
     body
+}
+
+fn sitemap_image_path(
+    kind: &str,
+    stem: &str,
+    hash: &str,
+    render_version: i32,
+    source_width: Option<i32>,
+) -> Option<String> {
+    let widths = match kind {
+        "screenshot" | "port_screenshot" => &[480, 960, 1600][..],
+        "cover" => &[132, 264, 528][..],
+        "video_thumb" => &[320, 480][..],
+        "avatar" => &[40, 80][..],
+        _ => return None,
+    };
+    let source_width = source_width.unwrap_or_default().max(0) as u32;
+    let width = widths.iter().copied().filter(|width| *width <= source_width).max()?;
+    Some(format!("/media/{kind}/{stem}-{hash}-v{render_version}-{width}.avif"))
 }
 
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.

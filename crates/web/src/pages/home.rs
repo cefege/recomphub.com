@@ -2,17 +2,18 @@ use dioxus::prelude::*;
 use recomphub_shared::seo::home_title;
 use recomphub_shared::{ActivityItem, HitWindow, PlatformRef, PortCard};
 
-use crate::app::DISCORD_INVITE;
+use crate::app::DISCORD_INVITE_HOME;
 
 use crate::api;
 use crate::components::listing::WINDOWS;
 use crate::components::styles::{
-    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_GHOST, BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM,
-    CARD_SURFACE, H2, INPUT, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
+    BADGE, BADGE_SECONDARY, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_MD, BUTTON_OUTLINE,
+    BUTTON_PRIMARY, BUTTON_SM, CARD_SURFACE, H2, INPUT, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
 };
 use crate::components::ui::version_label;
 use crate::components::{
-    GameCardView, LiveCount, Picture, PlatformCoverage, RelativeTime, Seo, initials_of, keyed,
+    DiscordCount, DiscordLink, GameCardView, LiveCount, Picture, PlatformCoverage, RelativeTime,
+    Seo, initials_of, keyed,
 };
 
 /// Home page: search, trending top 10, live now, just released, live activity, wanted,
@@ -58,15 +59,14 @@ fn HomeInner(selected: HitWindow) -> Element {
                 Stat { value: d.stats.ports, label: "ports and recompilations" }
                 Stat { value: d.stats.platforms_with_ports, label: "original platforms" }
             }
-            div { class: "flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground",
-                span { "Working on a port, sharing a build, or spotted a site bug?" }
-                a {
-                    href: DISCORD_INVITE,
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    class: "font-medium text-foreground underline underline-offset-4 hover:text-primary",
-                    "Join the RecompHub Discord"
+            div { class: "flex flex-wrap items-center gap-3",
+                DiscordLink {
+                    href: DISCORD_INVITE_HOME,
+                    label: "Join the Discord",
+                    class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_MD}",
                 }
+                DiscordCount {}
+                span { class: "text-sm text-muted-foreground", "Share a build, ask for help, or spot a site bug." }
             }
         }
 

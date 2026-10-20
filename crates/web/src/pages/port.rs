@@ -5,14 +5,15 @@ use recomphub_shared::{PortCard, PortDetail, TargetPlatform};
 
 use super::jsonld;
 use crate::api;
+use crate::app::DISCORD_INVITE_LISTING;
 use crate::components::comments::PortComments;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::maintenance::MaintenancePanel;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
 use crate::components::styles::{
-    BADGE, BADGE_OUTLINE, BUTTON, BUTTON_GHOST, BUTTON_MD, BUTTON_OUTLINE, BUTTON_PRIMARY,
-    CARD_SURFACE, H1, TEXT_LINK,
+    BADGE, BADGE_OUTLINE, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_MD, BUTTON_OUTLINE,
+    BUTTON_PRIMARY, CARD_SURFACE, H1, TEXT_LINK,
 };
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
@@ -20,6 +21,7 @@ use crate::components::ui::{
     TargetIcon, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{StarButton, use_marks};
+use crate::components::{DiscordCount, DiscordLink};
 
 /// `/games/:game_slug/:port_slug`. Remounts when either slug changes.
 #[component]
@@ -120,6 +122,94 @@ fn AboutList(heading: String, items: Vec<String>, numbered: bool) -> Element {
     }
 }
 
+
+fn is_recompilation(kind: &str) -> bool {
+    matches!(kind, "static_recomp" | "native_layer")
+}
+
+#[cfg(test)]
+mod installation_tests {
+    use super::is_recompilation;
+
+    #[test]
+    fn installation_guidance_is_limited_to_playable_recompilation_kinds() {
+        assert!(is_recompilation("static_recomp"));
+        assert!(is_recompilation("native_layer"));
+        assert!(!is_recompilation("decompilation"));
+        assert!(!is_recompilation("source_port"));
+    }
+}
+
+/// Project-specific installation guidance for a recompilation. Platform cards are derived from
+/// the port's detected/declared targets; repository-provided setup text is never invented.
+#[component]
+fn InstallationGuide(
+    game_name: String,
+    port_name: String,
+    release_url: Option<String>,
+    repo_url: String,
+    targets: Vec<(String, String)>,
+    requirements: Vec<String>,
+    setup: Vec<String>,
+) -> Element {
+    rsx! {
+        Section { heading: "Install and use your game data".to_string(), class: "mt-12".to_string(),
+            p { class: "max-w-3xl text-sm leading-relaxed text-muted-foreground",
+                "Use the project release and files copied from media you already own. RecompHub does not provide game files, disc images, keys, or third-party download sources."
+            }
+            div { class: "mt-4 grid gap-4 md:grid-cols-2",
+                for (target, label) in targets {
+                    article { key: "{target}", class: "{CARD_SURFACE} flex flex-col gap-4 p-5",
+                        h3 { class: "font-medium", "Install on {label}" }
+                        ol { class: "flex list-decimal flex-col gap-3 pl-5 text-sm leading-relaxed",
+                            li {
+                                if let Some(url) = release_url.clone() {
+                                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "Download the latest project release" }
+                                    " for {port_name}."
+                                } else {
+                                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "Open the project repository" }
+                                    " and use its documented release or build instructions."
+                                }
+                            }
+                            li {
+                                "Extract or install the release exactly as its included README says. "
+                                "The project has not supplied a universal install location; do not guess or replace files in the original game install."
+                            }
+                            li {
+                                "Provide only the original {game_name} data the project documents below. "
+                                "Copy it from media or a store download you are entitled to use."
+                            }
+                        }
+                        if !setup.is_empty() {
+                            div { class: "rounded border p-3",
+                                h4 { class: "text-sm font-medium", "Project setup and data placement" }
+                                ol { class: "mt-2 flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground",
+                                    for step in setup.clone() {
+                                        li { "{step}" }
+                                    }
+                                }
+                            }
+                        } else {
+                            p { class: "text-sm text-muted-foreground",
+                                "The repository did not provide exact extraction or data-placement steps in the scanned documentation. Check its README before moving any game data."
+                            }
+                        }
+                    }
+                }
+            }
+            if !requirements.is_empty() {
+                div { class: "mt-4 {CARD_SURFACE} p-5",
+                    h3 { class: "font-medium", "Required original-game data" }
+                    ul { class: "mt-2 flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground",
+                        for requirement in requirements {
+                            li { "{requirement}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 #[component]
 fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     let site = use_context::<SiteUrl>().0;
@@ -313,6 +403,20 @@ pub(crate) fn PortMainContent(
         .as_ref()
         .map(|a| a.requirements.clone())
         .unwrap_or_default();
+    let installation_setup = about
+        .as_ref()
+        .map(|about| about.setup.clone())
+        .unwrap_or_default();
+    let mut installation_requirements = about_requirements.clone();
+    if let Some(requirements) = requirements.clone().filter(|text| !text.trim().is_empty()) {
+        installation_requirements.push(requirements);
+    }
+    let show_installation = is_recompilation(&port.kind);
+    let installation_targets = if runs.is_empty() {
+        vec![("unknown".to_string(), "Supported system not stated".to_string())]
+    } else {
+        runs.clone()
+    };
     let rating_preview = if ratings.count > 0 {
         let avg = ratings
             .average
@@ -417,6 +521,32 @@ pub(crate) fn PortMainContent(
             if download.is_some() {
                 p { class: "basis-full text-sm text-muted-foreground",
                     "Downloads open an external release page; RecompHub does not verify its files. Some ports require game assets; RecompHub does not provide them. Use only assets from an original game copy you are entitled to use."
+                }
+            }
+        }
+
+        if show_installation {
+            InstallationGuide {
+                game_name: game.name.clone(),
+                port_name: port.name.clone(),
+                release_url: download.clone(),
+                repo_url: port.repo_url.clone(),
+                targets: installation_targets,
+                requirements: installation_requirements,
+                setup: installation_setup,
+            }
+        }
+
+        div { class: "{CARD_SURFACE} mt-6 flex flex-wrap items-center justify-between gap-4 p-4",
+            span { class: "text-sm text-muted-foreground",
+                "Stuck on {port.name}, or want to help maintain it? Ask in the Discord."
+            }
+            div { class: "flex shrink-0 items-center gap-3",
+                DiscordCount {}
+                DiscordLink {
+                    href: DISCORD_INVITE_LISTING,
+                    label: "Join Discord",
+                    class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_MD}",
                 }
             }
         }

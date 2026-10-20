@@ -7,6 +7,13 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 /// Images kept per README, in order of first appearance.
+
+/// One accepted README screenshot, retaining the contextual alt text for review and delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadmeImage {
+    pub url: String,
+    pub alt: String,
+}
 pub const MAX_IMAGES: usize = 6;
 
 static CODE_FENCE: LazyLock<Regex> =
@@ -200,15 +207,14 @@ fn is_screenshot(url: &str, alt: &str) -> bool {
         }
     }
 }
-
-/// Real screenshot URLs linked or embedded in `readme`, in order of first appearance, deduped,
-/// and capped at [`MAX_IMAGES`]. Relative paths resolve against `owner/repo` at `branch`.
+/// Real README screenshots in order of first appearance, deduped and capped at [`MAX_IMAGES`].
+/// Relative paths resolve against `owner/repo` at `branch`; alt text is retained for moderation.
 pub fn screenshot_urls_in_readme(
     readme: &str,
     owner: &str,
     repo: &str,
     branch: &str,
-) -> Vec<String> {
+) -> Vec<ReadmeImage> {
     let no_comments = HTML_COMMENT.replace_all(readme, "");
     let cleaned = CODE_FENCE.replace_all(&no_comments, "");
 
@@ -250,25 +256,25 @@ pub fn screenshot_urls_in_readme(
         if out.len() >= MAX_IMAGES {
             break;
         }
-        let Some(resolved) = resolve(&raw_url, owner, repo, branch) else {
+        let Some(url) = resolve(&raw_url, owner, repo, branch) else {
             continue;
         };
-        if !is_screenshot(&resolved, &alt) {
+        if !is_screenshot(&url, &alt) || !seen.insert(url.clone()) {
             continue;
         }
-        if seen.insert(resolved.clone()) {
-            out.push(resolved);
-        }
+        out.push(ReadmeImage { url, alt });
     }
     out
 }
 
 #[cfg(test)]
 mod tests {
-    use super::screenshot_urls_in_readme;
-
+    use super::{ReadmeImage, screenshot_urls_in_readme};
     fn urls(readme: &str) -> Vec<String> {
         screenshot_urls_in_readme(readme, "octocat", "game-port", "main")
+            .into_iter()
+            .map(|image| image.url)
+            .collect()
     }
 
     #[test]
@@ -345,17 +351,19 @@ mod tests {
     }
 
     #[test]
-    fn owner_or_repo_name_containing_a_noise_word_does_not_suppress_screenshots() {
+    fn extractor_retains_alt_text_with_its_resolved_url() {
         assert_eq!(
             screenshot_urls_in_readme(
-                "![Gameplay](docs/shot.png)",
+                "![Gameplay HUD](docs/shot.png)",
                 "my-logo-studio",
                 "release-port",
-                "main"
+                "main",
             ),
-            vec![
-                "https://raw.githubusercontent.com/my-logo-studio/release-port/main/docs/shot.png"
-            ]
+            vec![ReadmeImage {
+                url: "https://raw.githubusercontent.com/my-logo-studio/release-port/main/docs/shot.png"
+                    .to_string(),
+                alt: "Gameplay HUD".to_string(),
+            }],
         );
     }
 

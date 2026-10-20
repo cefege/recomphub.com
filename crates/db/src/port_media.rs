@@ -18,6 +18,10 @@ pub struct PortMediaRow {
     pub media_id: i64,
     pub uploaded_by: Option<i64>,
     pub status: String,
+    pub source: String,
+    pub position: Option<i32>,
+    pub source_alt: Option<String>,
+    pub decision_reason: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -30,6 +34,10 @@ pub struct PendingPortImage {
     pub port_name: String,
     pub port_slug: String,
     pub game_slug: String,
+    pub media_width: Option<i32>,
+    pub media_height: Option<i32>,
+    pub media_status: String,
+    pub media_error: Option<String>,
 }
 
 /// Queues an uploaded, already-rendered image for review. Returns the `port_media` id. If this
@@ -91,10 +99,13 @@ pub async fn approved_for_port(ex: impl PgExecutor<'_>, port_id: i64) -> DbResul
 /// Every pending screenshot across the site, oldest first, for the moderation queue.
 pub async fn list_pending(ex: impl PgExecutor<'_>) -> DbResult<Vec<PendingPortImage>> {
     Ok(sqlx::query_as::<_, PendingPortImage>(
-        "SELECT pm.id, pm.port_id, pm.media_id, pm.uploaded_by, pm.status, pm.created_at,
+        "SELECT pm.id, pm.port_id, pm.media_id, pm.uploaded_by, pm.status, pm.source,
+                pm.position, pm.source_alt, pm.decision_reason, pm.created_at,
                 u.display_name AS uploader_name, p.name AS port_name, p.slug AS port_slug,
-                g.slug AS game_slug
+                g.slug AS game_slug, m.width AS media_width, m.height AS media_height,
+                m.status AS media_status, m.error AS media_error
          FROM port_media pm
+         JOIN media m ON m.id = pm.media_id
          JOIN ports p ON p.id = pm.port_id
          JOIN games g ON g.id = p.game_id
          LEFT JOIN users u ON u.id = pm.uploaded_by
@@ -138,49 +149,98 @@ pub async fn review(
     Ok(())
 }
 
+
+/// Applies the deterministic README-render gate. Only a ready image at least 480px wide becomes
+/// public automatically; smaller images stay reviewable rather than silently disappearing.
+pub async fn approve_readme_after_render(
+    ex: impl PgExecutor<'_>,
+    media_id: i64,
+    width: i32,
+) -> DbResult<()> {
+    let (status, reason) = if width >= 480 {
+        ("approved", None)
+    } else {
+        ("pending", Some("README image is under 480 px wide"))
+    };
+    sqlx::query(
+        "UPDATE port_media
+         SET status = $2, decision_reason = $3,
+             reviewed_by = CASE WHEN $2 = 'approved' THEN reviewed_by ELSE NULL END,
+             reviewed_at = CASE WHEN $2 = 'approved' THEN reviewed_at ELSE NULL END
+         WHERE media_id = $1 AND source = 'readme' AND status = 'pending'",
+    )
+    .bind(media_id)
+    .bind(status)
+    .bind(reason)
+    .execute(ex)
+    .await?;
+    Ok(())
+}
+
+/// Records a renderer failure on automated README screenshots without changing their review
+/// state. The detailed bounded error remains on `media.error`.
+pub async fn note_readme_render_failure(
+    ex: impl PgExecutor<'_>,
+    media_id: i64,
+) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE port_media
+         SET decision_reason = 'README image failed to render; see media error'
+         WHERE media_id = $1 AND source = 'readme' AND status = 'pending'",
+    )
+    .bind(media_id)
+    .execute(ex)
+    .await?;
+    Ok(())
+}
 /// Caps README-derived screenshots kept per port, matching `recomphub_ingest::readme_images::MAX_IMAGES`.
 pub const README_IMAGE_CAP: usize = 6;
 
-/// Enqueues and attaches up to [`README_IMAGE_CAP`] screenshots found in a port's README, as
-/// already-approved rows in README order: trusted the same way README-linked gameplay videos
-/// already are, since both come from the project's own repository rather than a stranger's
-/// upload. A README row for an image no longer in the list is removed, so a project that swaps
-/// its screenshots does not keep accumulating stale ones; member uploads are never touched.
+/// Enqueues and stages README screenshots in source order. Automated rows never become public
+/// until the renderer validates them at a usable width or a moderator explicitly reviews them.
 pub async fn record_readme_images(
     pool: &PgPool,
     port_id: i64,
-    image_urls: &[String],
+    images: &[(String, String)],
+    port_stem: &str,
 ) -> DbResult<()> {
-    let urls: Vec<&str> = image_urls
-        .iter()
-        .take(README_IMAGE_CAP)
-        .map(String::as_str)
-        .collect();
+    let images: Vec<&(String, String)> = images.iter().take(README_IMAGE_CAP).collect();
     let mut tx = pool.begin().await?;
-    let mut media_ids = Vec::with_capacity(urls.len());
-    for url in &urls {
-        media_ids.push(media::enqueue(&mut *tx, "port_screenshot", url).await?);
+    let mut media_ids = Vec::with_capacity(images.len());
+    for (position, (url, alt)) in images.iter().enumerate() {
+        let media_id = media::enqueue(
+            &mut *tx,
+            "port_screenshot",
+            url,
+            &format!("{port_stem}-screenshot-{}", position + 1),
+        )
+        .await?;
+        media_ids.push(media_id);
+        sqlx::query(
+            "INSERT INTO port_media
+                (port_id, media_id, uploaded_by, status, source, position, source_alt, decision_reason)
+             VALUES ($1, $2, NULL, 'pending', 'readme', $3, $4, 'README image awaits successful render')
+             ON CONFLICT (port_id, media_id) DO UPDATE SET
+                 position = EXCLUDED.position,
+                 source_alt = EXCLUDED.source_alt
+             WHERE port_media.status = 'pending'",
+        )
+        .bind(port_id)
+        .bind(media_id)
+        .bind(position as i32)
+        .bind(alt)
+        .execute(&mut *tx)
+        .await?;
     }
     sqlx::query(
         "DELETE FROM port_media
-         WHERE port_id = $1 AND source = 'readme' AND NOT (media_id = ANY($2))",
+         WHERE port_id = $1 AND source = 'readme' AND status = 'approved'
+           AND NOT (media_id = ANY($2))",
     )
     .bind(port_id)
     .bind(&media_ids)
     .execute(&mut *tx)
     .await?;
-    for (position, media_id) in media_ids.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO port_media (port_id, media_id, uploaded_by, status, source, position)
-             VALUES ($1, $2, NULL, 'approved', 'readme', $3)
-             ON CONFLICT (port_id, media_id) DO UPDATE SET position = EXCLUDED.position",
-        )
-        .bind(port_id)
-        .bind(media_id)
-        .bind(position as i32)
-        .execute(&mut *tx)
-        .await?;
-    }
     tx.commit().await?;
     Ok(())
 }

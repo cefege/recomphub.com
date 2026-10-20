@@ -1,17 +1,11 @@
-//! Discovery keep rule and candidate payloads, plus media rendition planning. No network.
+//! Discovery candidate payloads and media rendition planning. No network.
 
-use recomphub_ingest::discover::{github_payload, keep, reddit_payload};
+use recomphub_ingest::discover::{github_payload, reddit_payload};
 use recomphub_ingest::github::SearchRepo;
 use recomphub_ingest::media::{extension_for, output_path, planned_widths, widths_for};
 use recomphub_ingest::reddit::RedditRepo;
 use std::path::Path;
 
-#[test]
-fn keep_rule_needs_five_stars_or_a_release() {
-    assert!(!keep(4, false));
-    assert!(keep(5, false));
-    assert!(keep(0, true));
-}
 
 #[test]
 fn github_candidate_payload_uses_lowercase_canonical_url() {

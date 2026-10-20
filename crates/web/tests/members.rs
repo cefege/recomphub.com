@@ -16,6 +16,7 @@ use recomphub::server::session::{SESSION_COOKIE, new_token};
 use recomphub::server::state::init_pool;
 use recomphub_db::identities::{self, IdentityProfile};
 use recomphub_db::users_sessions;
+use recomphub_shared::{ModerationQueueQuery, QueueLane, TriageStateFilter};
 use recomphub_shared::dto::ReviewOverrides;
 use sqlx::{Connection, PgConnection, PgPool, postgres::PgPoolOptions};
 
@@ -28,6 +29,13 @@ struct TestDb {
 struct Viewer {
     id: i64,
     token: String,
+}
+
+fn queue_query() -> ModerationQueueQuery {
+    ModerationQueueQuery {
+        lane: QueueLane::Members, page: 1, category: None, confidence: None, target: None,
+        playability: None, flagged_only: false, triage_state: TriageStateFilter::All,
+    }
 }
 
 struct Fixtures {
@@ -76,7 +84,7 @@ async fn signed_out(fx: &Fixtures) {
         as_guest(submit_report(fx.game, None, "broken".into())).await,
         401,
     );
-    expect_status(as_guest(moderation_queue()).await, 401);
+    expect_status(as_guest(moderation_queue(queue_query())).await, 401);
     expect_status(as_guest(admin_settings()).await, 401);
     expect_status(as_guest(search_games("test".into())).await, 401);
     assert!(as_guest(me()).await.expect("me").is_none());
@@ -87,7 +95,7 @@ async fn signed_out(fx: &Fixtures) {
 }
 
 async fn plain_user(fx: &Fixtures, plain: &Viewer) {
-    expect_status(as_user(plain, moderation_queue()).await, 403);
+    expect_status(as_user(plain, moderation_queue(queue_query())).await, 403);
     expect_status(as_user(plain, moderation_log(1)).await, 403);
     expect_status(as_user(plain, admin_users("x".into())).await, 403);
     expect_status(as_user(plain, admin_settings()).await, 403);
@@ -163,17 +171,17 @@ async fn plain_user(fx: &Fixtures, plain: &Viewer) {
 }
 
 async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
-    let queue = as_user(moderator, moderation_queue()).await.expect("queue");
+    let queue = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
     let report = queue
         .iter()
         .find(|item| item.kind == "report")
         .expect("report is queued");
     assert_eq!(report.status, "pending");
     let first = report.id;
-    as_user(moderator, reject(first, "Thanks, noted".into()))
+    as_user(moderator, reject(first, "Thanks, noted".into(), None))
         .await
         .expect("reject");
-    let after = as_user(moderator, moderation_queue()).await.expect("queue");
+    let after = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
     assert!(after.iter().all(|item| item.id != first));
 
     as_user(
@@ -182,16 +190,16 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
     )
     .await
     .expect("second report");
-    let queue = as_user(moderator, moderation_queue()).await.expect("queue");
+    let queue = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
     let second = queue
         .iter()
         .find(|item| item.kind == "report")
         .expect("second report queued")
         .id;
-    as_user(moderator, approve(second, ReviewOverrides::default()))
+    as_user(moderator, approve(second, ReviewOverrides::default(), None))
         .await
         .expect("approve");
-    let after = as_user(moderator, moderation_queue()).await.expect("queue");
+    let after = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
     assert!(after.iter().all(|item| item.id != second));
 
     expect_status(
@@ -203,13 +211,14 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
                     kind: Some("not-a-kind".into()),
                     ..Default::default()
                 },
+                None,
             ),
         )
         .await,
         400,
     );
     expect_status(
-        as_user(moderator, approve(999_999_999, ReviewOverrides::default())).await,
+        as_user(moderator, approve(999_999_999, ReviewOverrides::default(), None)).await,
         404,
     );
 
@@ -264,13 +273,13 @@ async fn admin_user(fx: &Fixtures, admin: &Viewer, plain: &Viewer, target: &View
     as_user(admin, set_role(plain.id, "moderator".into()))
         .await
         .expect("promote");
-    as_user(plain, moderation_queue())
+    as_user(plain, moderation_queue(queue_query()))
         .await
         .expect("promoted user sees the queue");
     as_user(admin, set_role(plain.id, "user".into()))
         .await
         .expect("demote");
-    expect_status(as_user(plain, moderation_queue()).await, 403);
+    expect_status(as_user(plain, moderation_queue(queue_query())).await, 403);
 
     as_user(admin, set_banned(target.id, true))
         .await

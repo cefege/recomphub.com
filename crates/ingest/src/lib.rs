@@ -1,3 +1,4 @@
+pub mod candidate_triage;
 pub mod best_sellers;
 pub mod describe;
 pub mod detect;
@@ -13,12 +14,10 @@ pub mod importance;
 pub mod llm;
 pub mod maintenance;
 pub mod media;
+pub mod media_discovery;
 pub mod platform_map;
-pub mod port_videos;
 pub mod portsdr;
 pub mod readme_images;
 pub mod recompendium;
 pub mod reddit;
 pub mod video_links;
-pub mod youtube;
-pub mod ytdlp;

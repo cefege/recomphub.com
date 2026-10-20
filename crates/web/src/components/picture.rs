@@ -3,7 +3,10 @@ use recomphub_shared::MediaRef;
 
 /// URL of one AVIF variant under `/media`, as written by the worker's media pipeline.
 pub fn avif_url(media: &MediaRef, width: i32) -> String {
-    format!("/media/{}/{}-{}.avif", media.kind, media.hash, width)
+    format!(
+        "/media/{}/{}-{}-v{}-{}.avif",
+        media.kind, media.public_stem, media.hash, media.render_version, width
+    )
 }
 
 /// `srcset` value listing every ready AVIF width.

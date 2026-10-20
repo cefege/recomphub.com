@@ -15,6 +15,8 @@ const API: &str = "https://discord.com/api/v10";
 const GUILD_ID: &str = "1561674685316472994";
 const SEND_MESSAGES: u64 = 1 << 11;
 const CATEGORY_NAME: &str = "COMMUNITY";
+/// Website CTA placements that get their own invite under `--placement-invites`.
+const INVITE_PLACEMENTS: &[&str] = &["header", "footer", "home", "listing"];
 const SERVER_ICON_PNG: &[u8] = include_bytes!("../../../web/assets/recomphub-logo.png");
 
 struct ChannelSpec {
@@ -68,6 +70,13 @@ struct Cli {
     /// Replace the Discord server icon with the bundled RecompHub logo.
     #[arg(long)]
     server_icon: bool,
+
+    /// Mint one additional permanent, unique invite per website CTA placement (header, footer,
+    /// home, listing), so each shows its own use count under Server Settings -> Invites. Run
+    /// once when wiring up a new placement, then hardcode the printed codes into `app.rs`:
+    /// re-running always mints fresh codes instead of reusing them.
+    #[arg(long)]
+    placement_invites: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -283,6 +292,20 @@ impl Discord {
         )
         .await
     }
+
+    /// Always mints a fresh invite, unlike `invite` which dedupes to an existing one with the
+    /// same settings. Used for per-placement invites, where each needs its own code.
+    async fn unique_invite(&self, channel_id: &str) -> Result<Invite> {
+        self.json(
+            self.request(
+                reqwest::Method::POST,
+                &format!("/channels/{channel_id}/invites"),
+            )
+            .json(&json!({"max_age": 0, "max_uses": 0, "temporary": false, "unique": true})),
+            "creating placement invite",
+        )
+        .await
+    }
 }
 
 #[tokio::main]
@@ -450,6 +473,11 @@ async fn run(cli: Cli) -> Result<()> {
 
     if cli.dry_run {
         println!("CREATE permanent invite from #welcome");
+        if cli.placement_invites {
+            for name in INVITE_PLACEMENTS {
+                println!("CREATE placement invite [{name}] from #welcome");
+            }
+        }
     } else {
         let welcome = channels
             .iter()
@@ -457,6 +485,12 @@ async fn run(cli: Cli) -> Result<()> {
             .context("#welcome is missing")?;
         let invite = discord.invite(&welcome.id).await?;
         println!("INVITE https://discord.gg/{}", invite.code);
+        if cli.placement_invites {
+            for name in INVITE_PLACEMENTS {
+                let invite = discord.unique_invite(&welcome.id).await?;
+                println!("INVITE[{name}] https://discord.gg/{}", invite.code);
+            }
+        }
     }
 
     let final_channels = discord.channels().await?;

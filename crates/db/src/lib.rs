@@ -14,7 +14,6 @@ pub mod live;
 pub mod media;
 pub mod port_descriptions;
 pub mod port_media;
-pub mod port_videos;
 pub mod ports;
 pub mod sales;
 pub mod secrets;
@@ -23,8 +22,8 @@ pub mod stars;
 pub mod stats;
 pub mod submissions;
 pub mod users_sessions;
+pub mod video_discovery;
 pub mod videos;
-
 pub use sqlx::{PgConnection, PgExecutor, PgPool};
 
 use recomphub_shared::UnknownValue;

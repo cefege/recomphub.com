@@ -4,6 +4,8 @@ use dioxus::prelude::*;
 use recomphub_shared::dto::{
     GameChoice, LogItem, Page, QueueItem, ReviewOverrides, SettingRow, UserAdminRow,
 };
+use recomphub_shared::{BatchReviewAction, BatchReviewOutcome, BatchReviewRequest, BatchReviewStatus};
+use recomphub_shared::{ModerationQueuePage, ModerationQueueQuery};
 
 #[cfg(feature = "server")]
 use recomphub_shared::dto::ChoicePlatform;
@@ -28,9 +30,6 @@ use recomphub_shared::enums::{PortKind, Role};
 /// Page size for the moderation log.
 #[cfg(feature = "server")]
 const LOG_PAGE_SIZE: i64 = 50;
-/// Upper bound on the pending queue returned in one response.
-#[cfg(feature = "server")]
-const QUEUE_LIMIT: i64 = 500;
 
 #[cfg(feature = "server")]
 fn sql_error(e: sqlx::Error) -> ServerFnError {
@@ -84,17 +83,26 @@ fn queue_item(row: PendingRow) -> Result<QueueItem, ServerFnError> {
         needs_game_match: flag("needs_game_match"),
         submitter_is_author: flag("submitter_is_author"),
         created_at: row.sub.created_at,
+        triage: match row.sub.triage.as_ref() {
+            Some(record) => recomphub_ingest::candidate_triage::summary_from_record(record)
+                .map_err(|error| http_error(StatusCode::INTERNAL_SERVER_ERROR, format!("invalid triage record for submission {}: {error}", row.sub.id)))?,
+            None => None,
+        },
+        triage_revision: row.sub.triage_revision,
+        triage_error: row.sub.triage_error,
     })
 }
 
 /// Pending submissions, oldest first.
-#[get("/api/moderation/queue")]
-pub async fn moderation_queue() -> Result<Vec<QueueItem>, ServerFnError> {
+#[post("/api/moderation/queue")]
+pub async fn moderation_queue(query: ModerationQueueQuery) -> Result<ModerationQueuePage, ServerFnError> {
     require_moderator().await?;
-    let rows = recomphub_db::submissions::list_pending(pool()?, QUEUE_LIMIT, 0)
-        .await
-        .map_err(db_error)?;
-    rows.into_iter().map(queue_item).collect()
+    let page = recomphub_db::submissions::list_pending_page(pool()?, &query).await.map_err(db_error)?;
+    let rows = page.items.into_iter().map(queue_item).collect::<Result<Vec<_>, _>>()?;
+    Ok(ModerationQueuePage {
+        rows: Page { items: rows, page: page.page, pages: page.pages, total: page.total },
+        counts: page.counts,
+    })
 }
 
 /// Count of pending member submissions, for the Admin nav badge. Zero (not an error) for
@@ -110,8 +118,11 @@ pub async fn pending_submission_count() -> Result<i64, ServerFnError> {
 }
 
 /// Approve a pending submission, optionally assigning its game or creating it from IGDB.
-#[post("/api/moderation/approve")]
-pub async fn approve(item_id: i64, overrides: ReviewOverrides) -> Result<(), ServerFnError> {
+pub async fn approve(
+    item_id: i64,
+    overrides: ReviewOverrides,
+    expected_triage_revision: Option<i64>,
+) -> Result<(), ServerFnError> {
     let reviewer = require_moderator().await?;
     let pool = pool()?;
     let kind =
@@ -121,11 +132,13 @@ pub async fn approve(item_id: i64, overrides: ReviewOverrides) -> Result<(), Ser
             })?),
             None => None,
         };
-    let mut ov = ApproveOverrides {
-        game_id: overrides.game_id,
-        new_game: None,
-        kind,
-    };
+    let playability = overrides.playability.map(|value| value.parse().map_err(|_| {
+        http_error(StatusCode::BAD_REQUEST, "Unknown playability")
+    })).transpose()?;
+    let declared_platforms = overrides.declared_platforms.map(|values| values.into_iter().map(|value| value.parse().map_err(|_| {
+        http_error(StatusCode::BAD_REQUEST, format!("Unknown target platform: {value}"))
+    })).collect::<Result<Vec<_>, _>>()).transpose()?;
+    let mut ov = ApproveOverrides { game_id: overrides.game_id, new_game: None, kind, playability, declared_platforms };
     if overrides.game_id.is_none()
         && let Some(igdb_id) = overrides.igdb_id
     {
@@ -145,22 +158,87 @@ pub async fn approve(item_id: i64, overrides: ReviewOverrides) -> Result<(), Ser
             .map_err(igdb_error)?;
         ov.new_game = Some(game);
     }
-    recomphub_db::submissions::approve(pool, item_id, reviewer.id, &ov)
+    recomphub_db::submissions::approve(pool, item_id, reviewer.id, &ov, expected_triage_revision)
         .await
         .map_err(db_error)?;
     Ok(())
 }
 
 /// Reject a pending submission. The note is optional and may be empty.
-#[post("/api/moderation/reject")]
-pub async fn reject(item_id: i64, text: String) -> Result<(), ServerFnError> {
+pub async fn reject(
+    item_id: i64,
+    text: String,
+    expected_triage_revision: Option<i64>,
+) -> Result<(), ServerFnError> {
     let reviewer = require_moderator().await?;
     let note = text.trim();
     let note = (!note.is_empty()).then_some(note);
-    recomphub_db::submissions::reject(pool()?, item_id, reviewer.id, note)
+    recomphub_db::submissions::reject(pool()?, item_id, reviewer.id, note, expected_triage_revision)
         .await
         .map_err(db_error)?;
     Ok(())
+}
+
+/// Applies independently committed, revision-checked moderation decisions to one queue page.
+#[post("/api/moderation/review-batch")]
+pub async fn review_batch(request: BatchReviewRequest) -> Result<Vec<BatchReviewOutcome>, ServerFnError> {
+    let reviewer = require_moderator().await?;
+    if request.items.is_empty() || request.items.len() > 50 {
+        return Err(http_error(StatusCode::BAD_REQUEST, "A batch must contain 1 through 50 items."));
+    }
+    let mut ids = std::collections::HashSet::new();
+    if request.items.iter().any(|item| item.item_id <= 0 || !ids.insert(item.item_id)) {
+        return Err(http_error(StatusCode::BAD_REQUEST, "Batch item IDs must be positive and unique."));
+    }
+    let note = request.note.trim();
+    if request.action == BatchReviewAction::Reject && (note.is_empty() || note.chars().count() > 1000) {
+        return Err(http_error(StatusCode::BAD_REQUEST, "Rejection batches require a reason of at most 1,000 characters."));
+    }
+    if request.action == BatchReviewAction::Approve && request.items.iter().any(|item| item.overrides.igdb_id.is_some()) {
+        return Err(http_error(StatusCode::BAD_REQUEST, "Batch approval cannot create a game from IGDB."));
+    }
+    let pool = pool()?;
+    let mut outcomes = Vec::with_capacity(request.items.len());
+    for item in request.items {
+        let result = match request.action {
+            BatchReviewAction::Reject => recomphub_db::submissions::reject(pool, item.item_id, reviewer.id, Some(note), Some(item.expected_triage_revision)).await.map(|_| BatchReviewStatus::Rejected),
+            BatchReviewAction::Approve => {
+                let eligible = sqlx::query_as::<_, (String, serde_json::Value)>(
+                    "SELECT kind, payload FROM submissions WHERE id = $1 AND status = 'pending'",
+                )
+                .bind(item.item_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(recomphub_db::DbError::Sql)
+                .and_then(|row| row.ok_or_else(|| recomphub_db::DbError::Conflict("Submission is no longer pending; reload before reviewing.".to_string())));
+                match eligible {
+                    Err(error) => Err(error),
+                    Ok((submission_kind, _payload)) if !matches!(submission_kind.as_str(), "new_port" | "candidate") =>
+                        Err(recomphub_db::DbError::InvalidPayload("Batch approval is only available for port submissions.".to_string())),
+                    Ok((_, payload)) if item.overrides.game_id.or_else(|| payload.get("game_id").and_then(serde_json::Value::as_i64)).is_none() =>
+                        Err(recomphub_db::DbError::InvalidPayload("Batch approval requires an existing local game.".to_string())),
+                    Ok(_) => {
+                        let kind = item.overrides.kind.as_deref().map(str::parse).transpose().map_err(|_| recomphub_db::DbError::InvalidPayload("unknown port kind".to_string()));
+                        let playability = item.overrides.playability.as_deref().map(str::parse).transpose().map_err(|_| recomphub_db::DbError::InvalidPayload("unknown playability".to_string()));
+                        let targets = item.overrides.declared_platforms.as_ref().map(|values| values.iter().map(|value| value.parse()).collect()).transpose().map_err(|_| recomphub_db::DbError::InvalidPayload("unknown target platform".to_string()));
+                        match (kind, playability, targets) {
+                            (Ok(kind), Ok(playability), Ok(declared_platforms)) => {
+                                let ov = ApproveOverrides { game_id: item.overrides.game_id, new_game: None, kind, playability, declared_platforms };
+                                recomphub_db::submissions::approve(pool, item.item_id, reviewer.id, &ov, Some(item.expected_triage_revision)).await.map(|_| BatchReviewStatus::Approved)
+                            }
+                            (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => Err(error),
+                        }
+                    }
+                }
+            }
+        };
+        match result {
+            Ok(status) => outcomes.push(BatchReviewOutcome { item_id: item.item_id, status, error: None }),
+            Err(recomphub_db::DbError::Conflict(error) | recomphub_db::DbError::InvalidState(error) | recomphub_db::DbError::NotFound(error)) => outcomes.push(BatchReviewOutcome { item_id: item.item_id, status: BatchReviewStatus::Conflict, error: Some(error) }),
+            Err(error) => outcomes.push(BatchReviewOutcome { item_id: item.item_id, status: BatchReviewStatus::Error, error: Some(error.to_string()) }),
+        }
+    }
+    Ok(outcomes)
 }
 
 /// Undo an applied submission.
@@ -180,7 +258,7 @@ pub async fn moderation_log(page: i64) -> Result<Page<LogItem>, ServerFnError> {
     let pool = pool()?;
     let page = page.max(1);
     let total: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM submissions WHERE status IN ('approved', 'auto_approved', 'reverted')",
+        "SELECT count(*) FROM submissions WHERE status IN ('approved', 'auto_approved', 'rejected', 'reverted')",
     )
     .fetch_one(pool)
     .await
@@ -205,6 +283,8 @@ pub async fn moderation_log(page: i64) -> Result<Page<LogItem>, ServerFnError> {
             target_port_id: r.target_port_id,
             created_at: r.created_at,
             reviewed_at: r.reviewed_at,
+            reviewer_id: r.reviewer_id,
+            review_note: r.review_note,
         })
         .collect();
     Ok(Page {

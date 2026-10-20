@@ -15,7 +15,6 @@ use chrono::{DateTime, Utc};
 use recomphub_db::PgPool;
 use recomphub_db::media;
 use recomphub_db::port_media;
-use recomphub_db::port_videos as port_video_store;
 use recomphub_db::ports::{
     self, AiEvidence as DbAiEvidence, AiSync, AuthorInput, GithubSync, PortRow,
 };
@@ -27,6 +26,7 @@ use serde_json::{Value, json};
 use crate::detect::{self, AiDetection, CommitInfo};
 use crate::github_links;
 use crate::maintenance::{self, maintenance_query, parse_maintenance_batch};
+use crate::media_discovery;
 use crate::readme_images;
 use crate::video_links;
 
@@ -104,9 +104,9 @@ pub struct RepoPreview {
     pub ai: AiDetection,
     /// YouTube video IDs linked from the README, in first-appearance order.
     pub readme_youtube_ids: Vec<String>,
-    /// Real screenshot URLs found in the README, filtered of badges and logos, in
-    /// first-appearance order.
-    pub readme_image_urls: Vec<String>,
+    /// Real screenshots found in the README, filtered of badges and logos, retaining their
+    /// contextual alt text in first-appearance order.
+    pub readme_image_urls: Vec<readme_images::ReadmeImage>,
     /// Text the generated port description is built from. See `describe`.
     pub source: crate::describe::RawSource,
     pub contributors: Vec<Contributor>,
@@ -299,14 +299,6 @@ impl GithubClient {
         Ok(body.items)
     }
 
-    /// Whether a repository has at least one published (non-draft) release, prereleases included.
-    pub async fn has_release(&self, full_name: &str) -> Result<bool> {
-        let list: Vec<ReleaseJson> = self
-            .rest_json(&format!("/repos/{full_name}/releases?per_page=10"), ABSENT)
-            .await?
-            .unwrap_or_default();
-        Ok(list.iter().any(|r| !r.draft))
-    }
 
     /// Last 12 weeks of commit totals from `stats/participation`, oldest first. GitHub computes
     /// this lazily: 202 means "not ready" and 404 means "no stats", both `None`, so the stored
@@ -324,6 +316,122 @@ impl GithubClient {
             )
             .await?;
         Ok(stats.map(|s| maintenance::sparkline(&s.all)))
+    }
+
+    /// Fetches only bounded evidence for candidate triage. A metadata 404 is returned as `None`;
+    /// failures from any other endpoint remain errors rather than an unrelated classification.
+    pub async fn fetch_candidate_evidence(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Option<crate::candidate_triage::CandidateEvidenceSnapshot>> {
+        use crate::candidate_triage::{
+            CandidateCommit, CandidateEvidenceSnapshot, CandidateRelease, CandidateRootEntry,
+        };
+
+        let base = format!("/repos/{owner}/{repo}");
+        let Some(metadata): Option<CandidateRepoJson> = self.rest_json(&base, ABSENT).await? else {
+            return Ok(None);
+        };
+        let repo_url = github_links::canonical_repo_url(&format!(
+            "https://github.com/{}",
+            metadata.full_name
+        ))
+        .ok_or_else(|| anyhow!("GitHub returned an unusable repository name: {}", metadata.full_name))?;
+
+        let root: Option<Vec<CandidateContentEntry>> = self
+            .rest_json(&format!("{base}/contents/"), ABSENT_LIST)
+            .await?;
+        let root_entries = root.map(|entries| {
+            let mut entries: Vec<_> = entries
+                .into_iter()
+                .map(|entry| CandidateRootEntry {
+                    name: entry.name,
+                    path: entry.path,
+                    kind: entry.kind,
+                })
+                .collect();
+            entries.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));
+            entries.truncate(100);
+            entries
+        });
+        let readme = self
+            .rest_raw(&format!("{base}/readme"), RAW, ABSENT)
+            .await?
+            .map(|text| crate::describe::clean_markdown(&text, 12_000));
+
+        let release = match self.latest_release(&base).await? {
+            Some((info, text)) => {
+                let name = text
+                    .name
+                    .map(|name| crate::describe::clean_markdown(&name, 3_000));
+                let remaining = 3_000usize.saturating_sub(
+                    name.as_ref().map(|name| name.chars().count()).unwrap_or(0)
+                        + usize::from(name.is_some()),
+                );
+                let notes = text
+                    .body
+                    .map(|notes| crate::describe::clean_markdown(&notes, remaining));
+                Some(CandidateRelease {
+                    url: info.url,
+                    name,
+                    notes,
+                    assets: info.assets,
+                    at: info.published_at,
+                })
+            }
+            None => None,
+        };
+        let commits: Option<Vec<CandidateCommitJson>> = self
+            .rest_json(&format!("{base}/commits?per_page=5"), ABSENT_LIST)
+            .await?;
+        let recent_commits = commits.map(|items| {
+            items
+                .into_iter()
+                .take(5)
+                .map(|commit| {
+                    let date = commit
+                        .commit
+                        .author
+                        .as_ref()
+                        .and_then(|author| author.date.as_deref())
+                        .or_else(|| {
+                            commit
+                                .commit
+                                .committer
+                                .as_ref()
+                                .and_then(|committer| committer.date.as_deref())
+                        })
+                        .map(parse_ts)
+                        .transpose()?;
+                    Ok(CandidateCommit {
+                        sha: commit.sha,
+                        url: commit.html_url,
+                        message: crate::describe::clean_markdown(&commit.commit.message, 500),
+                        at: date,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()
+        }).transpose()?;
+
+        Ok(Some(CandidateEvidenceSnapshot {
+            repo_url,
+            github_repo_id: Some(metadata.id),
+            name: Some(metadata.name),
+            default_branch: Some(metadata.default_branch),
+            available: true,
+            description: metadata
+                .description
+                .map(|description| crate::describe::clean_markdown(&description, 2_000)),
+            topics: metadata.topics,
+            readme,
+            root_entries,
+            recent_commits,
+            release,
+            archived: Some(metadata.archived),
+            pushed_at: metadata.pushed_at.as_deref().map(parse_ts).transpose()?,
+            stars: Some(metadata.stargazers_count),
+        }))
     }
 
     /// Full REST snapshot of one repository. `None` when the repository does not exist.
@@ -529,7 +637,15 @@ pub async fn author_inputs(pool: &PgPool, specs: &[AuthorSpec]) -> Result<Vec<Au
         let avatar_media_id = if s.avatar_url.is_empty() {
             None
         } else {
-            Some(media::enqueue(pool, "avatar", &format!("{}{AVATAR_SUFFIX}", s.avatar_url)).await?)
+            Some(
+                media::enqueue(
+                    pool,
+                    "avatar",
+                    &format!("{}{AVATAR_SUFFIX}", s.avatar_url),
+                    &format!("{}-avatar", s.login),
+                )
+                .await?,
+            )
         };
         out.push(AuthorInput {
             github_login: Some(s.login.clone()),
@@ -803,16 +919,26 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                 ports::update_github(&mut tx, port.id, &sync, Some(&ai)).await?;
                 ports::replace_github_authors(&mut tx, port.id, &authors).await?;
                 tx.commit().await?;
-                if let Err(e) =
-                    port_video_store::record_readme_videos(pool, port.id, &prev.readme_youtube_ids)
-                        .await
+                if let Err(e) = media_discovery::record_readme_videos(
+                    pool,
+                    port.id,
+                    port.game_id,
+                    &port.name,
+                    &prev.readme_youtube_ids,
+                )
+                .await
                 {
                     tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README video IDs not recorded");
                 }
+                let readme_images: Vec<(String, String)> = prev
+                    .readme_image_urls
+                    .iter()
+                    .map(|image| (image.url.clone(), image.alt.clone()))
+                    .collect();
                 if let Err(e) =
-                    port_media::record_readme_images(pool, port.id, &prev.readme_image_urls).await
+                    port_media::record_readme_images(pool, port.id, &readme_images, &port.slug).await
                 {
-                    tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README image URLs not recorded");
+                    tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README images not recorded");
                 }
                 if let Err(e) = crate::describe::record_sources(
                     pool,
@@ -1031,6 +1157,46 @@ fn license_name(spdx: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+#[derive(Deserialize)]
+struct CandidateRepoJson {
+    id: i64,
+    full_name: String,
+    name: String,
+    default_branch: String,
+    description: Option<String>,
+    #[serde(default)]
+    topics: Vec<String>,
+    archived: bool,
+    pushed_at: Option<String>,
+    stargazers_count: i64,
+}
+
+#[derive(Deserialize)]
+struct CandidateContentEntry {
+    name: String,
+    path: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct CandidateCommitJson {
+    sha: String,
+    html_url: String,
+    commit: CandidateCommitBody,
+}
+
+#[derive(Deserialize)]
+struct CandidateCommitBody {
+    message: String,
+    author: Option<CandidateCommitDate>,
+    committer: Option<CandidateCommitDate>,
+}
+
+#[derive(Deserialize)]
+struct CandidateCommitDate {
+    date: Option<String>,
+}
 #[derive(Deserialize)]
 struct RepoJson {
     id: i64,

@@ -177,7 +177,8 @@ async fn a_second_upload_of_the_same_file_reuses_the_pending_row(pool: PgPool) -
     let game = make_game(&pool).await?;
     let port = make_port(&pool, game, "port", "https://github.com/a/b").await?;
     let user = make_user(&pool, "uploader").await?;
-    let media_id = media::enqueue(&pool, "port_screenshot", "upload:deadbeef").await?;
+    let media_id =
+        media::enqueue(&pool, "port_screenshot", "upload:deadbeef", "test-upload").await?;
 
     let first = port_media::insert_pending(&pool, port, media_id, user).await?;
     let second = port_media::insert_pending(&pool, port, media_id, user).await?;

@@ -13,6 +13,9 @@ pub const BUTTON_SECONDARY: &str = "bg-secondary text-secondary-foreground hover
 pub const BUTTON_GHOST: &str =
     "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50";
 pub const BUTTON_LINK: &str = "text-primary underline-offset-4 hover:underline";
+/// Discord's "Blurple" brand fill, for the "Join Discord" CTAs. Brand color per
+/// https://discord.com/branding; left unmixed with the theme since it marks a third-party link.
+pub const BUTTON_DISCORD: &str = "bg-[#5865F2] text-white hover:bg-[#4752C4]";
 pub const BUTTON_MD: &str = "h-9 px-4 py-2 has-[>svg]:px-3";
 pub const BUTTON_SM: &str = "h-8 gap-1.5 px-3 has-[>svg]:px-2.5";
 pub const BUTTON_XS: &str =

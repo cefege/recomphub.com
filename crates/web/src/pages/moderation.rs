@@ -1,11 +1,14 @@
 //! Moderation pages: the review queue and the audit log. Both are moderator-only, so
 //! their data loads after hydration and never enters the SSR HTML.
 
+use std::collections::BTreeSet;
 use chrono::{DateTime, Utc};
 use dioxus::prelude::*;
 use recomphub_shared::{
-    GameChoice, LogItem, Page, PendingPortImageDto, PendingVideoDto, PortKind, QueueItem,
-    ReviewOverrides,
+    BatchReviewAction, BatchReviewItem, BatchReviewOutcome, BatchReviewRequest, BatchReviewStatus,
+    GameChoice, LogItem, ModerationQueuePage, ModerationQueueQuery, Page, PendingPortImageDto,
+    PendingVideoDto, Playability, PortKind, QueueItem, QueueLane, ReviewOverrides, TargetPlatform,
+    TriageCategory, TriageStateFilter,
 };
 use serde_json::Value;
 
@@ -51,17 +54,38 @@ enum Tab {
 
 #[component]
 fn QueueList() -> Element {
-    let mut submissions = use_signal(|| None::<Result<Vec<QueueItem>, String>>);
+    let mut submissions = use_signal(|| None::<Result<ModerationQueuePage, String>>);
     let mut images = use_signal(|| None::<Result<Vec<PendingPortImageDto>, String>>);
     let mut videos = use_signal(|| None::<Result<Vec<PendingVideoDto>, String>>);
     let mut reload = use_signal(|| 0u32);
     let mut tab = use_signal(|| Tab::Member);
+    let mut page = use_signal(|| 1i64);
+    let mut selected = use_signal(BTreeSet::<i64>::new);
+    let mut request_generation = use_signal(|| 0u64);
+    let mut batch_note = use_signal(String::new);
+    let mut confirm_rejection = use_signal(|| false);
+    let mut batch_busy = use_signal(|| false);
+    let mut batch_outcomes = use_signal(Vec::<BatchReviewOutcome>::new);
     use_effect(move || {
         let _ = reload();
+        let active_tab = tab();
+        let query = ModerationQueueQuery {
+            lane: if active_tab == Tab::Found { QueueLane::Found } else { QueueLane::Members },
+            page: page(),
+            category: (active_tab == Tab::Found).then_some(TriageCategory::GameProject),
+            confidence: None,
+            target: None,
+            playability: None,
+            flagged_only: false,
+            triage_state: TriageStateFilter::All,
+        };
+        let generation = *request_generation.peek() + 1;
+        request_generation.set(generation);
         spawn(async move {
-            submissions.set(Some(
-                api::moderation_queue().await.map_err(|e| e.to_string()),
-            ));
+            let result = api::moderation_queue(query).await.map_err(|e| e.to_string());
+            if request_generation() == generation {
+                submissions.set(Some(result));
+            }
         });
         spawn(async move {
             images.set(Some(
@@ -94,12 +118,12 @@ fn QueueList() -> Element {
             },
         };
     };
-    let member: Vec<QueueItem> = subs
-        .iter()
-        .filter(|i| i.source == "user")
-        .cloned()
-        .collect();
-    let found: Vec<QueueItem> = subs.into_iter().filter(|i| i.source != "user").collect();
+    let counts = subs.counts.clone();
+    let queue_items = subs.rows.items;
+    let queue_page = subs.rows.page;
+    let page_ids: BTreeSet<i64> = queue_items.iter().map(|item| item.id).collect();
+    let queue_pages = subs.rows.pages;
+    let page_items = queue_items.clone();
     let image_count = imgs
         .as_ref()
         .and_then(|r| r.as_ref().ok())
@@ -115,7 +139,11 @@ fn QueueList() -> Element {
         rsx! {
             button { r#type: "button", role: "tab", "aria-selected": if active == value { "true" } else { "false" },
                 class: if active == value { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
-                onclick: move |_| tab.set(value),
+                onclick: move |_| {
+                    selected.set(BTreeSet::new());
+                    page.set(1);
+                    tab.set(value);
+                },
                 "{label}"
             }
         }
@@ -123,15 +151,129 @@ fn QueueList() -> Element {
 
     rsx! {
         div { role: "tablist", class: "{TABS_LIST} mt-8 flex-wrap",
-            {tab_button(format!("Member submissions ({})", member.len()), Tab::Member)}
-            {tab_button(format!("Found automatically ({})", found.len()), Tab::Found)}
+            {tab_button(format!("Member submissions ({})", counts.members), Tab::Member)}
+            {tab_button(format!("Found automatically ({})", counts.found), Tab::Found)}
             {tab_button(format!("Screenshots ({image_count})"), Tab::Screenshots)}
             {tab_button(format!("Videos ({video_count})"), Tab::Videos)}
         }
         div { class: "mt-6",
             match active {
-                Tab::Member => rsx! { SubmissionList { items: member, on_done } },
-                Tab::Found => rsx! { SubmissionList { items: found, on_done } },
+                Tab::Member | Tab::Found => rsx! {
+                    SubmissionList { items: queue_items, on_done, selected }
+                    p { class: "mb-3 text-sm text-muted-foreground", "{selected.read().len()} selected on this page." }
+                    button {
+                        r#type: "button",
+                        class: "btn btn-destructive mb-4 ml-3",
+                        disabled: selected.read().is_empty(),
+                        onclick: move |_| confirm_rejection.set(true),
+                        "Reject selected"
+                    }
+                    if confirm_rejection() {
+                        div { class: "mb-4 rounded-lg border border-destructive p-4 space-y-3",
+                            p { class: "font-semibold", "Confirm rejection for {selected.read().len()} selected submissions" }
+                            p { class: "text-sm text-muted-foreground", "This is a human moderation decision. It does not attest to playtesting." }
+                            textarea {
+                                class: "input w-full",
+                                placeholder: "Required rejection reason",
+                                value: "{batch_note}",
+                                oninput: move |event| batch_note.set(event.value()),
+                            }
+                            div { class: "flex gap-3",
+                                button {
+                                    r#type: "button",
+                                    class: "btn btn-secondary",
+                                    disabled: batch_busy(),
+                                    onclick: move |_| confirm_rejection.set(false),
+                                    "Cancel"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn btn-destructive",
+                                    disabled: batch_busy() || batch_note().trim().is_empty(),
+                                    onclick: move |_| {
+                                        let note = batch_note().trim().to_string();
+                                        let items = page_items
+                                            .iter()
+                                            .filter(|item| selected.read().contains(&item.id))
+                                            .map(|item| BatchReviewItem {
+                                                item_id: item.id,
+                                                expected_triage_revision: item.triage_revision,
+                                                overrides: ReviewOverrides::default(),
+                                            })
+                                            .collect::<Vec<_>>();
+                                        batch_busy.set(true);
+                                        spawn(async move {
+                                            match api::review_batch(BatchReviewRequest {
+                                                action: BatchReviewAction::Reject,
+                                                items,
+                                                note,
+                                            }).await {
+                                                Ok(outcomes) => {
+                                                    selected.with_mut(|ids| {
+                                                        for outcome in &outcomes {
+                                                            if matches!(outcome.status, BatchReviewStatus::Rejected) {
+                                                                ids.remove(&outcome.item_id);
+                                                            }
+                                                        }
+                                                    });
+                                                    batch_outcomes.set(outcomes);
+                                                    reload.set(reload() + 1);
+                                                }
+                                                Err(error) => batch_outcomes.set(vec![BatchReviewOutcome {
+                                                    item_id: 0,
+                                                    status: BatchReviewStatus::Error,
+                                                    error: Some(error.to_string()),
+                                                }]),
+                                            }
+                                            batch_busy.set(false);
+                                            confirm_rejection.set(false);
+                                        });
+                                    },
+                                    "Confirm rejection"
+                                }
+                            }
+                        }
+                    }
+                    if !batch_outcomes().is_empty() {
+                        div { class: "mb-4 rounded-lg border p-4",
+                            p { class: "font-semibold", "Batch results" }
+                            ul { class: "mt-2 space-y-1 text-sm",
+                                for outcome in batch_outcomes() {
+                                    li { key: "{outcome.item_id}", "#{outcome.item_id}: {outcome.status:?} {outcome.error.as_deref().unwrap_or_default()}" }
+                                }
+                            }
+                        }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn btn-secondary mb-4",
+                        onclick: move |_| selected.set(page_ids.clone()),
+                        "Select this page"
+                    }
+                    div { class: "mt-6 flex items-center justify-between gap-3",
+                        button {
+                            r#type: "button",
+                            class: "btn btn-secondary",
+                            disabled: queue_page <= 1,
+                            onclick: move |_| {
+                                selected.set(BTreeSet::new());
+                                page.set((queue_page - 1).max(1));
+                            },
+                            "Previous"
+                        }
+                        span { class: "text-sm text-muted-foreground", "Page {queue_page} of {queue_pages}" }
+                        button {
+                            r#type: "button",
+                            class: "btn btn-secondary",
+                            disabled: queue_page >= queue_pages,
+                            onclick: move |_| {
+                                selected.set(BTreeSet::new());
+                                page.set((queue_page + 1).min(queue_pages));
+                            },
+                            "Next"
+                        }
+                    }
+                },
                 Tab::Screenshots => rsx! { ImageQueuePanel { state: imgs, on_done } },
                 Tab::Videos => rsx! { VideoQueuePanel { state: vids, on_done } },
             }
@@ -140,14 +282,18 @@ fn QueueList() -> Element {
 }
 
 #[component]
-fn SubmissionList(items: Vec<QueueItem>, on_done: EventHandler<()>) -> Element {
+fn SubmissionList(
+    items: Vec<QueueItem>,
+    on_done: EventHandler<()>,
+    selected: Signal<BTreeSet<i64>>,
+) -> Element {
     if items.is_empty() {
         return rsx! { EmptyState { text: "Nothing here right now.".to_string() } };
     }
     rsx! {
         ul { class: "space-y-4",
             for item in items {
-                li { key: "{item.id}", QueueCard { item, on_done } }
+                li { key: "{item.id}", QueueCard { item, on_done, selected } }
             }
         }
     }
@@ -206,6 +352,25 @@ fn ImageQueueCard(item: PendingPortImageDto, on_done: EventHandler<()>) -> Eleme
     let error_text = error().unwrap_or_default();
     let port_href = format!("/games/{}/{}", item.game_slug, item.port_slug);
     rsx! {
+            p { class: "mt-1 text-xs text-muted-foreground",
+                "Source: {item.source}"
+                if let Some(alt) = item.source_alt.clone().filter(|alt| !alt.is_empty()) {
+                    " · alt: {alt}"
+                }
+            }
+            p { class: "text-xs text-muted-foreground",
+                if let (Some(width), Some(height)) = (item.width, item.height) {
+                    "{width} × {height}px"
+                } else {
+                    "Dimensions unavailable while rendering"
+                }
+            }
+            if let Some(reason) = item.decision_reason.clone() {
+                p { class: "mt-1 text-xs text-muted-foreground", "{reason}" }
+            }
+            if let Some(media_error) = item.media_error.clone() {
+                p { class: "mt-1 text-xs text-destructive", "{media_error}" }
+            }
         article { class: "{CARD_SURFACE} p-3",
             crate::components::Picture {
                 media: Some(item.image.clone()),
@@ -273,26 +438,10 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let id = item.id;
-    let approve_fn = move || {
-        spawn(async move {
-            busy.set(true);
-            match api::review_submitted_video(id, true).await {
-                Ok(()) => on_done.call(()),
-                Err(e) => error.set(Some(e.to_string())),
-            }
-            busy.set(false);
-        });
-    };
-    let reject_fn = move || {
-        spawn(async move {
-            busy.set(true);
-            match api::review_submitted_video(id, false).await {
-                Ok(()) => on_done.call(()),
-                Err(e) => error.set(Some(e.to_string())),
-            }
-            busy.set(false);
-        });
-    };
+    let approve_source = item.source.clone();
+    let reject_source = item.source.clone();
+    let approve_done = on_done.clone();
+    let reject_done = on_done;
     let error_text = error().unwrap_or_default();
     let watch = format!("https://www.youtube.com/watch?v={}", item.video.youtube_id);
     let subject = item
@@ -312,19 +461,45 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
             }
             p { class: "mt-2 line-clamp-2 text-sm font-medium", "{item.video.title}" }
             p { class: "text-xs text-muted-foreground", "{subject}" }
+            p { class: "text-xs text-muted-foreground", "Source: {item.source}" }
+            if let Some(reason) = item.decision_reason.clone() {
+                p { class: "text-xs text-muted-foreground", "{reason}" }
+            }
             div { class: "mt-3 flex gap-2",
                 button {
                     r#type: "button",
                     disabled: busy(),
                     class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_XS}",
-                    onclick: move |_| approve_fn(),
+                    onclick: move |_| {
+                        let source = approve_source.clone();
+                        let on_done = approve_done.clone();
+                        spawn(async move {
+                            busy.set(true);
+                            match api::review_submitted_video(id, source, true).await {
+                                Ok(()) => on_done.call(()),
+                                Err(e) => error.set(Some(e.to_string())),
+                            }
+                            busy.set(false);
+                        });
+                    },
                     "Approve"
                 }
                 button {
                     r#type: "button",
                     disabled: busy(),
                     class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
-                    onclick: move |_| reject_fn(),
+                    onclick: move |_| {
+                        let source = reject_source.clone();
+                        let on_done = reject_done.clone();
+                        spawn(async move {
+                            busy.set(true);
+                            match api::review_submitted_video(id, source, false).await {
+                                Ok(()) => on_done.call(()),
+                                Err(e) => error.set(Some(e.to_string())),
+                            }
+                            busy.set(false);
+                        });
+                    },
                     "Reject"
                 }
             }
@@ -336,7 +511,7 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
 }
 
 #[component]
-fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
+fn QueueCard(item: QueueItem, on_done: EventHandler<()>, selected: Signal<BTreeSet<i64>>) -> Element {
     let diff = field_rows(&item.payload_json, item.before_json.as_deref());
     let submitter = item
         .submitter_name
@@ -377,10 +552,48 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
         },
     };
     let needs_match = item.needs_game_match || item.kind == "candidate";
+    let triage_view = match (&item.triage, &item.triage_error) {
+        (_, Some(error)) => rsx! { p { class: "mt-3 text-sm text-destructive", "Evidence preparation failed: {error}" } },
+        (Some(triage), _) => rsx! {
+            div { class: "mt-3 text-sm",
+                p { class: "font-medium", "{triage.assessment.category:?} · {triage.assessment.confidence:?}" }
+                p { class: "text-muted-foreground", "{triage.assessment.summary}" }
+                p { class: "mt-1 text-xs text-muted-foreground", "Unfinished and archived projects can qualify. AI triage is not playtesting." }
+                if !triage.assessment.citations.is_empty() {
+                    ul { class: "mt-2 space-y-1",
+                        for citation in &triage.assessment.citations {
+                            li { key: "{citation.claim}-{citation.quote}",
+                                a { class: "underline", href: "{citation.source_url}", target: "_blank", "\"{citation.quote}\"" }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        (None, None) => rsx! { p { class: "mt-3 text-sm text-muted-foreground", "Untriaged — no evidence-backed recommendation." } },
+    };
 
+    let item_id = item.id;
+    let is_selected = selected.read().contains(&item_id);
     rsx! {
         article { class: "{CARD_SURFACE} p-5",
             div { class: "flex flex-wrap items-center gap-2",
+                label { class: "flex items-center gap-2 text-sm",
+                    input {
+                        r#type: "checkbox",
+                        checked: is_selected,
+                        onchange: move |event| {
+                            selected.with_mut(|ids| {
+                                if event.checked() {
+                                    ids.insert(item_id);
+                                } else {
+                                    ids.remove(&item_id);
+                                }
+                            });
+                        }
+                    }
+                    "Select"
+                }
                 Chip { "{item.kind}" }
                 Chip { "{item.source}" }
                 if item.submitter_is_author {
@@ -391,10 +604,12 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
                 }
             }
             p { class: "mt-3 text-sm text-muted-foreground", "#{item.id} · {submitter} · {approved} approved · {when}" }
+            {triage_view}
             {diff_view}
             Decision {
                 item_id: item.id,
                 kind: item.kind.clone(),
+                revision: item.triage_revision,
                 needs_match,
                 on_done,
             }
@@ -404,12 +619,14 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>) -> Element {
 
 /// Approve and reject controls. Candidates and unmatched imports need a game first.
 #[component]
-fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler<()>) -> Element {
+fn Decision(item_id: i64, kind: String, revision: i64, needs_match: bool, on_done: EventHandler<()>) -> Element {
     let is_candidate = kind == "candidate";
     let mut query = use_signal(String::new);
     let mut choices = use_signal(Vec::<GameChoice>::new);
     let mut picked = use_signal(|| None::<Pick>);
-    let mut kind_choice = use_signal(|| PortKind::ALL[0].as_str().to_string());
+    let mut kind_choice = use_signal(String::new);
+    let mut playability_choice = use_signal(String::new);
+    let mut declared_targets = use_signal(Vec::<String>::new);
     let mut note = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
@@ -435,15 +652,21 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
             error.set(Some("Pick a game before approving.".to_string()));
             return;
         }
+        if is_candidate && kind_choice().is_empty() {
+            error.set(Some("Choose a port kind before approving.".to_string()));
+            return;
+        }
         let overrides = ReviewOverrides {
             game_id: chosen.as_ref().and_then(|p| p.game_id),
             igdb_id: chosen.as_ref().and_then(|p| p.igdb_id),
-            kind: is_candidate.then(|| kind_choice.cloned()),
+            kind: is_candidate.then(|| kind_choice()),
+            playability: (!playability_choice().is_empty()).then(|| playability_choice()),
+            declared_platforms: Some(declared_targets()),
         };
         busy.set(true);
         error.set(None);
         spawn(async move {
-            match api::approve(item_id, overrides).await {
+            match api::approve(item_id, overrides, Some(revision)).await {
                 Ok(()) => on_done.call(()),
                 Err(e) => {
                     error.set(Some(e.to_string()));
@@ -458,7 +681,7 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
         busy.set(true);
         error.set(None);
         spawn(async move {
-            match api::reject(item_id, text).await {
+            match api::reject(item_id, text, Some(revision)).await {
                 Ok(()) => on_done.call(()),
                 Err(e) => {
                     error.set(Some(e.to_string()));
@@ -486,6 +709,8 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
         .map(|p| format!("Selected: {}", p.label))
         .unwrap_or_default();
     let found = choices();
+    let current_playability = playability_choice();
+    let current_targets = declared_targets();
 
     rsx! {
         div { class: "mt-5 space-y-4 border-t pt-5",
@@ -522,6 +747,7 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
                 label { class: "block space-y-1 text-sm font-semibold",
                     "Port kind"
                     select { class: INPUT, onchange: move |e| kind_choice.set(e.value()),
+                        option { value: "", selected: current_kind.is_empty(), disabled: true, "Choose a kind" }
                         for entry in kind_rows {
                             option {
                                 key: "{entry.value}",
@@ -530,6 +756,36 @@ fn Decision(item_id: i64, kind: String, needs_match: bool, on_done: EventHandler
                                 "{entry.label}"
                             }
                         }
+                    }
+                }
+            }
+            label { class: "block space-y-1 text-sm font-semibold",
+                "Playability"
+                select { class: INPUT, onchange: move |e| playability_choice.set(e.value()),
+                    option { value: "", selected: current_playability.is_empty(), "Keep submitted value" }
+                    for value in Playability::ALL {
+                        option { value: "{value.as_str()}", selected: current_playability == value.as_str(), "{value.label()}" }
+                    }
+                }
+            }
+            div { class: "space-y-2",
+                p { class: "text-sm font-semibold", "Declared target platforms" }
+                for target in TargetPlatform::ALL {
+                    label { class: "mr-4 inline-flex items-center gap-2 text-sm",
+                        input {
+                            r#type: "checkbox",
+                            checked: current_targets.iter().any(|value| value == target.as_str()),
+                            onchange: move |event| declared_targets.with_mut(|targets| {
+                                if event.checked() {
+                                    if !targets.iter().any(|value| value == target.as_str()) {
+                                        targets.push(target.as_str().to_string());
+                                    }
+                                } else {
+                                    targets.retain(|value| value != target.as_str());
+                                }
+                            }),
+                        }
+                        "{target.label()}"
                     }
                 }
             }
@@ -689,6 +945,8 @@ fn LogList(page: i64) -> Element {
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Port" }
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Created" }
                                     th { scope: "col", class: "py-2 pr-4 font-semibold", "Reviewed" }
+                                    th { scope: "col", class: "py-2 pr-4 font-semibold", "Reviewer" }
+                                    th { scope: "col", class: "py-2 pr-4 font-semibold", "Note" }
                                     th { scope: "col", class: "py-2 font-semibold", "Action" }
                                 }
                             }
@@ -722,6 +980,8 @@ fn LogRow(row: LogItem, on_revert: EventHandler<i64>) -> Element {
         .map(stamp)
         .unwrap_or_else(|| "—".to_string());
     let created = stamp(row.created_at);
+    let reviewer = row.reviewer_id.map(|id| format!("#{id}")).unwrap_or_else(|| "—".to_string());
+    let note = row.review_note.clone().unwrap_or_else(|| "—".to_string());
     let id = row.id;
     rsx! {
         tr { class: "border-t",
@@ -732,6 +992,8 @@ fn LogRow(row: LogItem, on_revert: EventHandler<i64>) -> Element {
             td { class: "py-2 pr-4", "{port}" }
             td { class: "whitespace-nowrap py-2 pr-4", "{created}" }
             td { class: "whitespace-nowrap py-2 pr-4", "{reviewed}" }
+            td { class: "py-2 pr-4", "{reviewer}" }
+            td { class: "py-2 pr-4", "{note}" }
             td { class: "py-2",
                 if revertible {
                     button {

@@ -5,6 +5,7 @@ pub mod ai_providers;
 pub mod catalog;
 pub mod comments;
 pub mod creators;
+pub mod discord;
 pub mod games {
     pub use super::catalog::GamesQuery;
 }
@@ -18,6 +19,7 @@ pub use ai_providers::*;
 pub use catalog::*;
 pub use comments::*;
 pub use creators::*;
+pub use discord::*;
 pub use live::*;
 pub use members::*;
 pub use moderation::*;

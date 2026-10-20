@@ -58,12 +58,11 @@ spec:
                   - worker-github-sync
                   - worker-catalog-sync
                   - worker-discover
-                  - worker-youtube-sync
+                  - worker-media-discovery
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated
                   - worker-sales-sync
-                  - worker-port-videos
                   - worker-describe-ports
                   - worker-describe-games
                   - worker-stats-snapshot

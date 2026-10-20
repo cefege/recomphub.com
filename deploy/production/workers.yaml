@@ -319,20 +319,22 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: youtube-sync
+  name: candidate-triage
   labels:
-    app.kubernetes.io/name: worker-youtube-sync
+    app.kubernetes.io/name: worker-candidate-triage
     app.kubernetes.io/part-of: recomphub
 spec:
-  schedule: "0 5 * * *"
+  schedule: "15 */6 * * *"
+  suspend: true
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
-      backoffLimit: 1
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: worker-youtube-sync
+            app.kubernetes.io/name: worker-candidate-triage
             app.kubernetes.io/part-of: recomphub
         spec:
           restartPolicy: Never
@@ -347,7 +349,68 @@ spec:
           containers:
             - name: worker
               image: ghcr.io/cefege/recomphub.com
-              command: ["/usr/local/app/worker", "youtube-sync"]
+              command: ["/usr/local/app/worker", "triage-candidates", "--limit", "100"]
+              envFrom:
+                - secretRef:
+                    name: recomphub-secrets
+              env:
+                - name: MEDIA_DIR
+                  value: /data/media
+                - name: RUST_LOG
+                  value: info
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65532
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-discovery
+  labels:
+    app.kubernetes.io/name: worker-media-discovery
+    app.kubernetes.io/part-of: recomphub
+spec:
+  schedule: "0 3 * * *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: worker-media-discovery
+            app.kubernetes.io/part-of: recomphub
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: ghcr.io/cefege/recomphub.com
+              command: ["/usr/local/app/worker", "media-discovery"]
               envFrom:
                 - secretRef:
                     name: recomphub-secrets
@@ -575,80 +638,6 @@ spec:
                 claimName: media
             - name: tmp
               emptyDir: {}
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: port-videos
-  labels:
-    app.kubernetes.io/name: worker-port-videos
-    app.kubernetes.io/part-of: recomphub
-spec:
-  schedule: "30 4 * * *"
-  concurrencyPolicy: Forbid
-  jobTemplate:
-    spec:
-      backoffLimit: 1
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: worker-port-videos
-            app.kubernetes.io/part-of: recomphub
-        spec:
-          restartPolicy: Never
-          automountServiceAccountToken: false
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 65532
-            runAsGroup: 65532
-            fsGroup: 65532
-            seccompProfile:
-              type: RuntimeDefault
-          containers:
-            - name: worker
-              image: ghcr.io/cefege/recomphub.com
-              command: ["/usr/local/app/worker", "port-videos"]
-              envFrom:
-                - secretRef:
-                    name: recomphub-secrets
-              env:
-                - name: MEDIA_DIR
-                  value: /data/media
-                - name: RUST_LOG
-                  value: info
-                - name: YTDLP_COOKIES
-                  value: /secrets/ytdlp/cookies.txt
-              resources:
-                requests:
-                  cpu: 50m
-                  memory: 128Mi
-                limits:
-                  memory: 1Gi
-              securityContext:
-                runAsNonRoot: true
-                runAsUser: 65532
-                readOnlyRootFilesystem: true
-                allowPrivilegeEscalation: false
-                capabilities:
-                  drop: [ALL]
-              volumeMounts:
-                - name: media
-                  mountPath: /data/media
-                - name: tmp
-                  mountPath: /tmp
-                - name: ytdlp-cookies
-                  mountPath: /secrets/ytdlp
-                  readOnly: true
-          volumes:
-            - name: media
-              persistentVolumeClaim:
-                claimName: media
-            - name: tmp
-              emptyDir: {}
-            - name: ytdlp-cookies
-              secret:
-                secretName: recomphub-ytdlp-cookies
-                optional: true
 ---
 apiVersion: batch/v1
 kind: CronJob

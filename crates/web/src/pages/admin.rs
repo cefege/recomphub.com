@@ -323,7 +323,6 @@ fn setting_label(key: &str) -> &str {
     match key {
         "catalog_target_size" => "Catalog target size (games)",
         "trust_threshold" => "Approvals before an account is trusted",
-        "youtube_daily_searches" => "YouTube searches per day",
         "submission_daily_limit" => "Submissions per account per day",
         "live_minutes_per_point" => "Live minutes per score point",
         other => other,

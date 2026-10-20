@@ -1,5 +1,6 @@
 pub mod cards;
 pub mod comments;
+pub mod discord;
 pub mod funding;
 pub mod icons;
 pub mod listing;
@@ -16,6 +17,7 @@ pub mod viewer;
 
 pub use cards::GameCardView;
 pub use comments::PortComments;
+pub use discord::{DiscordCount, DiscordLink};
 pub use funding::FundingLinks;
 pub use listing::{
     GameListTable, PRIMARY_TARGETS, PortTable, RankingTable, WINDOWS, WatchVisible, chip_class,

@@ -12,6 +12,8 @@ pub struct MediaRef {
     pub id: i64,
     pub kind: String,
     pub hash: String,
+    pub public_stem: String,
+    pub render_version: i32,
     pub widths: Vec<i32>,
     pub width: Option<i32>,
     pub height: Option<i32>,
@@ -225,7 +227,7 @@ pub struct PortDetail {
     pub weekly_commits: Vec<i32>,
 }
 
-/// A pending, member-uploaded screenshot, for the moderation queue.
+/// A pending member-uploaded or automated README screenshot, for moderation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PendingPortImageDto {
     pub id: i64,
@@ -234,10 +236,16 @@ pub struct PendingPortImageDto {
     pub port_name: String,
     pub port_slug: String,
     pub game_slug: String,
+    pub source: String,
+    pub source_alt: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub decision_reason: Option<String>,
+    pub media_error: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
-/// A pending, member-submitted gameplay video, for the moderation queue.
+/// A pending member-submitted or discovery-suggested gameplay video for moderation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PendingVideoDto {
     pub id: i64,
@@ -246,6 +254,8 @@ pub struct PendingVideoDto {
     pub game_slug: String,
     pub port_name: Option<String>,
     pub port_slug: Option<String>,
+    pub source: String,
+    pub decision_reason: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -369,6 +379,8 @@ pub struct ReviewOverrides {
     pub game_id: Option<i64>,
     pub igdb_id: Option<i64>,
     pub kind: Option<String>,
+    pub playability: Option<String>,
+    pub declared_platforms: Option<Vec<String>>,
 }
 
 /// A port form, as typed by a user.
@@ -498,6 +510,9 @@ pub struct QueueItem {
     pub needs_game_match: bool,
     pub submitter_is_author: bool,
     pub created_at: DateTime<Utc>,
+    pub triage: Option<crate::TriageSummary>,
+    pub triage_revision: i64,
+    pub triage_error: Option<String>,
 }
 
 /// A row of the moderation log.
@@ -510,6 +525,8 @@ pub struct LogItem {
     pub target_port_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub reviewed_at: Option<DateTime<Utc>>,
+    pub reviewer_id: Option<i64>,
+    pub review_note: Option<String>,
 }
 
 /// A submitter's own submission, for the account page.
@@ -750,6 +767,14 @@ pub struct GameGapDto {
 pub struct UnportedGameDto {
     pub slug: String,
     pub name: String,
+}
+
+/// Approximate Discord server stats from the public invite lookup (no bot token required).
+/// "Approximate" per Discord's API: expect these to lag the real numbers by a few minutes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscordStatsDto {
+    pub member_count: i64,
+    pub online_count: i64,
 }
 
 /// A ported game ranked by how many major platforms it covers.

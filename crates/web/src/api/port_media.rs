@@ -19,6 +19,10 @@ use recomphub_db::ports;
 #[cfg(feature = "server")]
 use recomphub_db::videos::{self, NewVideo};
 #[cfg(feature = "server")]
+use recomphub_db::video_discovery;
+#[cfg(feature = "server")]
+use sqlx;
+#[cfg(feature = "server")]
 use recomphub_ingest::{media as media_render, video_links};
 #[cfg(feature = "server")]
 use recomphub_shared::dto::{MediaRef, VideoDto};
@@ -42,6 +46,8 @@ fn media_ref(m: &MediaRow) -> MediaRef {
         id: m.id,
         kind: m.kind.clone(),
         hash: m.hash.clone(),
+        public_stem: m.public_stem.clone(),
+        render_version: m.render_version,
         widths: m.widths.clone(),
         width: m.width,
         height: m.height,
@@ -66,7 +72,7 @@ pub async fn upload_port_image(
 ) -> Result<(), ServerFnError> {
     let user = require_user().await?;
     let pool = pool()?;
-    ports::get_row(pool, port_id).await.map_err(db_error)?;
+    let port = ports::get_row(pool, port_id).await.map_err(db_error)?;
 
     let used = port_media::uploads_today(pool, user.id)
         .await
@@ -109,9 +115,14 @@ pub async fn upload_port_image(
     // Queue (or reuse) the media row first: when the exact same bytes were already rendered by
     // an earlier upload, the row comes back `ready` and there is nothing left to write or
     // render, so the disk write below is skipped entirely.
-    let media_id = media::enqueue(pool, "port_screenshot", &format!("upload:{hash}"))
-        .await
-        .map_err(db_error)?;
+    let media_id = media::enqueue(
+        pool,
+        "port_screenshot",
+        &format!("upload:{hash}"),
+        &format!("{}-upload", port.slug),
+    )
+    .await
+    .map_err(db_error)?;
     let already_rendered = media::get(pool, media_id)
         .await
         .map_err(db_error)?
@@ -183,9 +194,14 @@ pub async fn submit_port_video(port_id: i64, url: String) -> Result<(), ServerFn
         .map_err(|e| http_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let thumb_url = format!("https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg");
-    let thumb_media_id = media::enqueue(pool, "video_thumb", &thumb_url)
-        .await
-        .map_err(db_error)?;
+    let thumb_media_id = media::enqueue(
+        pool,
+        "video_thumb",
+        &thumb_url,
+        &format!("{}-video", port.slug),
+    )
+    .await
+    .map_err(db_error)?;
 
     videos::submit_user_video(
         pool,
@@ -226,6 +242,12 @@ pub async fn pending_port_images() -> Result<Vec<PendingPortImageDto>, ServerFnE
                 port_name: r.port_name,
                 port_slug: r.port_slug,
                 game_slug: r.game_slug,
+                source: r.item.source,
+                source_alt: r.item.source_alt,
+                width: r.media_width,
+                height: r.media_height,
+                decision_reason: r.item.decision_reason,
+                media_error: r.media_error,
                 created_at: r.item.created_at,
             })
         })
@@ -247,46 +269,87 @@ pub async fn pending_submitted_videos() -> Result<Vec<PendingVideoDto>, ServerFn
     require_moderator().await?;
     let pool = pool()?;
     let rows = videos::list_pending(pool).await.map_err(db_error)?;
-    let thumb_ids: Vec<i64> = rows.iter().filter_map(|r| r.video.thumb_media_id).collect();
+    let mut thumb_ids: Vec<i64> = rows.iter().filter_map(|r| r.video.thumb_media_id).collect();
+    let discovered: Vec<(
+        i64,
+        String,
+        String,
+        Option<i64>,
+        String,
+        Option<String>,
+        chrono::DateTime<chrono::Utc>,
+        String,
+        String,
+        String,
+        String,
+    )> = sqlx::query_as(
+        "SELECT c.id, c.youtube_id, c.title, c.thumbnail_media_id, c.source, c.decision_reason,
+                c.created_at, g.name, g.slug, p.name, p.slug
+         FROM video_discovery_candidates c
+         JOIN games g ON g.id = c.game_id
+         JOIN ports p ON p.id = c.port_id
+         WHERE c.decision = 'pending'
+         ORDER BY c.created_at",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| ServerFnError::new(error.to_string()))?;
+    thumb_ids.extend(discovered.iter().filter_map(|row| row.3));
     let thumbs = media::get_many(pool, thumb_ids).await.map_err(db_error)?;
     let by_id: std::collections::HashMap<i64, &MediaRow> =
         thumbs.iter().map(|m| (m.id, m)).collect();
-    Ok(rows
+    let mut pending: Vec<PendingVideoDto> = rows
         .into_iter()
         .map(|r| {
-            let thumb = r
-                .video
-                .thumb_media_id
-                .and_then(|id| by_id.get(&id))
-                .map(|m| media_ref(m));
+            let thumb = r.video.thumb_media_id.and_then(|id| by_id.get(&id)).map(|m| media_ref(m));
             PendingVideoDto {
                 id: r.video.id,
-                video: VideoDto {
-                    id: r.video.id,
-                    youtube_id: r.video.youtube_id,
-                    title: r.video.title,
-                    channel: r.video.channel,
-                    target: r.video.target,
-                    thumb,
-                    hidden: r.video.hidden,
-                },
+                video: VideoDto { id: r.video.id, youtube_id: r.video.youtube_id, title: r.video.title, channel: r.video.channel, target: r.video.target, thumb, hidden: r.video.hidden },
                 game_name: r.game_name,
                 game_slug: r.game_slug,
                 port_name: r.port_name,
                 port_slug: r.port_slug,
+                source: "member".to_string(),
+                decision_reason: None,
                 created_at: r.video.fetched_at,
             }
         })
-        .collect())
+        .collect();
+    pending.extend(discovered.into_iter().map(|(id, youtube_id, title, thumb_id, source, decision_reason, created_at, game_name, game_slug, port_name, port_slug)| PendingVideoDto {
+        id,
+        video: VideoDto { id, youtube_id, title, channel: None, target: "any".to_string(), thumb: thumb_id.and_then(|id| by_id.get(&id)).map(|m| media_ref(m)), hidden: false },
+        game_name,
+        game_slug,
+        port_name: Some(port_name),
+        port_slug: Some(port_slug),
+        source,
+        decision_reason,
+        created_at,
+    }));
+    pending.sort_by_key(|item| item.created_at);
+    Ok(pending)
 }
 
-/// Approves or rejects a pending, member-submitted video.
+/// Approves or rejects a pending member submission or discovery candidate.
 #[post("/api/port_media/review_video")]
-pub async fn review_submitted_video(id: i64, approve: bool) -> Result<(), ServerFnError> {
-    require_moderator().await?;
-    videos::review_pending(pool()?, id, approve)
+pub async fn review_submitted_video(id: i64, source: String, approve: bool) -> Result<(), ServerFnError> {
+    let moderator = require_moderator().await?;
+    if source == "member" {
+        videos::review_pending(pool()?, id, approve).await.map_err(db_error)
+    } else if approve {
+        let candidate = video_discovery::candidate(pool()?, id).await.map_err(db_error)?;
+        recomphub_ingest::media_discovery::publish_and_enqueue_thumbnail(
+            pool()?,
+            id,
+            Some(moderator.id),
+            &candidate.title,
+        )
         .await
-        .map_err(db_error)
+        .map(|_| ())
+        .map_err(|error| ServerFnError::new(error.to_string()))
+    } else {
+        video_discovery::reject_candidate(pool()?, id, moderator.id).await.map_err(db_error)
+    }
 }
 
 /// Count of pending screenshots and videos together, for the admin nav badge.
@@ -298,5 +361,10 @@ pub async fn pending_media_count() -> Result<i64, ServerFnError> {
     let pool = pool()?;
     let images = port_media::count_pending(pool).await.map_err(db_error)?;
     let clips = videos::count_pending(pool).await.map_err(db_error)?;
-    Ok(images + clips)
+    let discovered: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM video_discovery_candidates WHERE decision = 'pending'")
+            .fetch_one(pool)
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
+    Ok(images + clips + discovered)
 }

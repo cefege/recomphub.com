@@ -51,6 +51,8 @@ pub(crate) fn media_ref(m: &MediaRow) -> MediaRef {
         id: m.id,
         kind: m.kind.clone(),
         hash: m.hash.clone(),
+        public_stem: m.public_stem.clone(),
+        render_version: m.render_version,
         widths: m.widths.clone(),
         width: m.width,
         height: m.height,

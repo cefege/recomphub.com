@@ -5,12 +5,12 @@ use dioxus::prelude::*;
 
 use crate::api;
 use crate::components::styles::{
-    BADGE, BADGE_PRIMARY, BUTTON, BUTTON_GHOST, BUTTON_ICON, BUTTON_OUTLINE, BUTTON_SM, INPUT,
-    MENU_ITEM, POPOVER,
+    BADGE, BADGE_PRIMARY, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_ICON, BUTTON_MD,
+    BUTTON_OUTLINE, BUTTON_SM, CARD_SURFACE, INPUT, MENU_ITEM, POPOVER,
 };
 use crate::components::{
-    LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore, initials_of, login_redirect,
-    set_me,
+    DiscordCount, DiscordLink, LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore,
+    initials_of, login_redirect, set_me,
 };
 use crate::pages::RouteError;
 use crate::routes::Route;
@@ -31,7 +31,16 @@ const RECOMPHUB_FAVICON: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 
-pub(crate) const DISCORD_INVITE: &str = "https://discord.gg/XJWPAQHEzr";
+/// Shared invite code, used only to look up the public member/online count (any valid invite to
+/// the guild works for that). Every on-page CTA below links through its own placement invite
+/// instead, so Discord's per-invite use count (Server Settings -> Invites) shows which spot
+/// actually converts. Minted with `cargo run -p recomphub-worker --bin discord-setup --
+/// --placement-invites`; re-running that flag mints fresh codes, so don't re-run it casually.
+pub(crate) const DISCORD_INVITE_CODE: &str = "XJWPAQHEzr";
+pub(crate) const DISCORD_INVITE_HEADER: &str = "https://discord.gg/by63B5vnsX";
+pub(crate) const DISCORD_INVITE_FOOTER: &str = "https://discord.gg/BCReT4WnUZ";
+pub(crate) const DISCORD_INVITE_HOME: &str = "https://discord.gg/K8CvdQDdwV";
+pub(crate) const DISCORD_INVITE_LISTING: &str = "https://discord.gg/6pJaWpBtWh";
 
 const GOOGLE_ANALYTICS_MEASUREMENT_ID: &str = "G-EZ96BDJE3J";
 const GOOGLE_ANALYTICS_BOOTSTRAP: &str = r#"
@@ -155,12 +164,10 @@ pub fn Shell() -> Element {
                             for (href, label) in NAV {
                                 a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
                             }
-                            a {
-                                href: DISCORD_INVITE,
-                                target: "_blank",
-                                rel: "noopener noreferrer",
-                                class: MENU_ITEM,
-                                "Join Discord"
+                            DiscordLink {
+                                href: DISCORD_INVITE_HEADER,
+                                label: "Join Discord",
+                                class: MENU_ITEM.to_string(),
                             }
                         }
                     }
@@ -187,12 +194,10 @@ pub fn Shell() -> Element {
                             SearchIcon { class: "size-4" }
                         }
                         OnlineCount {}
-                        a {
-                            href: DISCORD_INVITE,
-                            target: "_blank",
-                            rel: "noopener noreferrer",
-                            class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} hidden sm:inline-flex",
-                            "Join Discord"
+                        DiscordLink {
+                            href: DISCORD_INVITE_HEADER,
+                            label: "Join Discord",
+                            class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_SM} hidden sm:inline-flex",
                         }
                         button {
                             r#type: "button",
@@ -264,18 +269,32 @@ pub fn Shell() -> Element {
                 }
             }
             footer { class: "border-t",
-                div { class: "mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8",
-                    p { "RecompHub · seed data from Recompendium (MIT)" }
-                    nav { class: "flex flex-wrap gap-x-5 gap-y-2", "aria-label": "Footer",
-                        a { href: "/about", class: "transition-colors hover:text-foreground", "About" }
-                        a { href: "/about#ground-rules", class: "transition-colors hover:text-foreground", "Ground rules" }
-                        a { href: "/submit", class: "transition-colors hover:text-foreground", "Submit a port" }
-                        a {
-                            href: DISCORD_INVITE,
-                            target: "_blank",
-                            rel: "noopener noreferrer",
-                            class: "transition-colors hover:text-foreground",
-                            "Discord"
+                div { class: "mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8",
+                    div { class: "{CARD_SURFACE} flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between",
+                        div {
+                            h2 { class: "text-base font-semibold tracking-tight", "Join the RecompHub Discord" }
+                            p { class: "mt-1 text-sm text-muted-foreground",
+                                "Share a build, ask for help porting something, or hear about new releases first."
+                            }
+                        }
+                        div { class: "flex shrink-0 flex-wrap items-center gap-3",
+                            DiscordCount {}
+                            DiscordLink {
+                                href: DISCORD_INVITE_FOOTER,
+                                label: "Join Discord",
+                                class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_MD}",
+                            }
+                        }
+                    }
+                    div { class: "mt-6 flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between",
+                        p { "RecompHub · seed data from Recompendium (MIT)" }
+                        nav { class: "flex flex-wrap gap-x-5 gap-y-2", "aria-label": "Footer",
+                            a { href: "/about", class: "transition-colors hover:text-foreground", "About" }
+                            a { href: "/about#ground-rules", class: "transition-colors hover:text-foreground", "Ground rules" }
+                            a { href: "/submit", class: "transition-colors hover:text-foreground", "Submit a port" }
+                            a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
+                            a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
+                            a { href: "/privacy#privacy-choices", class: "transition-colors hover:text-foreground", "Cookie settings" }
                         }
                         a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
                         a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
