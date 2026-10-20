@@ -32,8 +32,10 @@ struct Cli {
 enum Command {
     /// Fill the game catalog from IGDB up to `catalog_target_size`, and refresh entries older than 30 days.
     CatalogSync,
-    /// Download pending images and write them as AVIF (and the og JPEG).
+    /// Download pending images and write their public AVIF renditions.
     MediaSync,
+    /// Re-render every pending or stale image into the current public filename format.
+    MediaMigrate,
     /// Import the Recompendium catalog (nio03/unricopie) from its GitHub tarball.
     ImportRecompendium,
     /// Import the PortsDR index page.
@@ -141,6 +143,12 @@ async fn run(command: Command) -> Result<()> {
             let dir = media_dir();
             let report = media::process_pending(&pool, &dir, media::BATCH_SIZE).await?;
             info!(?report, "media-sync finished");
+        }
+        Command::MediaMigrate => {
+            let pool = pool().await?;
+            let dir = media_dir();
+            let report = media::process_all_pending(&pool, &dir).await?;
+            info!(?report, "media migration finished");
         }
         Command::ImportRecompendium => {
             let pool = pool().await?;

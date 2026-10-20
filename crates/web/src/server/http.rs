@@ -415,6 +415,7 @@ fn sitemap_image_path(
     Some(media_avif_path(kind, stem, hash, render_version, width as i32))
 }
 
+
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
 /// GET and HEAD only, so POST server functions are never redirected.
 async fn canonical(req: Request, next: Next) -> Response {
@@ -539,4 +540,5 @@ mod tests {
         assert!(xml.contains("<lastmod>1970-01-01</lastmod>"));
         assert_eq!(xml.matches("<url>").count(), 2);
     }
+
 }

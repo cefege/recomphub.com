@@ -93,7 +93,7 @@ pub async fn next_pending(
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending'
             OR (m.status = 'failed' AND m.attempts < 3)
-            OR (m.status = 'ready' AND m.render_version < $2)
+            OR (m.status = 'ready' AND m.render_version < $2 AND m.attempts < 3)
          ORDER BY CASE
                       WHEN m.kind = 'port_screenshot' AND m.source_url LIKE 'upload:%' THEN 0
                       WHEN m.kind = 'cover' THEN 1
@@ -113,6 +113,17 @@ pub async fn next_pending(
     .fetch_all(ex)
     .await?;
     Ok(rows)
+}
+
+/// Counts public renditions that could not be migrated to `render_version`.
+pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<i64> {
+    let count = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM media WHERE status = 'ready' AND render_version < $1",
+    )
+    .bind(render_version)
+    .fetch_one(ex)
+    .await?;
+    Ok(count)
 }
 
 /// Atomically records the complete set of freshly-rendered assets and their source dimensions.

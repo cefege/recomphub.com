@@ -241,6 +241,21 @@ async fn existing_avif(dir: &Path, row: &MediaRow) -> Result<Vec<u8>> {
     }
 }
 
+/// Deletes obsolete pre-versioned output only after its versioned replacement is ready.
+async fn remove_legacy_outputs(dir: &Path, row: &MediaRow) {
+    if row.render_version >= MEDIA_RENDER_VERSION {
+        return;
+    }
+    for width in &row.widths {
+        let path = legacy_output_path(dir, &row.kind, &row.hash, *width as u32);
+        if let Err(error) = tokio::fs::remove_file(&path).await
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(media_id = row.id, path = %path.display(), error = %error, "could not remove obsolete media rendition");
+        }
+    }
+}
+
 /// Processes one queued row. A v2 refresh first re-fetches its source; if that is unavailable it
 /// decodes the largest existing local AVIF. Failed refreshes retain their old ready metadata.
 pub async fn process_row(
@@ -290,6 +305,7 @@ pub async fn process_row(
                 MEDIA_RENDER_VERSION,
             )
             .await?;
+            remove_legacy_outputs(dir, row).await;
             port_media::approve_readme_after_render(pool, row.id, src_w as i32).await?;
             if let Some(hash) = upload_hash {
                 let _ = tokio::fs::remove_file(upload_path(dir, hash)).await;
@@ -343,4 +359,23 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
         }
     }
     Ok(report)
+}
+
+/// Runs successive batches until every pending, retryable, or stale rendition has been processed.
+/// Intended for an explicit one-off renderer cutover rather than scheduled syncs.
+pub async fn process_all_pending(pool: &PgPool, media_dir: &Path) -> Result<MediaReport> {
+    let mut total = MediaReport::default();
+    loop {
+        let report = process_pending(pool, media_dir, BATCH_SIZE).await?;
+        total.processed += report.processed;
+        total.ready += report.ready;
+        total.failed += report.failed;
+        if report.processed == 0 {
+            let stale = media::stale_ready_count(pool, MEDIA_RENDER_VERSION).await?;
+            if stale > 0 {
+                bail!("{stale} public media rows could not be migrated");
+            }
+            return Ok(total);
+        }
+    }
 }
