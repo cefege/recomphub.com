@@ -77,6 +77,11 @@ pub fn App() -> Element {
             r#async: true,
         }
         Script { "{GOOGLE_ANALYTICS_BOOTSTRAP}" }
+        Script {
+            src: "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6004542868270159",
+            r#async: true,
+            crossorigin: "anonymous",
+        }
         Stylesheet { href: asset!("/assets/tailwind.css") }
         Link {
             rel: "preload",

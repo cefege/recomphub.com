@@ -47,6 +47,10 @@ Tests:
 DATABASE_URL=postgres://localhost/recomphub_test cargo test --workspace --features recomphub/server
 ```
 
+## Advertising
+
+The shared document head in `crates/web/src/app.rs` loads Google AdSense asynchronously for publisher `ca-pub-6004542868270159`, with `crossorigin="anonymous"`.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` for local development. In production, these come from the `recomphub-secrets` Secret.
