@@ -377,6 +377,7 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
 /// Intended for an explicit one-off renderer cutover rather than scheduled syncs.
 pub async fn process_all_pending(pool: &PgPool, media_dir: &Path) -> Result<MediaReport> {
     let mut total = MediaReport::default();
+    media::reset_stale_attempts(pool, MEDIA_RENDER_VERSION).await?;
     loop {
         let report = process_pending(pool, media_dir, BATCH_SIZE).await?;
         total.processed += report.processed;
@@ -389,5 +390,19 @@ pub async fn process_all_pending(pool: &PgPool, media_dir: &Path) -> Result<Medi
             }
             return Ok(total);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::GenericImageView;
+
+    #[test]
+    fn rendered_avif_can_be_decoded_for_a_version_refresh() {
+        let image = DynamicImage::new_rgba8(320, 180);
+        let bytes = encode_avif(&image, 320, AVIF_QUALITY).unwrap();
+        let decoded = image::load_from_memory(&bytes).unwrap();
+        assert_eq!(decoded.dimensions(), (320, 180));
     }
 }

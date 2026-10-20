@@ -64,23 +64,24 @@ fn widths_match_the_plan_table() {
 }
 
 #[test]
-fn only_og_images_are_jpeg() {
-    assert_eq!(extension_for("og"), "jpg");
+fn all_public_images_are_avif() {
+    assert_eq!(extension_for("og"), "avif");
     assert_eq!(extension_for("cover"), "avif");
     assert_eq!(extension_for("screenshot"), "avif");
 }
 
 #[test]
-fn output_paths_are_kind_then_hash_then_width() {
+fn output_paths_are_semantic_and_versioned() {
     let path = output_path(
         Path::new("/data/media"),
         "cover",
+        "game-cover",
         "0123456789abcdef",
+        2,
         264,
-        "avif",
     );
     assert_eq!(
         path,
-        Path::new("/data/media/cover/0123456789abcdef-264.avif")
+        Path::new("/data/media/cover/game-cover-0123456789abcdef-v2-264.avif")
     );
 }

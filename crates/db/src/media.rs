@@ -126,6 +126,18 @@ pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> 
     Ok(count)
 }
 
+/// Makes every stale public rendition eligible for one explicit renderer cutover.
+pub async fn reset_stale_attempts(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<()> {
+    sqlx::query(
+        "UPDATE media SET attempts = 0
+         WHERE status = 'ready' AND render_version < $1",
+    )
+    .bind(render_version)
+    .execute(ex)
+    .await?;
+    Ok(())
+}
+
 /// Atomically records the complete set of freshly-rendered assets and their source dimensions.
 pub async fn mark_ready(
     ex: impl PgExecutor<'_>,
