@@ -410,7 +410,7 @@ spec:
           containers:
             - name: worker
               image: ghcr.io/cefege/recomphub.com
-              command: ["/usr/local/app/worker", "media-discovery"]
+              command: ["/usr/local/app/worker", "media-discovery", "--submit-limit", "100", "--retrieve-limit", "100"]
               envFrom:
                 - secretRef:
                     name: recomphub-secrets
