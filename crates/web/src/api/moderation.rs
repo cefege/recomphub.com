@@ -118,6 +118,7 @@ pub async fn pending_submission_count() -> Result<i64, ServerFnError> {
 }
 
 /// Approve a pending submission, optionally assigning its game or creating it from IGDB.
+#[post("/api/moderation/approve")]
 pub async fn approve(
     item_id: i64,
     overrides: ReviewOverrides,
@@ -165,6 +166,7 @@ pub async fn approve(
 }
 
 /// Reject a pending submission. The note is optional and may be empty.
+#[post("/api/moderation/reject")]
 pub async fn reject(
     item_id: i64,
     text: String,
