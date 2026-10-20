@@ -3,6 +3,7 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential git meson nasm ninja-build pkg-config \
  && rm -rf /var/lib/apt/lists/*
+ENV SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=always
 
 
 RUN curl -fsSL https://github.com/cargo-bins/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-musl.tgz \
