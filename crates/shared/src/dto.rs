@@ -20,6 +20,22 @@ pub struct MediaRef {
     pub ready: bool,
 }
 
+/// Public path for one AVIF rendition. Version 1 assets retain the legacy
+/// hash-only filename until the renderer has atomically replaced them.
+pub fn media_avif_path(
+    kind: &str,
+    public_stem: &str,
+    hash: &str,
+    render_version: i32,
+    width: i32,
+) -> String {
+    if render_version < 2 {
+        format!("/media/{kind}/{hash}-{width}.avif")
+    } else {
+        format!("/media/{kind}/{public_stem}-{hash}-v{render_version}-{width}.avif")
+    }
+}
+
 /// Compact game data for cards and rails.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GameCard {
@@ -971,7 +987,7 @@ impl RatingSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::EditInput;
+    use super::{EditInput, media_avif_path};
 
     fn base() -> EditInput {
         EditInput {
@@ -1018,5 +1034,16 @@ mod tests {
         assert_eq!(back.homepage_url, Some(None));
         assert_eq!(back.requirements, Some(Some("4 GB RAM".to_string())));
         assert_eq!(back.toolchain, None);
+    }
+    #[test]
+    fn media_v1_paths_remain_legacy_until_the_v2_refresh() {
+        assert_eq!(
+            media_avif_path("cover", "game-cover", "0123456789abcdef", 1, 528),
+            "/media/cover/0123456789abcdef-528.avif"
+        );
+        assert_eq!(
+            media_avif_path("cover", "game-cover", "0123456789abcdef", 2, 528),
+            "/media/cover/game-cover-0123456789abcdef-v2-528.avif"
+        );
     }
 }

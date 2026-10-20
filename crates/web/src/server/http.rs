@@ -12,6 +12,7 @@ use dioxus::server::axum::middleware::{self, Next};
 use dioxus::server::axum::response::{IntoResponse, Response};
 use dioxus::server::axum::routing::{get, post};
 use recomphub_shared::enums::TargetPlatform;
+use recomphub_shared::media_avif_path;
 use recomphub_shared::seo::xml_escape;
 use sqlx::PgPool;
 use tower_http::compression::CompressionLayer;
@@ -411,7 +412,7 @@ fn sitemap_image_path(
     };
     let source_width = source_width.unwrap_or_default().max(0) as u32;
     let width = widths.iter().copied().filter(|width| *width <= source_width).max()?;
-    Some(format!("/media/{kind}/{stem}-{hash}-v{render_version}-{width}.avif"))
+    Some(media_avif_path(kind, stem, hash, render_version, width as i32))
 }
 
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.

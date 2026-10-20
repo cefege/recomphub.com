@@ -1,11 +1,14 @@
 use dioxus::prelude::*;
-use recomphub_shared::MediaRef;
+use recomphub_shared::{MediaRef, media_avif_path};
 
 /// URL of one AVIF variant under `/media`, as written by the worker's media pipeline.
 pub fn avif_url(media: &MediaRef, width: i32) -> String {
-    format!(
-        "/media/{}/{}-{}-v{}-{}.avif",
-        media.kind, media.public_stem, media.hash, media.render_version, width
+    media_avif_path(
+        &media.kind,
+        &media.public_stem,
+        &media.hash,
+        media.render_version,
+        width,
     )
 }
 

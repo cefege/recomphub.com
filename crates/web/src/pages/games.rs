@@ -4,7 +4,9 @@ use recomphub_shared::seo::{
     game_with_ports_description, game_with_ports_title, game_without_port_description,
     game_without_port_title, meta_description,
 };
-use recomphub_shared::{GameCard, GameDetail, Playability, PortCard, PortDetail, TargetPlatform};
+use recomphub_shared::{
+    GameCard, GameDetail, Playability, PortCard, PortDetail, TargetPlatform, media_avif_path,
+};
 
 use super::jsonld;
 use crate::api;
@@ -437,8 +439,7 @@ fn GameBody(detail: GameDetail) -> Element {
     let og_image = detail
         .og
         .as_ref()
-        .filter(|m| m.ready && m.widths.contains(&1200))
-        .map(|m| format!("{site}/media/og/{}-{}-v{}-1200.avif", m.public_stem, m.hash, m.render_version));
+        .map(|m| format!("{site}{}", media_avif_path("og", &m.public_stem, &m.hash, m.render_version, 1200)));
     let json_ld = jsonld::game_json_ld(&site, &detail);
     let path = format!("/games/{}", game.slug);
     let crumbs = game_crumbs(&detail);
