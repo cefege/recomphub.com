@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/cefege/recomphub.com:sha-f219bc1959fc
+          image: ghcr.io/cefege/recomphub.com:sha-fc916516fc41
           command: ["/usr/local/app/worker", "media-migrate"]
           envFrom:
             - secretRef:
