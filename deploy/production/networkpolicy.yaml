@@ -55,6 +55,11 @@ spec:
                   - web
                   - postgres-backup
                   - worker-media-worker
+                  - worker-media-migrate
+                  - worker-github-sync
+                  - worker-catalog-sync
+                  - worker-discover
+                  - worker-media-discovery
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated
