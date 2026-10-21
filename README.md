@@ -2,6 +2,12 @@
 
 RecompHub (recomphub.com) is a searchable database of console and PC game recompilations and native ports. Each game has a page listing its known ports, where they run, their authors, AI usage, GitHub stars, release status and gameplay videos.
 
+## Saved games library
+
+`/library` is a private game-bookmark library, not an installed-games list. Guests can save existing catalog games in browser local storage. On sign-in, valid device favorites are additively imported into the account; existing account favorites are never replaced. Signing out does not copy account favorites back to the browser. Account favorites are private, have no public count or activity entry, and are removed automatically if the account or catalog game is deleted.
+
+The website links only to recorded upstream release pages or project source. It does not install, launch, verify binary assets, supply original-game data, or advertise an unshipped desktop client. A later Dioxus desktop client may reuse this catalog and account contract, but needs independently verified release assets, native install/launch instructions and state, secure native authentication/storage, platform signing/update work, and separately approved cloud-save or overlay designs.
+
 The site is a Rust workspace:
 
 - `crates/shared`: serde DTOs, enums, slug helpers and SEO text builders (compiles to wasm).

@@ -12,6 +12,7 @@ use super::jsonld;
 use crate::api;
 use crate::api::games::GamesQuery;
 use crate::app::DISCORD_INVITE_LISTING;
+use crate::components::FavoriteButton;
 use crate::components::cards::GameCardView;
 use crate::components::comments::PortComments;
 use crate::components::discord::{DiscordCount, DiscordLink};
@@ -514,7 +515,10 @@ fn GameBody(detail: GameDetail) -> Element {
             }
             div { class: "min-w-0",
                 Breadcrumb { items: crumbs }
-                h1 { class: "mt-4 {H1}", "{game.name}: native ports & recompilations" }
+                div { class: "mt-4 flex flex-wrap items-center justify-between gap-3",
+                    h1 { class: H1, "{game.name}: native ports & recompilations" }
+                    FavoriteButton { game_id, game_name: game.name.clone() }
+                }
                 div { class: "mt-4 flex flex-wrap items-center gap-2",
                     for platform in detail.platforms.iter() {
                         if let Some(slug) = platform.slug.as_ref() {
@@ -547,6 +551,9 @@ fn GameBody(detail: GameDetail) -> Element {
                         span { class: "text-sm tabular text-muted-foreground", "{stars_text}" }
                     }
                 }
+                if has_ports && !is_solo_port {
+                    a { href: "#native-projects", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} mt-4", "Choose a project" }
+                }
                 if has_ports {
                     p { class: "mt-4 max-w-2xl {LEAD}", "{blurb_text}" }
                 }
@@ -558,12 +565,14 @@ fn GameBody(detail: GameDetail) -> Element {
                 GameSolePort { port: list[0].clone() }
             }
         } else if has_ports {
-            Section { heading: "Native ports".to_string(), class: "mt-12".to_string(),
-                ul { class: "grid gap-4 md:grid-cols-2",
-                    for port in sorted {
-                        {
-                            let key = format!("{}-{}", port.id, port.star_count);
-                            rsx! { li { key: "{key}", PortCardView { port } } }
+            div { id: "native-projects",
+                Section { heading: "Native ports".to_string(), class: "mt-12".to_string(),
+                    ul { class: "grid gap-4 md:grid-cols-2",
+                        for port in sorted {
+                            {
+                                let key = format!("{}-{}", port.id, port.star_count);
+                                rsx! { li { key: "{key}", PortCardView { port } } }
+                            }
                         }
                     }
                 }
@@ -583,7 +592,7 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         } else {
             div { class: "{CARD_SURFACE} mt-12 p-8 text-center",
-                h2 { class: H2, "No native port yet" }
+                h2 { class: H2, "No native port listed" }
                 p { class: "mt-2 text-sm text-muted-foreground", "Know of a recompilation or native port? Submit it and it joins the catalog." }
                 div { class: "mt-6 flex flex-wrap items-center justify-center gap-3",
                     if want > 0 {
@@ -603,7 +612,7 @@ fn GameBody(detail: GameDetail) -> Element {
         }
 
         if !decomps.is_empty() {
-            Section { heading: "Decompilation projects".to_string(), class: "mt-12".to_string(),
+            Section { heading: "Source projects — not playable downloads".to_string(), class: "mt-12".to_string(),
                 ul { class: "grid gap-4 md:grid-cols-2",
                     for (href, name, kind) in decomps {
                         li { key: "{href}",

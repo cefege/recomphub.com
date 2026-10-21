@@ -234,6 +234,34 @@ pub async fn games_index(query: GamesQuery) -> Result<Page<GameCard>, ServerFnEr
     })
 }
 
+/// Public metadata for up to 50 existing catalog games. Missing ids are omitted and the submitted
+/// de-duplicated order is retained so private library state never enters public catalog DTOs.
+#[post("/api/v1/games/cards")]
+pub async fn game_cards_by_ids(game_ids: Vec<i64>) -> Result<Vec<GameCard>, ServerFnError> {
+    let mut ids = Vec::with_capacity(game_ids.len().min(50));
+    for game_id in game_ids {
+        if game_id <= 0 {
+            return Err(bad_request("game id must be positive"));
+        }
+        if !ids.contains(&game_id) {
+            ids.push(game_id);
+            if ids.len() > 50 {
+                return Err(bad_request("at most 50 game ids are allowed"));
+            }
+        }
+    }
+
+    let pool = pool()?;
+    let mut rows: HashMap<i64, GameRow> = games::by_ids(pool, &ids)
+        .await
+        .map_err(db_error)?
+        .into_iter()
+        .map(|game| (game.id, game))
+        .collect();
+    let ordered: Vec<GameRow> = ids.into_iter().filter_map(|id| rows.remove(&id)).collect();
+    game_cards(pool, &ordered).await
+}
+
 /// One game by slug, with its ports, decompilations, videos, screenshots and related games.
 /// Unknown slug returns 404.
 #[post("/api/game")]

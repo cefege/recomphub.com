@@ -3,9 +3,9 @@ use dioxus::prelude::*;
 use crate::app::Shell;
 use crate::pages::{
     About, AccountPage, AdminPage, AuthorPage, CreatorsHub, CreatorsPlatforms, CreatorsRecompile,
-    CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, ModerationLog, ModerationQueue,
-    NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage, PrivacyPage,
-    RunsOnPage, SearchPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
+    CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, LibraryPage, ModerationLog,
+    ModerationQueue, NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex,
+    PortPage, PrivacyPage, RunsOnPage, SearchPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
 };
 
 #[derive(Routable, Clone, PartialEq)]
@@ -18,6 +18,8 @@ pub enum Route {
     TrendingPage { window: String, page: String, view: String },
     #[route("/games?:platform&:runs_on&:status&:sort&:page&:view")]
     GamesIndex { platform: String, runs_on: String, status: String, sort: String, page: String, view: String },
+    #[route("/library?:page")]
+    LibraryPage { page: String },
     #[route("/games/:slug")]
     GamePage { slug: String },
     #[route("/games/:game_slug/:port_slug")]

@@ -269,6 +269,7 @@ async fn robots() -> Response {
         "/api/",
         "/search",
         "/submit",
+        "/library",
         "/account",
         "/moderation",
         "/admin",
@@ -683,11 +684,19 @@ fn canonical_path(path: &str) -> String {
     lower
 }
 
-/// Cache successful media responses for one hour; handler-set redirect policy always wins.
+/// Cache account-library responses privately and successful media responses for one hour.
 async fn cache_headers(req: Request, next: Next) -> Response {
+    let is_library = req.uri().path().starts_with("/api/v1/library/");
     let is_read = matches!(*req.method(), Method::GET | Method::HEAD);
     let is_media = req.uri().path().starts_with("/media/");
     let mut response = next.run(req).await;
+    if is_library {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        return response;
+    }
     if !is_read || response.headers().contains_key(header::CACHE_CONTROL) {
         return response;
     }

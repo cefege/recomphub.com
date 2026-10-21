@@ -313,6 +313,20 @@ pub struct WantStateDto {
     pub count: i64,
 }
 
+/// The current account state of one private game favorite.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameFavoriteState {
+    pub game_id: i64,
+    pub favorite: bool,
+}
+
+/// Acknowledgement for an additive device-to-account favorite import.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameFavoriteMerge {
+    pub accepted_game_ids: Vec<i64>,
+    pub missing_game_ids: Vec<i64>,
+}
+
 /// Search-as-you-type result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SuggestItem {

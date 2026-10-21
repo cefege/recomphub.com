@@ -200,6 +200,16 @@ pub async fn get(ex: impl PgExecutor<'_>, id: i64) -> DbResult<GameRow> {
         .ok_or_else(|| DbError::NotFound(format!("game {id}")))
 }
 
+/// Existing games whose ids occur in `ids`. The caller owns result ordering.
+pub async fn by_ids(ex: impl PgExecutor<'_>, ids: &[i64]) -> DbResult<Vec<GameRow>> {
+    Ok(
+        sqlx::query_as::<_, GameRow>("SELECT * FROM games WHERE id = ANY($1)")
+            .bind(ids)
+            .fetch_all(ex)
+            .await?,
+    )
+}
+
 /// Sort order for game listings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GameSort {

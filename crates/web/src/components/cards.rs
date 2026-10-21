@@ -3,7 +3,7 @@ use recomphub_shared::GameCard;
 
 use crate::components::icons::{AndroidIcon, AppleIcon, GlobeIcon, LinuxIcon, WindowsIcon};
 use crate::components::styles::{BADGE, BADGE_OUTLINE, BADGE_SECONDARY};
-use crate::components::{LiveCount, Picture, initials_of, target_label};
+use crate::components::{FavoriteButton, LiveCount, Picture, initials_of, target_label};
 
 /// Targets with an icon on cover cards, in display order. Others are counted as "+N".
 const ICON_TARGETS: [&str; 6] = ["windows", "macos", "linux", "android", "ios", "web"];
@@ -46,6 +46,7 @@ pub fn GameCardView(game: GameCard, #[props(default)] rank: Option<i64>) -> Elem
         .map(|t| target_label(t))
         .collect::<Vec<_>>()
         .join(", ");
+    let favorite_name = game.name.clone();
     rsx! {
         article { class: "group relative flex flex-col gap-2",
             a { href: "{href}", class: "flex flex-col gap-2 rounded-lg outline-offset-4",
@@ -75,6 +76,9 @@ pub fn GameCardView(game: GameCard, #[props(default)] rank: Option<i64>) -> Elem
                     }
                 }
                 h3 { class: "line-clamp-2 text-sm font-medium leading-snug group-hover:underline", "{game.name}" }
+            }
+            div { class: "flex justify-end",
+                FavoriteButton { game_id: game.id, game_name: favorite_name }
             }
             div { class: "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground",
                 if let Some(y) = year {

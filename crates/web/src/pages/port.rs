@@ -21,7 +21,7 @@ use crate::components::ui::{
     TargetIcon, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{StarButton, use_marks};
-use crate::components::{DiscordCount, DiscordLink};
+use crate::components::{DiscordCount, DiscordLink, FavoriteButton};
 
 /// `/games/:game_slug/:port_slug`. Remounts when either slug changes.
 #[component]
@@ -122,7 +122,6 @@ fn AboutList(heading: String, items: Vec<String>, numbered: bool) -> Element {
     }
 }
 
-
 fn is_recompilation(kind: &str) -> bool {
     matches!(kind, "static_recomp" | "native_layer")
 }
@@ -164,10 +163,10 @@ fn InstallationGuide(
                         ol { class: "flex list-decimal flex-col gap-3 pl-5 text-sm leading-relaxed",
                             li {
                                 if let Some(url) = release_url.clone() {
-                                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "Download the latest project release" }
+                                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "View project releases ↗" }
                                     " for {port_name}."
                                 } else {
-                                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "Open the project repository" }
+                                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "View project source ↗" }
                                     " and use its documented release or build instructions."
                                 }
                             }
@@ -274,7 +273,10 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
         Seo { title, description, path, json_ld }
         div {
             Breadcrumb { items: crumbs.clone() }
-            h1 { class: "mt-4 {H1}", "{port.name}" }
+            div { class: "mt-4 flex flex-wrap items-center justify-between gap-3",
+                h1 { class: H1, "{port.name}" }
+                FavoriteButton { game_id, game_name: game.name.clone() }
+            }
             p { class: "mt-2 text-muted-foreground",
                 "{subtitle} "
                 a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
@@ -290,11 +292,11 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     }
 }
 
-/// Everything about one port below its title: media and facts sidebar, the download row,
-/// generated description, maintenance, system requirements and other ports. Shared by the
+/// Everything about one port below its title: media and facts sidebar, the upstream release/source
+/// row, generated description, maintenance, system requirements and other ports. Shared by the
 /// port's own page and, when a game has exactly one published port, the game page. The caller
-/// renders its own comments/report section once, since where that belongs on a merged game
-/// page differs from the port page.
+/// renders its own comments/report section once, since where that belongs on a merged game page
+/// differs from the port page.
 #[component]
 pub(crate) fn PortMainContent(
     detail: PortDetail,
@@ -413,7 +415,10 @@ pub(crate) fn PortMainContent(
     }
     let show_installation = is_recompilation(&port.kind);
     let installation_targets = if runs.is_empty() {
-        vec![("unknown".to_string(), "Supported system not stated".to_string())]
+        vec![(
+            "unknown".to_string(),
+            "Supported system not stated".to_string(),
+        )]
     } else {
         runs.clone()
     };
@@ -509,8 +514,20 @@ pub(crate) fn PortMainContent(
                 {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
             }
             div { class: "flex flex-wrap gap-2",
-                if let Some(url) = download.clone() {
-                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "Download latest release" }
+                if show_installation {
+                    if let Some(url) = download.clone() {
+                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View releases ↗" }
+                    } else {
+                        a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View source ↗" }
+                    }
+                } else {
+                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View source ↗" }
+                }
+                if show_installation && download.is_none() {
+                    span { class: "self-center text-sm text-muted-foreground", "No downloadable release is recorded." }
+                }
+                if !show_installation {
+                    span { class: "self-center text-sm text-muted-foreground", "Decompilation — no playable port." }
                 }
                 a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Repository" }
                 if let Some(url) = homepage.clone() {
@@ -518,9 +535,9 @@ pub(crate) fn PortMainContent(
                 }
                 a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
             }
-            if download.is_some() {
+            if show_installation {
                 p { class: "basis-full text-sm text-muted-foreground",
-                    "Downloads open an external release page; RecompHub does not verify its files. Some ports require game assets; RecompHub does not provide them. Use only assets from an original game copy you are entitled to use."
+                    "Release links open upstream project pages; RecompHub does not verify their files. Reported targets are project support, not verified downloads. Some ports require original game assets; RecompHub does not provide them."
                 }
             }
         }

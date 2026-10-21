@@ -5,6 +5,7 @@ pub mod funding;
 pub mod icons;
 pub mod listing;
 pub mod live;
+pub mod library;
 pub mod maintenance;
 pub mod picture;
 pub mod report;
@@ -24,6 +25,10 @@ pub use listing::{
     parse_page, query_string,
 };
 pub use live::{LiveCount, LiveSocket, LiveStore, OnlineCount, use_live_watch};
+pub use library::{
+    FavoriteButton, LibraryIdentityRetry, LibraryStore, StorageState, prune_missing_guest,
+    reset_device_favorites,
+};
 pub use maintenance::{MaintenanceBadge, MaintenancePanel};
 pub use picture::Picture;
 pub use report::ReportDialog;
@@ -36,6 +41,6 @@ pub use ui::{
     VideoPlayer, ViewToggle, ai_text, initials_of, keyed, target_label, url_encode, with_query,
 };
 pub use viewer::{
-    Burst, RoleGate, SignedIn, StarButton, ViewerStore, WantButton, login_redirect, set_me,
-    use_marks,
+    Burst, RoleGate, SignedIn, StarButton, ViewerStore, WantButton, login_redirect, retry_identity,
+    set_me, set_me_error, use_marks,
 };
