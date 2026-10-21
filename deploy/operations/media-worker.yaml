@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/cefege/recomphub.com:sha-f1ce37d3fd30
+          image: ghcr.io/cefege/recomphub.com:sha-19ede7b9e1c1
           command: ["/usr/local/app/worker", "media-worker"]
           envFrom:
             - secretRef:
