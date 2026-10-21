@@ -35,6 +35,20 @@ use tokio::io::AsyncWriteExt;
 use crate::server::session::{db_error, http_error, require_moderator, require_user};
 #[cfg(feature = "server")]
 use crate::server::{config, state::pool};
+#[cfg(feature = "server")]
+type DiscoveredVideoRow = (
+    i64,
+    String,
+    String,
+    Option<i64>,
+    String,
+    Option<String>,
+    chrono::DateTime<chrono::Utc>,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// Largest decoded upload accepted, matching the download cap for GitHub-sourced images.
 #[cfg(feature = "server")]
@@ -276,19 +290,7 @@ pub async fn pending_submitted_videos() -> Result<Vec<PendingVideoDto>, ServerFn
     let pool = pool()?;
     let rows = videos::list_pending(pool).await.map_err(db_error)?;
     let mut thumb_ids: Vec<i64> = rows.iter().filter_map(|r| r.video.thumb_media_id).collect();
-    let discovered: Vec<(
-        i64,
-        String,
-        String,
-        Option<i64>,
-        String,
-        Option<String>,
-        chrono::DateTime<chrono::Utc>,
-        String,
-        String,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let discovered: Vec<DiscoveredVideoRow> = sqlx::query_as(
         "SELECT c.id, c.youtube_id, c.title, c.thumbnail_media_id, c.source, c.decision_reason,
                 c.created_at, g.name, g.slug, p.name, p.slug
          FROM video_discovery_candidates c

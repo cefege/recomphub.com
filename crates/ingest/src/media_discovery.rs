@@ -438,8 +438,10 @@ pub async fn run_media_discovery(
         bail!("submit_limit and retrieve_limit must be in 1..={DISCOVERY_LIMIT}");
     }
     let client = DataForSeoClient::from_env()?;
-    let mut report = MediaDiscoveryReport::default();
-    report.expired = video_discovery::expire_uncollected(pool).await?;
+    let mut report = MediaDiscoveryReport {
+        expired: video_discovery::expire_uncollected(pool).await?,
+        ..Default::default()
+    };
 
     let submitted = video_discovery::submitted_tasks(pool, retrieve_limit as i64).await?;
     let ready = match client.ready_task_ids().await {

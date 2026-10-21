@@ -226,15 +226,15 @@ pub fn validate_assessment(
         }
         _ => {}
     }
-    if output.playability == Playability::Playable || output.playability == Playability::Complete {
-        if !has_claim("playability") {
-            bail!("playable/complete requires a playability citation");
-        }
+    if (output.playability == Playability::Playable || output.playability == Playability::Complete)
+        && !has_claim("playability")
+    {
+        bail!("playable/complete requires a playability citation");
     }
-    if let Some(kind) = output.kind {
-        if !has_claim("kind") {
-            bail!("kind {} requires a kind citation", kind.as_str());
-        }
+    if let Some(kind) = output.kind
+        && !has_claim("kind")
+    {
+        bail!("kind {} requires a kind citation", kind.as_str());
     }
     for target in &output.targets {
         if !has_claim(&format!("target:{}", target.as_str())) {
@@ -483,6 +483,10 @@ fn source_key(source: TriageSource) -> &'static str {
     }
 }
 
+fn distinct<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
+    let mut set = std::collections::HashSet::new();
+    items.iter().all(|x| set.insert(x))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,8 +591,4 @@ mod tests {
             vec![3, 8]
         );
     }
-}
-fn distinct<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
-    let mut set = std::collections::HashSet::new();
-    items.iter().all(|x| set.insert(x))
 }

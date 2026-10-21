@@ -645,8 +645,6 @@ fn urlset(site: &str, entries: &[Entry]) -> String {
 }
 
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
-
-/// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
 /// GET and HEAD only, so POST server functions are never redirected.
 async fn canonical(req: Request, next: Next) -> Response {
     if matches!(*req.method(), Method::GET | Method::HEAD)

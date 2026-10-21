@@ -446,7 +446,7 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
     let id = item.id;
     let approve_source = item.source.clone();
     let reject_source = item.source.clone();
-    let approve_done = on_done.clone();
+    let approve_done = on_done;
     let reject_done = on_done;
     let error_text = error().unwrap_or_default();
     let watch = format!("https://www.youtube.com/watch?v={}", item.video.youtube_id);
@@ -478,7 +478,7 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
                     class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_XS}",
                     onclick: move |_| {
                         let source = approve_source.clone();
-                        let on_done = approve_done.clone();
+                        let on_done = approve_done;
                         spawn(async move {
                             busy.set(true);
                             match api::review_submitted_video(id, source, true).await {
@@ -496,7 +496,7 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
                     class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
                     onclick: move |_| {
                         let source = reject_source.clone();
-                        let on_done = reject_done.clone();
+                        let on_done = reject_done;
                         spawn(async move {
                             busy.set(true);
                             match api::review_submitted_video(id, source, false).await {
@@ -679,8 +679,8 @@ fn Decision(
         let overrides = ReviewOverrides {
             game_id: chosen.as_ref().and_then(|p| p.game_id),
             igdb_id: chosen.as_ref().and_then(|p| p.igdb_id),
-            kind: is_candidate.then(|| kind_choice()),
-            playability: (!playability_choice().is_empty()).then(|| playability_choice()),
+            kind: is_candidate.then(&*kind_choice),
+            playability: (!playability_choice().is_empty()).then(&*playability_choice),
             declared_platforms: Some(declared_targets()),
         };
         busy.set(true);
