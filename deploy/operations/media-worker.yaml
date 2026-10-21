@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: media-worker
+  namespace: recomphub
+  labels:
+    app.kubernetes.io/name: worker-media-worker
+    app.kubernetes.io/part-of: recomphub
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-media-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-media-worker
+        app.kubernetes.io/part-of: recomphub
+    spec:
+      restartPolicy: Always
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/cefege/recomphub.com:sha-f1ce37d3fd30
+          command: ["/usr/local/app/worker", "media-worker"]
+          envFrom:
+            - secretRef:
+                name: recomphub-secrets
+          env:
+            - name: MEDIA_DIR
+              value: /data/media
+            - name: RUST_LOG
+              value: info
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: media
+              mountPath: /data/media
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: media
+          persistentVolumeClaim:
+            claimName: media
+        - name: tmp
+          emptyDir: {}
