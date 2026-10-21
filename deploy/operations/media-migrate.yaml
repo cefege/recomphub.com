@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: media-migrate-v5
+  namespace: recomphub
+  labels:
+    app.kubernetes.io/name: worker-media-migrate
+    app.kubernetes.io/part-of: recomphub
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 172800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-media-migrate
+        app.kubernetes.io/part-of: recomphub
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/cefege/recomphub.com:sha-f219bc1959fc
+          command: ["/usr/local/app/worker", "media-migrate"]
+          envFrom:
+            - secretRef:
+                name: recomphub-secrets
+          env:
+            - name: MEDIA_DIR
+              value: /data/media
+            - name: RUST_LOG
+              value: info
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: media
+              mountPath: /data/media
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: media
+          persistentVolumeClaim:
+            claimName: media
+        - name: tmp
+          emptyDir: {}

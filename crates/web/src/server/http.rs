@@ -801,4 +801,145 @@ mod tests {
         assert_eq!(old_media_hash("screenshot", "not-a-hash.avif"), None);
     }
 
+    #[sqlx::test(migrations = "../db/migrations")]
+    async fn named_media_serves_variants_and_redirects_legacy_urls(pool: PgPool) -> anyhow::Result<()> {
+        use dioxus::server::axum::body::{Body, to_bytes};
+        use image::{DynamicImage, GenericImageView, ImageFormat};
+        use std::io::Cursor;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        use tower::ServiceExt;
+
+        let media_dir = std::env::temp_dir().join(format!(
+            "recomphub-http-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        std::fs::create_dir_all(&media_dir)?;
+        config::install(config::Config {
+            database_url: String::new(),
+            site_url: "https://recomphub.test".to_string(),
+            media_dir: media_dir.clone(),
+            google_client_id: None,
+            google_client_secret: None,
+            github_token: None,
+            admin_emails: Vec::new(),
+        });
+        state::init_pool(pool.clone()).expect("test installs the only server pool");
+
+        let id = recomphub_db::media::enqueue(
+            &pool,
+            "screenshot",
+            "https://example.test/fixture.png",
+            "fixture",
+        )
+        .await?;
+        let row = recomphub_db::media::get(&pool, id).await?.expect("queued media");
+        let mut source = Cursor::new(Vec::new());
+        DynamicImage::new_rgba8(960, 540).write_to(&mut source, ImageFormat::Png)?;
+        let (source_width, source_height, widths) = recomphub_ingest::media::render(
+            media_dir.clone(),
+            row.kind.clone(),
+            row.public_stem.clone(),
+            row.hash.clone(),
+            MEDIA_RENDER_VERSION,
+            source.into_inner(),
+        )
+        .await?;
+        let widths: Vec<i32> = widths.into_iter().map(|width| width as i32).collect();
+        recomphub_db::media::mark_ready(
+            &pool,
+            id,
+            widths,
+            source_width as i32,
+            source_height as i32,
+            MEDIA_RENDER_VERSION,
+        )
+        .await?;
+        let filename = recomphub_db::media::assign_public_filename(
+            &pool,
+            id,
+            "fixture-screenshot",
+            1,
+        )
+        .await?;
+        let app = with_site_routes(Router::new());
+        let get = |uri: String| {
+            app.clone().oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .body(Body::empty())
+                    .expect("valid request"),
+            )
+        };
+
+        let response = get(format!("/media/{filename}")).await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/avif");
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(image::load_from_memory(&bytes)?.dimensions(), (960, 540));
+
+        let response = get(format!("/media/{filename}?w=480")).await?;
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(image::load_from_memory(&bytes)?.dimensions(), (480, 270));
+        assert_eq!(get(format!("/media/{filename}?w=481")).await?.status(), StatusCode::NOT_FOUND);
+        assert_eq!(get(format!("/media/{filename}?w=bad")).await?.status(), StatusCode::BAD_REQUEST);
+
+        let head = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::HEAD)
+                    .uri(format!("/media/{filename}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(head.status(), StatusCode::OK);
+        assert!(to_bytes(head.into_body(), usize::MAX).await?.is_empty());
+        let range = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/media/{filename}"))
+                    .header(header::RANGE, "bytes=0-9")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(range.status(), StatusCode::PARTIAL_CONTENT);
+
+        for legacy in [
+            format!("/media/screenshot/fixture-{}-v1-960.avif", row.hash),
+            format!("/media/screenshot/{}-960.avif", row.hash),
+        ] {
+            let response = get(legacy).await?;
+            assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
+            assert_eq!(
+                response.headers()[header::LOCATION],
+                format!("https://recomphub.test/media/{filename}")
+            );
+        }
+
+        let missing = recomphub_db::media::enqueue(
+            &pool,
+            "screenshot",
+            "https://example.test/missing.png",
+            "missing",
+        )
+        .await?;
+        recomphub_db::media::mark_ready(
+            &pool,
+            missing,
+            vec![960],
+            960,
+            540,
+            MEDIA_RENDER_VERSION,
+        )
+        .await?;
+        let missing_name =
+            recomphub_db::media::assign_public_filename(&pool, missing, "missing-screenshot", 1)
+                .await?;
+        assert_eq!(get(format!("/media/{missing_name}")).await?.status(), StatusCode::NOT_FOUND);
+
+        std::fs::remove_dir_all(media_dir)?;
+        Ok(())
+    }
+
 }
