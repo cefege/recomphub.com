@@ -66,7 +66,7 @@ def assert_private_cache(token: str) -> None:
     with urllib.request.urlopen(request) as response:
         assert response.headers["Cache-Control"] == "private, no-store"
     missing = urllib.request.Request(
-        f"{BASE}/api/v1/library/favorites/set", method="POST", headers={"Cookie": f"{COOKIE}=missing"}
+        f"{BASE}/api/v1/library/favorites", headers={"Cookie": f"{COOKIE}=missing"}
     )
     try:
         urllib.request.urlopen(missing)
