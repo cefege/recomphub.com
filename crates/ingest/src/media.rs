@@ -528,4 +528,115 @@ mod tests {
         let decoded = image::load_from_memory(&bytes).unwrap();
         assert_eq!(decoded.dimensions(), (320, 180));
     }
+
+    #[sqlx::test(migrations = "../db/migrations")]
+    async fn refreshes_saved_og_and_preserves_failed_or_current_renditions(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use image::{GenericImageView, ImageFormat};
+        use std::io::Cursor;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let dir = std::env::temp_dir().join(format!(
+            "recomphub-media-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        ));
+        std::fs::create_dir_all(&dir)?;
+        let http = reqwest::Client::new();
+        let mut jpeg = Cursor::new(Vec::new());
+        DynamicImage::new_rgba8(1600, 900).write_to(&mut jpeg, ImageFormat::Jpeg)?;
+
+        let og_id = media::enqueue(&pool, "og", "https://127.0.0.1:1/og.jpg", "fixture").await?;
+        let og = media::get(&pool, og_id).await?.expect("queued OG media");
+        let old_jpeg = dir.join("og").join(format!("{}-1200.jpg", og.hash));
+        std::fs::create_dir_all(old_jpeg.parent().expect("OG parent"))?;
+        std::fs::write(&old_jpeg, jpeg.into_inner())?;
+        media::mark_ready(&pool, og.id, vec![1200], 1200, 630, MEDIA_RENDER_VERSION - 1).await?;
+        let old_og = media::get(&pool, og.id).await?.expect("ready OG media");
+        assert!(process_row(&pool, &http, &dir, &old_og).await?);
+        let refreshed_og = media::get(&pool, og.id).await?.expect("refreshed OG media");
+        assert_eq!(refreshed_og.render_version, MEDIA_RENDER_VERSION);
+        assert!(refreshed_og.public_filename.is_some());
+        let og_path = output_path(
+            &dir,
+            &refreshed_og.kind,
+            &refreshed_og.public_stem,
+            &refreshed_og.hash,
+            MEDIA_RENDER_VERSION,
+            1200,
+        );
+        assert_eq!(image::open(og_path)?.dimensions(), (1200, 630));
+
+        let failed_id =
+            media::enqueue(&pool, "screenshot", "https://127.0.0.1:1/failed.png", "failed").await?;
+        let failed = media::get(&pool, failed_id).await?.expect("queued failed fixture");
+        media::mark_ready(
+            &pool,
+            failed.id,
+            vec![960],
+            960,
+            540,
+            MEDIA_RENDER_VERSION - 1,
+        )
+        .await?;
+        let failed_path = output_path(
+            &dir,
+            &failed.kind,
+            &failed.public_stem,
+            &failed.hash,
+            MEDIA_RENDER_VERSION - 1,
+            960,
+        );
+        std::fs::create_dir_all(failed_path.parent().expect("failed parent"))?;
+        let original = b"old-but-corrupt-rendition".to_vec();
+        std::fs::write(&failed_path, &original)?;
+        let failed_before = media::get(&pool, failed.id).await?.expect("ready failed fixture");
+        assert!(!process_row(&pool, &http, &dir, &failed_before).await?);
+        let failed_after = media::get(&pool, failed.id).await?.expect("failed refresh fixture");
+        assert_eq!(failed_after.status, "ready");
+        assert_eq!(failed_after.render_version, MEDIA_RENDER_VERSION - 1);
+        assert_eq!(failed_after.widths, vec![960]);
+        assert_eq!(std::fs::read(&failed_path)?, original);
+
+        let current_id =
+            media::enqueue(&pool, "screenshot", "https://127.0.0.1:1/current.png", "current").await?;
+        let current = media::get(&pool, current_id).await?.expect("queued current fixture");
+        let mut png = Cursor::new(Vec::new());
+        DynamicImage::new_rgba8(960, 540).write_to(&mut png, ImageFormat::Png)?;
+        let (width, height, widths) = render(
+            dir.clone(),
+            current.kind.clone(),
+            current.public_stem.clone(),
+            current.hash.clone(),
+            MEDIA_RENDER_VERSION,
+            png.into_inner(),
+        )
+        .await?;
+        media::mark_ready(
+            &pool,
+            current.id,
+            widths.into_iter().map(|value| value as i32).collect(),
+            width as i32,
+            height as i32,
+            MEDIA_RENDER_VERSION,
+        )
+        .await?;
+        let current_path = output_path(
+            &dir,
+            &current.kind,
+            &current.public_stem,
+            &current.hash,
+            MEDIA_RENDER_VERSION,
+            960,
+        );
+        let bytes_before = std::fs::read(&current_path)?;
+        let current_before = media::get(&pool, current.id).await?.expect("ready current fixture");
+        assert!(process_row(&pool, &http, &dir, &current_before).await?);
+        let current_after = media::get(&pool, current.id).await?.expect("named current fixture");
+        assert!(current_after.public_filename.is_some());
+        assert_eq!(std::fs::read(current_path)?, bytes_before);
+
+        std::fs::remove_dir_all(dir)?;
+        Ok(())
+    }
 }
