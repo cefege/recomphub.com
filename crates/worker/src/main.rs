@@ -32,8 +32,10 @@ struct Cli {
 enum Command {
     /// Fill the game catalog from IGDB up to `catalog_target_size`, and refresh entries older than 30 days.
     CatalogSync,
-    /// Download pending images and write their public AVIF renditions.
+    /// Download one bounded batch of pending images and exit.
     MediaSync,
+    /// Continuously render durable media work; Kubernetes restarts it after crashes or upgrades.
+    MediaWorker,
     /// Re-render every pending or stale image into the current public filename format.
     MediaMigrate {
         /// Repair exactly these media IDs, including current rows with missing verified output.
@@ -146,6 +148,11 @@ async fn run(command: Command) -> Result<()> {
             let dir = media_dir();
             let report = media::process_pending(&pool, &dir, media::BATCH_SIZE).await?;
             info!(?report, "media-sync finished");
+        }
+        Command::MediaWorker => {
+            let pool = pool().await?;
+            let dir = media_dir();
+            media::process_forever(&pool, &dir).await?;
         }
         Command::MediaMigrate { ids } => {
             let pool = pool().await?;

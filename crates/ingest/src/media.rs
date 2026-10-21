@@ -446,6 +446,41 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
     Ok(report)
 }
 
+/// Processes one advisory-locked media row. Keeping the claiming connection alive protects the
+/// internal rendition paths for the entire render; a crashed process releases its lock with the
+/// database session.
+async fn process_claimed_one(
+    pool: &PgPool,
+    http: &reqwest::Client,
+    media_dir: &Path,
+) -> Result<Option<bool>> {
+    let mut connection = pool.acquire().await.context("acquiring media claim connection")?;
+    let Some(row) = media::claim_next(&mut connection, MEDIA_RENDER_VERSION).await? else {
+        return Ok(None);
+    };
+    let outcome = process_row(pool, http, media_dir, &row).await;
+    let released = media::release_claim(&mut connection, row.id).await;
+    released.context("releasing media claim")?;
+    Ok(Some(outcome?))
+}
+
+/// Continuously processes durable media work. It is safe for a Kubernetes Deployment: an
+/// advisory lock prevents duplicate writers and PostgreSQL releases abandoned claims on restart.
+pub async fn process_forever(pool: &PgPool, media_dir: &Path) -> Result<()> {
+    let http = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(DOWNLOAD_TIMEOUT)
+        .build()
+        .context("building the media HTTP client")?;
+    loop {
+        match process_claimed_one(pool, &http, media_dir).await? {
+            Some(true) => tracing::info!("media worker processed one rendition"),
+            Some(false) => tracing::warn!("media worker recorded one rendition failure"),
+            None => tokio::time::sleep(Duration::from_secs(5)).await,
+        }
+    }
+}
+
 /// Runs the explicit cutover with one renderer at a time. Supplying IDs repairs precisely those
 /// rows, including already-current rows whose files failed an external audit.
 pub async fn process_all_pending(

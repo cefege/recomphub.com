@@ -4,6 +4,7 @@ use chrono::NaiveDate;
 use recomphub_db::activity;
 use recomphub_db::games::{self, IgdbGame};
 use recomphub_db::hits;
+use recomphub_db::media;
 use recomphub_db::ports::{self, PortFull};
 use recomphub_db::stars;
 use recomphub_db::submissions::{self, ApproveOverrides, NewSubmission};
@@ -65,6 +66,27 @@ fn new_port(submitter: i64, payload: Value) -> NewSubmission {
         target_game_id: None,
         target_port_id: None,
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn media_claims_recover_after_worker_disconnect_and_retry_later(pool: PgPool) -> DbResult<()> {
+    let id = media::enqueue(&pool, "screenshot", "https://example.test/image.png", "fixture").await?;
+    let mut first = pool.acquire().await?;
+    let mut second = pool.acquire().await?;
+    assert_eq!(media::claim_next(&mut first, 2).await?.map(|row| row.id), Some(id));
+    assert!(media::claim_next(&mut second, 2).await?.is_none());
+    media::release_claim(&mut first, id).await?;
+    assert_eq!(media::claim_next(&mut second, 2).await?.map(|row| row.id), Some(id));
+    media::release_claim(&mut second, id).await?;
+
+    media::mark_failed(&pool, id, "temporary source failure").await?;
+    assert!(media::next_pending(&pool, 1, 2).await?.is_empty());
+    sqlx::query("UPDATE media SET next_attempt_at = now() - interval '1 second' WHERE id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await?;
+    assert_eq!(media::next_pending(&pool, 1, 2).await?[0].id, id);
+    Ok(())
 }
 
 #[sqlx::test(migrations = "./migrations")]

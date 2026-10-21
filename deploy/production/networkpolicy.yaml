@@ -54,13 +54,7 @@ spec:
                 values:
                   - web
                   - postgres-backup
-                  - worker-media-sync
-                  - worker-github-sync
-                  - worker-catalog-sync
-                  - worker-discover
-                  - worker-media-discovery
-                  - worker-media-migrate-v4
-                  - worker-media-migrate
+                  - worker-media-worker
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated

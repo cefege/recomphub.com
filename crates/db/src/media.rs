@@ -4,7 +4,7 @@ use crate::{DbError, DbResult, PgPool};
 use chrono::{DateTime, Utc};
 use recomphub_shared::slugify;
 use sha2::{Digest, Sha256};
-use sqlx::PgExecutor;
+use sqlx::{PgConnection, PgExecutor};
 
 /// A row of the `media` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -22,7 +22,7 @@ pub struct MediaRow {
     pub render_version: i32,
     pub public_stem: String,
     pub public_filename: Option<String>,
-    pub created_at: DateTime<Utc>,
+    pub next_attempt_at: Option<DateTime<Utc>>,
 }
 
 /// Stable 16-hex-character name for a media item: the first 8 bytes of sha256(url + kind).
@@ -93,10 +93,13 @@ pub async fn next_pending(
              FROM games WHERE cover_media_id IS NOT NULL GROUP BY cover_media_id
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending'
-            OR (m.status = 'failed' AND m.attempts < 3)
+            OR (m.status = 'failed'
+                AND m.attempts < 3
+                AND (m.next_attempt_at IS NULL OR m.next_attempt_at <= now()))
             OR (m.status = 'ready'
                 AND (m.render_version < $2 OR m.public_filename IS NULL)
-                AND m.attempts < 3)
+                AND m.attempts < 3
+                AND (m.next_attempt_at IS NULL OR m.next_attempt_at <= now()))
          ORDER BY CASE
                       WHEN m.kind = 'port_screenshot' AND m.source_url LIKE 'upload:%' THEN 0
                       WHEN m.kind = 'cover' THEN 1
@@ -118,6 +121,35 @@ pub async fn next_pending(
     Ok(rows)
 }
 
+/// Claims one eligible row with a connection-scoped advisory lock. The lock is released
+/// automatically if the worker exits, so another worker can safely resume after a crash.
+///
+/// Call [`release_claim`] once processing completes and keep `connection` alive meanwhile.
+pub async fn claim_next(
+    connection: &mut PgConnection,
+    render_version: i32,
+) -> DbResult<Option<MediaRow>> {
+    for row in next_pending(&mut *connection, 16, render_version).await? {
+        let claimed: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+            .bind(row.id)
+            .fetch_one(&mut *connection)
+            .await?;
+        if claimed {
+            return Ok(Some(row));
+        }
+    }
+    Ok(None)
+}
+
+/// Releases a lock acquired by [`claim_next`].
+pub async fn release_claim(connection: &mut PgConnection, media_id: i64) -> DbResult<()> {
+    sqlx::query_scalar::<_, bool>("SELECT pg_advisory_unlock($1)")
+        .bind(media_id)
+        .fetch_one(connection)
+        .await?;
+    Ok(())
+}
+
 /// Counts ready rows that still need current bytes or a public filename.
 pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<i64> {
     let count = sqlx::query_scalar(
@@ -133,7 +165,7 @@ pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> 
 /// Makes every incomplete public rendition eligible for one explicit renderer cutover.
 pub async fn reset_stale_attempts(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<()> {
     sqlx::query(
-        "UPDATE media SET attempts = 0
+        "UPDATE media SET attempts = 0, next_attempt_at = NULL
          WHERE status = 'ready' AND (render_version < $1 OR public_filename IS NULL)",
     )
     .bind(render_version)
@@ -318,7 +350,7 @@ pub async fn mark_ready(
     sqlx::query(
         "UPDATE media
          SET status = 'ready', widths = $2, width = $3, height = $4,
-             render_version = $5, error = NULL
+             render_version = $5, error = NULL, attempts = 0, next_attempt_at = NULL
          WHERE id = $1",
     )
     .bind(id)
@@ -337,7 +369,11 @@ pub async fn mark_failed(ex: impl PgExecutor<'_>, id: i64, error: &str) -> DbRes
     sqlx::query(
         "UPDATE media
          SET status = CASE WHEN status = 'ready' THEN 'ready' ELSE 'failed' END,
-             attempts = attempts + 1, error = $2
+             attempts = attempts + 1,
+             next_attempt_at = now() + make_interval(
+                 secs => LEAST(3600, 60 * power(2, LEAST(attempts, 6))::integer)
+             ),
+             error = $2
          WHERE id = $1",
     )
     .bind(id)
