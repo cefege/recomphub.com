@@ -907,6 +907,10 @@ mod tests {
 
         for legacy in [
             format!("/media/screenshot/fixture-{}-v1-960.avif", row.hash),
+            format!(
+                "/media/screenshot/fixture-{}-v{MEDIA_RENDER_VERSION}-960.avif",
+                row.hash
+            ),
             format!("/media/screenshot/{}-960.avif", row.hash),
         ] {
             let response = get(legacy).await?;
@@ -916,6 +920,45 @@ mod tests {
                 format!("https://recomphub.test/media/{filename}")
             );
         }
+
+        let og_id = recomphub_db::media::enqueue(
+            &pool,
+            "og",
+            "https://example.test/fixture-og.png",
+            "fixture",
+        )
+        .await?;
+        let og = recomphub_db::media::get(&pool, og_id).await?.expect("queued OG media");
+        let mut og_source = Cursor::new(Vec::new());
+        DynamicImage::new_rgba8(1600, 900).write_to(&mut og_source, ImageFormat::Png)?;
+        let (width, height, widths) = recomphub_ingest::media::render(
+            media_dir.clone(),
+            og.kind.clone(),
+            og.public_stem.clone(),
+            og.hash.clone(),
+            MEDIA_RENDER_VERSION,
+            og_source.into_inner(),
+        )
+        .await?;
+        recomphub_db::media::mark_ready(
+            &pool,
+            og.id,
+            widths.into_iter().map(|value| value as i32).collect(),
+            width as i32,
+            height as i32,
+            MEDIA_RENDER_VERSION,
+        )
+        .await?;
+        let og_filename =
+            recomphub_db::media::assign_public_filename(&pool, og.id, "fixture-preview", 1)
+                .await?;
+        let response = get(format!("/media/og/{}-1200.jpg", og.hash)).await?;
+        assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(
+            response.headers()[header::LOCATION],
+            format!("https://recomphub.test/media/{og_filename}")
+        );
+        assert_eq!(get(format!("/media/{og_filename}")).await?.status(), StatusCode::OK);
 
         let missing = recomphub_db::media::enqueue(
             &pool,
@@ -937,6 +980,18 @@ mod tests {
             recomphub_db::media::assign_public_filename(&pool, missing, "missing-screenshot", 1)
                 .await?;
         assert_eq!(get(format!("/media/{missing_name}")).await?.status(), StatusCode::NOT_FOUND);
+
+        let pending = recomphub_db::media::enqueue(
+            &pool,
+            "screenshot",
+            "https://example.test/pending.png",
+            "pending",
+        )
+        .await?;
+        let pending_name =
+            recomphub_db::media::assign_public_filename(&pool, pending, "pending-screenshot", 1)
+                .await?;
+        assert_eq!(get(format!("/media/{pending_name}")).await?.status(), StatusCode::NOT_FOUND);
 
         std::fs::remove_dir_all(media_dir)?;
         Ok(())
