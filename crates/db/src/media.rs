@@ -130,15 +130,49 @@ pub async fn claim_next(
     render_version: i32,
 ) -> DbResult<Option<MediaRow>> {
     for row in next_pending(&mut *connection, 16, render_version).await? {
-        let claimed: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
-            .bind(row.id)
-            .fetch_one(&mut *connection)
-            .await?;
-        if claimed {
+        if let Some(row) = claim_row(connection, row.id, render_version).await? {
             return Ok(Some(row));
         }
     }
     Ok(None)
+}
+
+/// Locks and then rereads one row. The candidate list is intentionally only a priority hint:
+/// another worker may complete a row between selection and lock acquisition.
+async fn claim_row(
+    connection: &mut PgConnection,
+    media_id: i64,
+    render_version: i32,
+) -> DbResult<Option<MediaRow>> {
+    let claimed: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+        .bind(media_id)
+        .fetch_one(&mut *connection)
+        .await?;
+    if !claimed {
+        return Ok(None);
+    }
+    let row = sqlx::query_as::<_, MediaRow>(
+        "SELECT * FROM media
+         WHERE id = $1
+           AND (
+               status = 'pending'
+               OR (status = 'failed'
+                   AND attempts < 3
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= now()))
+               OR (status = 'ready'
+                   AND (render_version < $2 OR public_filename IS NULL)
+                   AND attempts < 3
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= now()))
+           )",
+    )
+    .bind(media_id)
+    .bind(render_version)
+    .fetch_optional(&mut *connection)
+    .await?;
+    if row.is_none() {
+        release_claim(connection, media_id).await?;
+    }
+    Ok(row)
 }
 
 /// Releases a lock acquired by [`claim_next`].
@@ -412,5 +446,24 @@ mod tests {
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
         assert_eq!(a, media_hash("https://images.igdb.com/x.jpg", "cover"));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn stale_candidate_is_rechecked_after_lock_acquisition(pool: PgPool) -> DbResult<()> {
+        let id = enqueue(&pool, "screenshot", "https://example.test/stale.png", "fixture").await?;
+        let mut stale_reader = pool.acquire().await?;
+        assert_eq!(next_pending(&mut *stale_reader, 1, 2).await?[0].id, id);
+
+        let mut finisher = pool.acquire().await?;
+        assert!(sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_lock($1)")
+            .bind(id)
+            .fetch_one(&mut *finisher)
+            .await?);
+        mark_ready(&pool, id, vec![960], 960, 540, 2).await?;
+        assign_public_filename(&pool, id, "fixture-screenshot", 1).await?;
+        release_claim(&mut finisher, id).await?;
+
+        assert!(claim_row(&mut stale_reader, id, 2).await?.is_none());
+        Ok(())
     }
 }
