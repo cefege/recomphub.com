@@ -1,23 +1,15 @@
 use dioxus::prelude::*;
 use recomphub_shared::{MediaRef, media_avif_path};
 
-/// URL of one AVIF variant under `/media`, as written by the worker's media pipeline.
-pub fn avif_url(media: &MediaRef, width: i32) -> String {
-    media_avif_path(
-        &media.kind,
-        &media.public_stem,
-        &media.hash,
-        media.render_version,
-        width,
-    )
-}
-
-/// `srcset` value listing every ready AVIF width.
-pub fn srcset(media: &MediaRef) -> String {
-    media
-        .widths
+/// `srcset` value listing every recorded AVIF width. The largest candidate is canonical.
+pub fn srcset(filename: &str, widths: &[i32]) -> String {
+    let largest = widths.iter().copied().max();
+    widths
         .iter()
-        .map(|w| format!("{} {}w", avif_url(media, *w), w))
+        .map(|width| {
+            let url = media_avif_path(filename, (*width != largest.unwrap_or(*width)).then_some(*width));
+            format!("{url} {width}w")
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -46,8 +38,18 @@ pub fn Picture(
 ) -> Element {
     match media.filter(|m| m.ready && !m.widths.is_empty()) {
         Some(m) => {
-            let src = avif_url(&m, *m.widths.iter().max().unwrap_or(&480));
-            let set = srcset(&m);
+            let Some(filename) = m.filename.as_deref() else {
+                return rsx! {
+                    div {
+                        class: "{class} flex items-center justify-center bg-muted text-lg font-medium text-muted-foreground select-none",
+                        role: "img",
+                        "aria-label": "{alt}",
+                        "{initials}"
+                    }
+                };
+            };
+            let src = media_avif_path(filename, None);
+            let set = srcset(filename, &m.widths);
             let (w, h) = intrinsic_size(&m).unwrap_or((480, 270));
             let loading = if eager { "eager" } else { "lazy" };
             rsx! {

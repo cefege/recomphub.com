@@ -3,6 +3,7 @@
 //! site-wide middleware (canonical redirects, cache headers, compression).
 
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 use dioxus::server::axum::Router;
 use dioxus::server::axum::extract::{DefaultBodyLimit, Path, Request};
 use dioxus::server::axum::http::{
@@ -11,20 +12,22 @@ use dioxus::server::axum::http::{
 use dioxus::server::axum::middleware::{self, Next};
 use dioxus::server::axum::response::{IntoResponse, Response};
 use dioxus::server::axum::routing::{get, post};
+use recomphub_ingest::media::{MEDIA_RENDER_VERSION, output_path};
 use recomphub_shared::enums::TargetPlatform;
 use recomphub_shared::media_avif_path;
 use recomphub_shared::seo::xml_escape;
 use sqlx::PgPool;
 use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, Predicate};
-use tower_http::services::ServeDir;
+use tower_http::services::ServeFile;
 
 use super::{config, oauth, state};
 
 /// Google's limit per sitemap file.
 const SITEMAP_LIMIT: usize = 45_000;
 const HTML_CACHE: &str = "public, max-age=60, s-maxage=300";
-const MEDIA_CACHE: &str = "public, max-age=31536000, immutable";
+const MEDIA_CACHE: &str = "public, max-age=3600, must-revalidate";
+const MEDIA_REDIRECT_CACHE: &str = "public, max-age=3600";
 const SITEMAP_CACHE: &str = "public, max-age=3600";
 const FEED_CACHE: &str = "public, max-age=300";
 const FEED_ITEMS: i64 = 50;
@@ -42,8 +45,8 @@ pub fn with_site_routes(router: Router) -> Router {
         .route("/auth/google", get(oauth::login))
         .route("/auth/google/callback", get(oauth::callback))
         .route("/auth/logout", post(oauth::logout))
-        .nest_service("/media", ServeDir::new(&config::get().media_dir));
-
+        .route("/media/{filename}", get(serve_media))
+        .route("/media/{kind}/{old_filename}", get(redirect_old_media));
     let compression = CompressionLayer::new().compress_when(DefaultPredicate::new().and(
         |status: StatusCode, _: Version, _: &HeaderMap, _: &Extensions| {
             // Websocket upgrades (101) must pass through untouched.
@@ -75,6 +78,177 @@ async fn healthz() -> Response {
             plain(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")
         }
     }
+}
+
+#[derive(sqlx::FromRow)]
+struct StoredMedia {
+    kind: String,
+    public_stem: String,
+    hash: String,
+    render_version: i32,
+    widths: Vec<i32>,
+    public_filename: String,
+}
+
+async fn serve_media(Path(filename): Path<String>, req: Request) -> Response {
+    let pool = match pool_or_500() {
+        Ok(pool) => pool,
+        Err(response) => return *response,
+    };
+    let media: Option<StoredMedia> = match sqlx::query_as(
+        "SELECT kind, public_stem, hash, render_version, widths, public_filename
+         FROM media
+         WHERE public_filename = $1
+           AND status = 'ready'
+           AND render_version >= $2",
+    )
+    .bind(&filename)
+    .bind(MEDIA_RENDER_VERSION)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(media) => media,
+        Err(error) => return internal("looking up public media", error),
+    };
+    let Some(media) = media else {
+        return plain(StatusCode::NOT_FOUND, "no such media");
+    };
+    let requested_width = match requested_media_width(req.uri()) {
+        Ok(width) => width,
+        Err(()) => return plain(StatusCode::BAD_REQUEST, "invalid media width"),
+    };
+    let width = match requested_width {
+        Some(width) if media.widths.contains(&width) && width > 0 => width,
+        Some(_) => return plain(StatusCode::NOT_FOUND, "no such media width"),
+        None => match media.widths.iter().copied().filter(|width| *width > 0).max() {
+            Some(width) => width,
+            None => return plain(StatusCode::NOT_FOUND, "no such media width"),
+        },
+    };
+    let path = output_path(
+        &config::get().media_dir,
+        &media.kind,
+        &media.public_stem,
+        &media.hash,
+        media.render_version,
+        width as u32,
+    );
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() && metadata.len() > 0 => {}
+        Ok(_) => return plain(StatusCode::NOT_FOUND, "no such media"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return plain(StatusCode::NOT_FOUND, "no such media");
+        }
+        Err(error) => return internal("checking public media", error),
+    }
+    match ServeFile::new(path).try_call(req).await {
+        Ok(response) => response.into_response(),
+        Err(error) => internal("streaming public media", error),
+    }
+}
+
+async fn redirect_old_media(
+    Path((kind, old_filename)): Path<(String, String)>,
+) -> Response {
+    let kind = kind.to_ascii_lowercase();
+    let old_filename = old_filename.to_ascii_lowercase();
+    let Some(hash) = old_media_hash(&kind, &old_filename) else {
+        return plain(StatusCode::NOT_FOUND, "no such media");
+    };
+    let pool = match pool_or_500() {
+        Ok(pool) => pool,
+        Err(response) => return *response,
+    };
+    let rows: Vec<StoredMedia> = match sqlx::query_as(
+        "SELECT kind, public_stem, hash, render_version, widths, public_filename
+         FROM media
+         WHERE kind = $1
+           AND hash = $2
+           AND status = 'ready'
+           AND render_version >= $3
+           AND public_filename IS NOT NULL
+         LIMIT 2",
+    )
+    .bind(&kind)
+    .bind(hash)
+    .bind(MEDIA_RENDER_VERSION)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(error) => return internal("looking up legacy media", error),
+    };
+    let [media] = rows.as_slice() else {
+        return plain(StatusCode::NOT_FOUND, "no such media");
+    };
+    let Some(width) = media.widths.iter().copied().filter(|width| *width > 0).max() else {
+        return plain(StatusCode::NOT_FOUND, "no such media");
+    };
+    let path = output_path(
+        &config::get().media_dir,
+        &media.kind,
+        &media.public_stem,
+        &media.hash,
+        media.render_version,
+        width as u32,
+    );
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() && metadata.len() > 0 => (
+            StatusCode::MOVED_PERMANENTLY,
+            [
+                (header::LOCATION, format!("{}/media/{}", config::get().site_url, media.public_filename)),
+                (header::CACHE_CONTROL, MEDIA_REDIRECT_CACHE.to_string()),
+            ],
+        )
+            .into_response(),
+        Ok(_) => plain(StatusCode::NOT_FOUND, "no such media"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            plain(StatusCode::NOT_FOUND, "no such media")
+        }
+        Err(error) => internal("checking legacy media", error),
+    }
+}
+
+fn requested_media_width(uri: &Uri) -> Result<Option<i32>, ()> {
+    let Some(query) = uri.query() else {
+        return Ok(None);
+    };
+    let Some((name, value)) = query.split_once('=') else {
+        return Err(());
+    };
+    if name != "w" || value.is_empty() || value.contains('&') {
+        return Err(());
+    }
+    value
+        .parse::<i32>()
+        .ok()
+        .filter(|width| *width > 0)
+        .ok_or(())
+        .map(Some)
+}
+
+/// Extracts the immutable 16-hex source identity from every historical filename form.
+fn old_media_hash<'a>(kind: &str, filename: &'a str) -> Option<&'a str> {
+    let valid_kind = matches!(
+        kind,
+        "cover" | "screenshot" | "avatar" | "video_thumb" | "og" | "port_screenshot"
+    );
+    let expected_extension = match kind {
+        "og" if filename.ends_with(".jpg") => ".jpg",
+        "og" if filename.ends_with(".avif") => ".avif",
+        _ if filename.ends_with(".avif") => ".avif",
+        _ => return None,
+    };
+    if !valid_kind {
+        return None;
+    }
+    filename
+        .trim_end_matches(expected_extension)
+        .split('-')
+        .rev()
+        .find(|part| {
+            part.len() == 16 && part.as_bytes().iter().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 async fn ads_txt() -> Response {
@@ -255,46 +429,77 @@ async fn build_sitemaps(pool: &PgPool, site: &str) -> anyhow::Result<Vec<(String
 }
 
 async fn game_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
-    let rows: Vec<(String, DateTime<Utc>)> =
-        sqlx::query_as("SELECT slug, updated_at FROM games ORDER BY id")
+    let rows: Vec<(i64, String, DateTime<Utc>)> =
+        sqlx::query_as("SELECT id, slug, updated_at FROM games ORDER BY id")
             .fetch_all(pool)
             .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(slug, updated)| entry(format!("/games/{slug}"), Some(updated)))
-        .collect())
+    let images: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT g.id, m.public_filename
+         FROM games g
+         JOIN media m ON m.id = g.cover_media_id OR m.id = g.og_media_id
+         WHERE m.status = 'ready' AND m.render_version >= $1
+           AND cardinality(m.widths) > 0 AND m.public_filename IS NOT NULL
+         UNION ALL
+         SELECT gm.game_id, m.public_filename
+         FROM game_media gm
+         JOIN media m ON m.id = gm.media_id
+         WHERE m.status = 'ready' AND m.render_version >= $1
+           AND cardinality(m.widths) > 0 AND m.public_filename IS NOT NULL
+         ORDER BY 1, 2",
+    )
+    .bind(MEDIA_RENDER_VERSION)
+    .fetch_all(pool)
+    .await?;
+    let mut by_id = HashMap::new();
+    let mut entries = Vec::with_capacity(rows.len());
+    for (game_id, slug, updated) in rows {
+        by_id.insert(game_id, entries.len());
+        entries.push(entry(format!("/games/{slug}"), Some(updated)));
+    }
+    for (game_id, filename) in images {
+        if let Some(index) = by_id.get(&game_id)
+            && let Some(entry) = entries.get_mut(*index)
+        {
+            let image = media_avif_path(&filename, None);
+            if !entry.images.contains(&image) {
+                entry.images.push(image);
+            }
+        }
+    }
+    Ok(entries)
 }
 
 async fn port_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
-    let rows: Vec<(String, String, DateTime<Utc>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> =
-        sqlx::query_as(
-            "SELECT g.slug, p.slug, p.updated_at, m.kind, m.public_stem, m.hash, m.render_version, m.width \
-             FROM ports p \
-             JOIN games g ON g.id = p.game_id \
-             LEFT JOIN port_media pm ON pm.port_id = p.id AND pm.status = 'approved' \
-             LEFT JOIN media m ON m.id = pm.media_id AND m.status = 'ready' \
-             WHERE p.status = 'published' \
-             ORDER BY g.slug, p.slug, pm.position, pm.id",
-        )
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<(String, String, DateTime<Utc>, Option<String>)> = sqlx::query_as(
+        "SELECT g.slug, p.slug, p.updated_at, m.public_filename
+         FROM ports p
+         JOIN games g ON g.id = p.game_id
+         LEFT JOIN port_media pm ON pm.port_id = p.id AND pm.status = 'approved'
+         LEFT JOIN media m ON m.id = pm.media_id
+             AND m.status = 'ready'
+             AND m.render_version >= $1
+             AND cardinality(m.widths) > 0
+             AND m.public_filename IS NOT NULL
+         WHERE p.status = 'published'
+         ORDER BY g.slug, p.slug, pm.position, pm.id",
+    )
+    .bind(MEDIA_RENDER_VERSION)
+    .fetch_all(pool)
+    .await?;
     let mut entries = Vec::new();
-    for (game, port, updated, kind, stem, hash, render_version, width) in rows {
+    for (game, port, updated, filename) in rows {
         let path = format!("/games/{game}/{port}");
-        let image = match (kind, stem, hash, render_version) {
-            (Some(kind), Some(stem), Some(hash), Some(render_version)) => {
-                sitemap_image_path(&kind, &stem, &hash, render_version, width)
-            }
-            _ => None,
-        };
         if let Some(entry) = entries.last_mut().filter(|entry: &&mut Entry| entry.path == path) {
-            if let Some(image) = image {
-                entry.images.push(image);
+            if let Some(filename) = filename {
+                let image = media_avif_path(&filename, None);
+                if !entry.images.contains(&image) {
+                    entry.images.push(image);
+                }
             }
         } else {
             let mut entry = entry(path, Some(updated));
-            if let Some(image) = image {
-                entry.images.push(image);
+            if let Some(filename) = filename {
+                entry.images.push(media_avif_path(&filename, None));
             }
             entries.push(entry);
         }
@@ -357,17 +562,40 @@ async fn hub_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
 }
 
 async fn author_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
-    let logins: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT lower(a.github_login) FROM port_authors a \
-         JOIN ports p ON p.id = a.port_id \
-         WHERE p.status = 'published' AND a.github_login IS NOT NULL ORDER BY 1",
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT lower(a.github_login), m.public_filename
+         FROM port_authors a
+         JOIN ports p ON p.id = a.port_id
+         LEFT JOIN media m ON m.id = a.avatar_media_id
+             AND m.status = 'ready'
+             AND m.render_version >= $1
+             AND cardinality(m.widths) > 0
+             AND m.public_filename IS NOT NULL
+         WHERE p.status = 'published' AND a.github_login IS NOT NULL
+         ORDER BY lower(a.github_login), p.id, a.position",
     )
+    .bind(MEDIA_RENDER_VERSION)
     .fetch_all(pool)
     .await?;
-    Ok(logins
-        .into_iter()
-        .map(|(login,)| entry(format!("/authors/{login}"), None))
-        .collect())
+    let mut entries = Vec::new();
+    for (login, filename) in rows {
+        let path = format!("/authors/{login}");
+        if let Some(entry) = entries.last_mut().filter(|entry: &&mut Entry| entry.path == path) {
+            if let Some(filename) = filename {
+                let image = media_avif_path(&filename, None);
+                if !entry.images.contains(&image) {
+                    entry.images.push(image);
+                }
+            }
+        } else {
+            let mut entry = entry(path, None);
+            if let Some(filename) = filename {
+                entry.images.push(media_avif_path(&filename, None));
+            }
+            entries.push(entry);
+        }
+    }
+    Ok(entries)
 }
 
 fn urlset(site: &str, entries: &[Entry]) -> String {
@@ -396,30 +624,14 @@ fn urlset(site: &str, entries: &[Entry]) -> String {
     body
 }
 
-fn sitemap_image_path(
-    kind: &str,
-    stem: &str,
-    hash: &str,
-    render_version: i32,
-    source_width: Option<i32>,
-) -> Option<String> {
-    let widths = match kind {
-        "screenshot" | "port_screenshot" => &[480, 960, 1600][..],
-        "cover" => &[132, 264, 528][..],
-        "video_thumb" => &[320, 480][..],
-        "avatar" => &[40, 80][..],
-        _ => return None,
-    };
-    let source_width = source_width.unwrap_or_default().max(0) as u32;
-    let width = widths.iter().copied().filter(|width| *width <= source_width).max()?;
-    Some(media_avif_path(kind, stem, hash, render_version, width as i32))
-}
+/// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
 
 
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
 /// GET and HEAD only, so POST server functions are never redirected.
 async fn canonical(req: Request, next: Next) -> Response {
     if matches!(*req.method(), Method::GET | Method::HEAD)
+        && !is_legacy_media_path(req.uri().path())
         && let Some(location) = canonical_location(req.headers(), req.uri())
     {
         return (
@@ -429,6 +641,17 @@ async fn canonical(req: Request, next: Next) -> Response {
             .into_response();
     }
     next.run(req).await
+}
+
+/// Lets a legacy handler combine path/www normalization into its one final redirect.
+fn is_legacy_media_path(path: &str) -> bool {
+    let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    if parts.len() != 3 || !parts[0].eq_ignore_ascii_case("media") {
+        return false;
+    }
+    let kind = parts[1].to_ascii_lowercase();
+    let filename = parts[2].to_ascii_lowercase();
+    old_media_hash(&kind, &filename).is_some()
 }
 
 fn canonical_location(headers: &HeaderMap, uri: &Uri) -> Option<String> {
@@ -460,13 +683,12 @@ fn canonical_path(path: &str) -> String {
     lower
 }
 
-/// Cache headers: long-lived immutable media, short public caching for HTML.
-/// Only GET responses are touched, and a handler's own `Cache-Control` always wins.
+/// Cache successful media responses for one hour; handler-set redirect policy always wins.
 async fn cache_headers(req: Request, next: Next) -> Response {
-    let is_get = *req.method() == Method::GET;
+    let is_read = matches!(*req.method(), Method::GET | Method::HEAD);
     let is_media = req.uri().path().starts_with("/media/");
     let mut response = next.run(req).await;
-    if !is_get || response.headers().contains_key(header::CACHE_CONTROL) {
+    if !is_read || response.headers().contains_key(header::CACHE_CONTROL) {
         return response;
     }
     if is_media {
@@ -539,6 +761,44 @@ mod tests {
         assert!(xml.contains("<loc>https://recomphub.com/games/a&amp;b</loc>"));
         assert!(xml.contains("<lastmod>1970-01-01</lastmod>"));
         assert_eq!(xml.matches("<url>").count(), 2);
+    }
+
+    #[test]
+    fn media_width_requires_exact_single_positive_integer() {
+        assert_eq!(
+            requested_media_width(&"/media/a.avif?w=960".parse().unwrap()),
+            Ok(Some(960))
+        );
+        assert_eq!(
+            requested_media_width(&"/media/a.avif".parse().unwrap()),
+            Ok(None)
+        );
+        assert_eq!(
+            requested_media_width(&"/media/a.avif?w=960&x=1".parse().unwrap()),
+            Err(())
+        );
+        assert_eq!(
+            requested_media_width(&"/media/a.avif?w=0".parse().unwrap()),
+            Err(())
+        );
+    }
+
+    #[test]
+    fn legacy_hash_parser_accepts_historical_avif_and_og_jpeg_forms() {
+        let hash = "e2f4e8ff77dad4f5";
+        assert_eq!(
+            old_media_hash("screenshot", &format!("screenshot-320-{hash}-v1-960.avif")),
+            Some(hash)
+        );
+        assert_eq!(
+            old_media_hash("screenshot", &format!("{hash}-960.avif")),
+            Some(hash)
+        );
+        assert_eq!(
+            old_media_hash("og", &format!("{hash}-1200.jpg")),
+            Some(hash)
+        );
+        assert_eq!(old_media_hash("screenshot", "not-a-hash.avif"), None);
     }
 
 }

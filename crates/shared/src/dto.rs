@@ -11,24 +11,19 @@ use serde::{Deserialize, Serialize};
 pub struct MediaRef {
     pub id: i64,
     pub kind: String,
-    pub hash: String,
-    pub public_stem: String,
-    pub render_version: i32,
+    pub filename: Option<String>,
     pub widths: Vec<i32>,
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub ready: bool,
 }
 
-/// Public path for one versioned AVIF rendition.
-pub fn media_avif_path(
-    kind: &str,
-    public_stem: &str,
-    hash: &str,
-    render_version: i32,
-    width: i32,
-) -> String {
-    format!("/media/{kind}/{public_stem}-{hash}-v{render_version}-{width}.avif")
+/// Public path for a named AVIF rendition. The bare path is canonical; width is responsive-only.
+pub fn media_avif_path(filename: &str, width: Option<i32>) -> String {
+    match width {
+        Some(width) => format!("/media/{filename}?w={width}"),
+        None => format!("/media/{filename}"),
+    }
 }
 
 /// Compact game data for cards and rails.
@@ -1030,15 +1025,16 @@ mod tests {
         assert_eq!(back.requirements, Some(Some("4 GB RAM".to_string())));
         assert_eq!(back.toolchain, None);
     }
+
     #[test]
-    fn media_paths_are_always_versioned_and_semantic() {
+    fn media_paths_keep_filenames_clean_and_use_queries_for_variants() {
         assert_eq!(
-            media_avif_path("cover", "game-cover", "0123456789abcdef", 1, 528),
-            "/media/cover/game-cover-0123456789abcdef-v1-528.avif"
+            media_avif_path("bloodborne-screenshot-1.avif", None),
+            "/media/bloodborne-screenshot-1.avif"
         );
         assert_eq!(
-            media_avif_path("cover", "game-cover", "0123456789abcdef", 2, 528),
-            "/media/cover/game-cover-0123456789abcdef-v2-528.avif"
+            media_avif_path("bloodborne-screenshot-1.avif", Some(960)),
+            "/media/bloodborne-screenshot-1.avif?w=960"
         );
     }
 }

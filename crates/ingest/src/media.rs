@@ -8,6 +8,7 @@ use anyhow::{Context, Result, bail};
 use image::DynamicImage;
 use image::codecs::avif::AvifEncoder;
 use image::imageops::{FilterType, overlay};
+use rand::random;
 use recomphub_db::PgPool;
 use recomphub_db::media::{self, MediaRow};
 use recomphub_db::port_media;
@@ -106,16 +107,15 @@ pub async fn download(http: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
     Ok(body)
 }
 
-/// Writes `bytes` to `path` through a `.tmp` sibling and a rename. Creates parent directories.
+/// Writes `bytes` to a unique temporary sibling before atomically replacing `path`.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
-    let tmp = path.with_extension(format!(
-        "{}.tmp",
-        path.extension().and_then(|e| e.to_str()).unwrap_or("bin")
-    ));
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
+    let filename = path.file_name().and_then(|name| name.to_str()).unwrap_or("media");
+    let tmp = path.with_file_name(format!(".{filename}-{:016x}.{extension}.tmp", random::<u64>()));
     std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
     Ok(())
@@ -217,48 +217,112 @@ pub fn upload_path(media_dir: &Path, hash: &str) -> PathBuf {
     media_dir.join("uploads").join(hash)
 }
 
-async fn existing_avif(dir: &Path, row: &MediaRow) -> Result<Vec<u8>> {
-    let Some(width) = row.widths.iter().copied().max() else {
-        bail!("no prior AVIF widths are recorded");
-    };
-    let width = width as u32;
-    let current = output_path(
-        dir,
-        &row.kind,
-        &row.public_stem,
-        &row.hash,
-        row.render_version,
-        width,
-    );
-    match tokio::fs::read(&current).await {
-        Ok(bytes) => Ok(bytes),
-        Err(_) => {
-            let legacy = legacy_output_path(dir, &row.kind, &row.hash, width);
-            tokio::fs::read(&legacy)
-                .await
-                .with_context(|| format!("reading old AVIF {}", legacy.display()))
-        }
-    }
+async fn read_rendition(path: &Path) -> Result<Vec<u8>> {
+    let bytes = tokio::fs::read(path)
+        .await
+        .with_context(|| format!("reading media rendition {}", path.display()))?;
+    image::load_from_memory(&bytes)
+        .with_context(|| format!("decoding media rendition {}", path.display()))?;
+    Ok(bytes)
 }
 
-/// Deletes obsolete pre-versioned output only after its versioned replacement is ready.
+/// Returns a usable prior AVIF/JPEG rendition, trying all recorded widths from largest first.
+async fn existing_rendition(dir: &Path, row: &MediaRow) -> Result<Vec<u8>> {
+    let mut widths = row.widths.clone();
+    widths.sort_unstable_by(|a, b| b.cmp(a));
+    let mut errors = Vec::new();
+    for width in widths {
+        if width <= 0 {
+            continue;
+        }
+        let width = width as u32;
+        for path in [
+            output_path(
+                dir,
+                &row.kind,
+                &row.public_stem,
+                &row.hash,
+                row.render_version,
+                width,
+            ),
+            legacy_output_path(dir, &row.kind, &row.hash, width),
+        ] {
+            match read_rendition(&path).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => errors.push(format!("{error:#}")),
+            }
+        }
+    }
+    if row.kind == "og" {
+        let jpeg = dir.join("og").join(format!("{}-1200.jpg", row.hash));
+        match read_rendition(&jpeg).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => errors.push(format!("{error:#}")),
+        }
+    }
+    bail!("no usable prior rendition: {}", errors.join("; "))
+}
+
+/// True only when every recorded current rendition exists and decodes.
+async fn has_current_renditions(dir: &Path, row: &MediaRow) -> bool {
+    if row.widths.is_empty() || row.widths.iter().any(|width| *width <= 0) {
+        return false;
+    }
+    for width in &row.widths {
+        let path = output_path(
+            dir,
+            &row.kind,
+            &row.public_stem,
+            &row.hash,
+            MEDIA_RENDER_VERSION,
+            *width as u32,
+        );
+        if read_rendition(&path).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Deletes only the obsolete pre-v2 files after complete v2 output has been recorded.
 async fn remove_legacy_outputs(dir: &Path, row: &MediaRow) {
     if row.render_version >= MEDIA_RENDER_VERSION {
         return;
     }
     for width in &row.widths {
-        let path = legacy_output_path(dir, &row.kind, &row.hash, *width as u32);
-        if let Err(error) = tokio::fs::remove_file(&path).await
+        if *width <= 0 {
+            continue;
+        }
+        for path in [
+            legacy_output_path(dir, &row.kind, &row.hash, *width as u32),
+            output_path(
+                dir,
+                &row.kind,
+                &row.public_stem,
+                &row.hash,
+                row.render_version,
+                *width as u32,
+            ),
+        ] {
+            if let Err(error) = tokio::fs::remove_file(&path).await
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::warn!(media_id = row.id, path = %path.display(), error = %error, "could not remove obsolete media rendition");
+            }
+        }
+    }
+    if row.kind == "og" {
+        let jpeg = dir.join("og").join(format!("{}-1200.jpg", row.hash));
+        if let Err(error) = tokio::fs::remove_file(&jpeg).await
             && error.kind() != std::io::ErrorKind::NotFound
         {
-            tracing::warn!(media_id = row.id, path = %path.display(), error = %error, "could not remove obsolete media rendition");
+            tracing::warn!(media_id = row.id, path = %jpeg.display(), error = %error, "could not remove obsolete OG JPEG");
         }
     }
 }
 
-/// Processes one queued row. A renderer refresh first re-encodes the largest local rendition;
-/// this makes version migrations independent of source-host availability. It falls back to the
-/// source only when local output is absent. Failed refreshes retain their old ready metadata.
+/// Processes one queued row. A current ready rendition is merely published when all of its
+/// recorded files verify; older or incomplete output is rendered before any filename is assigned.
 pub async fn process_row(
     pool: &PgPool,
     http: &reqwest::Client,
@@ -267,6 +331,14 @@ pub async fn process_row(
 ) -> Result<bool> {
     let upload_hash = row.source_url.strip_prefix("upload:");
     let outcome = async {
+        if row.status == "ready"
+            && row.render_version >= MEDIA_RENDER_VERSION
+            && has_current_renditions(dir, row).await
+        {
+            let (base, preferred_number) = media::public_filename_input(pool, row).await?;
+            media::assign_public_filename(pool, row.id, &base, preferred_number).await?;
+            return Ok(());
+        }
         let source = async {
             match upload_hash {
                 Some(hash) => {
@@ -279,7 +351,7 @@ pub async fn process_row(
             }
         };
         let bytes = if row.status == "ready" && row.render_version < MEDIA_RENDER_VERSION {
-            match existing_avif(dir, row).await {
+            match existing_rendition(dir, row).await {
                 Ok(bytes) => bytes,
                 Err(existing_error) => source
                     .await
@@ -288,13 +360,13 @@ pub async fn process_row(
         } else {
             match source.await {
                 Ok(bytes) => bytes,
-                Err(source_error) if row.status == "ready" => existing_avif(dir, row)
+                Err(source_error) if row.status == "ready" => existing_rendition(dir, row)
                     .await
                     .with_context(|| format!("source refresh failed: {source_error:#}"))?,
                 Err(error) => return Err(error),
             }
         };
-        render(
+        let (src_w, src_h, widths) = render(
             dir.to_path_buf(),
             row.kind.clone(),
             row.public_stem.clone(),
@@ -302,28 +374,29 @@ pub async fn process_row(
             MEDIA_RENDER_VERSION,
             bytes,
         )
-        .await
+        .await?;
+        let widths: Vec<i32> = widths.into_iter().map(|width| width as i32).collect();
+        media::mark_ready(
+            pool,
+            row.id,
+            widths,
+            src_w as i32,
+            src_h as i32,
+            MEDIA_RENDER_VERSION,
+        )
+        .await?;
+        let (base, preferred_number) = media::public_filename_input(pool, row).await?;
+        media::assign_public_filename(pool, row.id, &base, preferred_number).await?;
+        remove_legacy_outputs(dir, row).await;
+        port_media::approve_readme_after_render(pool, row.id, src_w as i32).await?;
+        if let Some(hash) = upload_hash {
+            let _ = tokio::fs::remove_file(upload_path(dir, hash)).await;
+        }
+        Ok(())
     }
     .await;
     match outcome {
-        Ok((src_w, src_h, widths)) => {
-            let widths: Vec<i32> = widths.into_iter().map(|width| width as i32).collect();
-            media::mark_ready(
-                pool,
-                row.id,
-                widths,
-                src_w as i32,
-                src_h as i32,
-                MEDIA_RENDER_VERSION,
-            )
-            .await?;
-            remove_legacy_outputs(dir, row).await;
-            port_media::approve_readme_after_render(pool, row.id, src_w as i32).await?;
-            if let Some(hash) = upload_hash {
-                let _ = tokio::fs::remove_file(upload_path(dir, hash)).await;
-            }
-            Ok(true)
-        }
+        Ok(()) => Ok(true),
         Err(error) => {
             let message = format!("{error:#}");
             tracing::warn!(media_id = row.id, url = %row.source_url, error = %message, "media failed");
@@ -373,23 +446,73 @@ pub async fn process_pending(pool: &PgPool, media_dir: &Path, limit: i64) -> Res
     Ok(report)
 }
 
-/// Runs successive batches until every pending, retryable, or stale rendition has been processed.
-/// Intended for an explicit one-off renderer cutover rather than scheduled syncs.
-pub async fn process_all_pending(pool: &PgPool, media_dir: &Path) -> Result<MediaReport> {
+/// Runs the explicit cutover with one renderer at a time. Supplying IDs repairs precisely those
+/// rows, including already-current rows whose files failed an external audit.
+pub async fn process_all_pending(
+    pool: &PgPool,
+    media_dir: &Path,
+    ids: &[i64],
+) -> Result<MediaReport> {
+    let http = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(DOWNLOAD_TIMEOUT)
+        .build()
+        .context("building the media HTTP client")?;
+    if !ids.is_empty() {
+        let mut ids = ids.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        let rows = media::get_many(pool, ids.clone()).await?;
+        let missing = ids.len().saturating_sub(rows.len());
+        let mut report = MediaReport::default();
+        for row in rows {
+            report.processed += 1;
+            if process_row(pool, &http, media_dir, &row).await? {
+                report.ready += 1;
+            } else {
+                report.failed += 1;
+            }
+        }
+        if missing > 0 || report.failed > 0 {
+            bail!(
+                "focused media repair failed: missing_ids={missing}, failed_rows={}",
+                report.failed
+            );
+        }
+        return Ok(report);
+    }
+
     let mut total = MediaReport::default();
     media::reset_stale_attempts(pool, MEDIA_RENDER_VERSION).await?;
     loop {
-        let report = process_pending(pool, media_dir, BATCH_SIZE).await?;
-        total.processed += report.processed;
-        total.ready += report.ready;
-        total.failed += report.failed;
-        if report.processed == 0 {
-            let stale = media::stale_ready_count(pool, MEDIA_RENDER_VERSION).await?;
-            if stale > 0 {
-                bail!("{stale} public media rows could not be migrated");
+        let rows = media::next_pending(pool, BATCH_SIZE, MEDIA_RENDER_VERSION).await?;
+        if rows.is_empty() {
+            let unresolved = media::stale_ready_count(pool, MEDIA_RENDER_VERSION).await?;
+            if unresolved > 0 {
+                bail!("{unresolved} ready media rows could not be migrated");
             }
             return Ok(total);
         }
+        let mut batch = MediaReport::default();
+        for row in rows {
+            batch.processed += 1;
+            if process_row(pool, &http, media_dir, &row).await? {
+                batch.ready += 1;
+            } else {
+                batch.failed += 1;
+            }
+        }
+        total.processed += batch.processed;
+        total.ready += batch.ready;
+        total.failed += batch.failed;
+        let unresolved = media::stale_ready_count(pool, MEDIA_RENDER_VERSION).await?;
+        tracing::info!(
+            processed = batch.processed,
+            ready = batch.ready,
+            failed = batch.failed,
+            remaining_unresolved_ready = unresolved,
+            "media migration batch finished"
+        );
     }
 }
 

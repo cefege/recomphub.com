@@ -60,6 +60,7 @@ spec:
                   - worker-discover
                   - worker-media-discovery
                   - worker-media-migrate-v4
+                  - worker-media-migrate
                   - worker-import-recompendium
                   - worker-import-portsdr
                   - worker-import-curated

@@ -544,16 +544,19 @@ async fn load_media(pool: &PgPool, ids: Vec<i64>) -> DbResult<HashMap<i64, Media
 }
 
 fn media_ref(row: &MediaRow) -> MediaRef {
+    let filename = row.public_filename.clone().filter(|filename| !filename.is_empty());
+    let ready = row.status == "ready"
+        && row.render_version >= recomphub_ingest::media::MEDIA_RENDER_VERSION
+        && !row.widths.is_empty()
+        && filename.is_some();
     MediaRef {
         id: row.id,
         kind: row.kind.clone(),
-        hash: row.hash.clone(),
-        public_stem: row.public_stem.clone(),
-        render_version: row.render_version,
+        filename,
         widths: row.widths.clone(),
         width: row.width,
         height: row.height,
-        ready: row.status == "ready",
+        ready,
     }
 }
 

@@ -1,11 +1,10 @@
 //! JSON-LD for game and port pages. Port ratings come from RecompHub users only, never from GitHub stars; `aggregateRating` is emitted once a port has at least three ratings.
 
 use recomphub_shared::dto::RatingSummary;
-use recomphub_shared::{GameDetail, PortCard, PortDetail};
+use recomphub_shared::{GameDetail, PortCard, PortDetail, media_avif_path};
 use serde_json::{Value, json};
 
 use super::games::game_crumbs;
-use crate::components::picture::avif_url;
 use crate::components::ui::target_label;
 
 const CONTEXT: &str = "https://schema.org";
@@ -72,9 +71,9 @@ pub fn game_json_ld(site: &str, detail: &GameDetail) -> Vec<String> {
         video["datePublished"] = json!(date.to_string());
     }
     if let Some(cover) = game.cover.as_ref().filter(|m| m.ready)
-        && let Some(width) = cover.widths.iter().max()
+        && let Some(filename) = cover.filename.as_deref()
     {
-        video["image"] = json!(format!("{site}{}", avif_url(cover, *width)));
+        video["image"] = json!(format!("{site}{}", media_avif_path(filename, None)));
     }
     if let Some(developer) = &detail.developer {
         video["author"] = json!({"@type": "Organization", "name": developer});

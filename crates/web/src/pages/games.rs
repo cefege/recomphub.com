@@ -439,7 +439,9 @@ fn GameBody(detail: GameDetail) -> Element {
     let og_image = detail
         .og
         .as_ref()
-        .map(|m| format!("{site}{}", media_avif_path("og", &m.public_stem, &m.hash, m.render_version, 1200)));
+        .filter(|media| media.ready && media.widths.contains(&1200))
+        .and_then(|media| media.filename.as_deref())
+        .map(|filename| format!("{site}{}", media_avif_path(filename, None)));
     let json_ld = jsonld::game_json_ld(&site, &detail);
     let path = format!("/games/{}", game.slug);
     let crumbs = game_crumbs(&detail);

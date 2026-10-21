@@ -109,6 +109,8 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 - `.github/workflows/image.yml` builds and pushes `ghcr.io/cefege/recomphub.com:sha-<12>` on each push to `main`, then pins the tag in `deploy/production/kustomization.yaml`.
 - Flux applies `deploy/production/` on the `ovh1` k3s cluster through `deploy/flux/bootstrap.yaml`.
 
+- `bin/kube <kubectl arguments...>` is the repeatable production control path. It runs `sudo -n /usr/local/bin/kubectl` through the existing `ovh1` SSH alias; it neither needs a local Kubernetes installation nor copies a kubeconfig.
+
 ## Operator steps
 
 These need your Cloudflare (DNS and tunnel), Google Cloud, cluster and GitHub access.

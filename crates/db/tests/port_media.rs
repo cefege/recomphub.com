@@ -47,11 +47,20 @@ async fn media_id_for(pool: &PgPool, url: &str) -> DbResult<i64> {
     .await?)
 }
 
-/// Marks a queued README image as rendered, as `media-sync` would, at a width that passes the
-/// gallery's minimum-width guard.
+async fn record(pool: &PgPool, port: i64, urls: &[String]) -> DbResult<()> {
+    let images: Vec<(String, String)> = urls
+        .iter()
+        .cloned()
+        .map(|url| (url, String::new()))
+        .collect();
+    port_media::record_readme_images(pool, port, &images, "game-port").await
+}
+
+/// Marks a queued README image as rendered exactly as the production media pipeline does.
 async fn render(pool: &PgPool, url: &str) -> DbResult<()> {
     let id = media_id_for(pool, url).await?;
-    media::mark_ready(pool, id, vec![480, 960], 960, 540).await
+    media::mark_ready(pool, id, vec![480, 960], 960, 540, 2).await?;
+    port_media::approve_readme_after_render(pool, id, 960).await
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -60,7 +69,7 @@ async fn pending_readme_image_is_not_shown_until_rendered(pool: PgPool) -> DbRes
     let port = make_port(&pool, game, "port", "https://github.com/a/b").await?;
     let url = "https://raw.githubusercontent.com/a/b/main/one.png".to_string();
 
-    port_media::record_readme_images(&pool, port, std::slice::from_ref(&url)).await?;
+    record(&pool, port, std::slice::from_ref(&url)).await?;
     assert!(port_media::approved_for_port(&pool, port).await?.is_empty());
 
     render(&pool, &url).await?;
@@ -79,7 +88,7 @@ async fn readme_images_show_in_readme_order(pool: PgPool) -> DbResult<()> {
         "https://raw.githubusercontent.com/a/b/main/two.png".to_string(),
         "https://raw.githubusercontent.com/a/b/main/one.png".to_string(),
     ];
-    port_media::record_readme_images(&pool, port, &urls).await?;
+    record(&pool, port, &urls).await?;
     for url in &urls {
         render(&pool, url).await?;
     }
@@ -97,8 +106,8 @@ async fn repeated_scan_does_not_duplicate_rows(pool: PgPool) -> DbResult<()> {
     let port = make_port(&pool, game, "port", "https://github.com/a/b").await?;
     let urls = vec!["https://raw.githubusercontent.com/a/b/main/one.png".to_string()];
 
-    port_media::record_readme_images(&pool, port, &urls).await?;
-    port_media::record_readme_images(&pool, port, &urls).await?;
+    record(&pool, port, &urls).await?;
+    record(&pool, port, &urls).await?;
     render(&pool, &urls[0]).await?;
 
     let approved = port_media::approved_for_port(&pool, port).await?;
@@ -113,14 +122,14 @@ async fn an_image_dropped_from_the_readme_is_pruned_on_rescan(pool: PgPool) -> D
     let one = "https://raw.githubusercontent.com/a/b/main/one.png".to_string();
     let two = "https://raw.githubusercontent.com/a/b/main/two.png".to_string();
 
-    port_media::record_readme_images(&pool, port, &[one.clone(), two.clone()]).await?;
+    record(&pool, port, &[one.clone(), two.clone()]).await?;
     render(&pool, &one).await?;
     render(&pool, &two).await?;
     assert_eq!(port_media::approved_for_port(&pool, port).await?.len(), 2);
 
     // The project replaced its first screenshot with a new one; "one.png" is gone from the README.
     let three = "https://raw.githubusercontent.com/a/b/main/three.png".to_string();
-    port_media::record_readme_images(&pool, port, &[two.clone(), three.clone()]).await?;
+    record(&pool, port, &[two.clone(), three.clone()]).await?;
     render(&pool, &three).await?;
 
     let approved = port_media::approved_for_port(&pool, port).await?;
@@ -137,7 +146,7 @@ async fn readme_images_are_capped(pool: PgPool) -> DbResult<()> {
         .map(|i| format!("https://raw.githubusercontent.com/a/b/main/{i}.png"))
         .collect();
 
-    port_media::record_readme_images(&pool, port, &urls).await?;
+    record(&pool, port, &urls).await?;
     for url in urls.iter().take(port_media::README_IMAGE_CAP) {
         render(&pool, url).await?;
     }
@@ -153,9 +162,10 @@ async fn a_render_under_the_minimum_width_is_excluded(pool: PgPool) -> DbResult<
     let port = make_port(&pool, game, "port", "https://github.com/a/b").await?;
     let url = "https://raw.githubusercontent.com/a/b/main/tiny.png".to_string();
 
-    port_media::record_readme_images(&pool, port, std::slice::from_ref(&url)).await?;
+    record(&pool, port, std::slice::from_ref(&url)).await?;
     let id = media_id_for(&pool, &url).await?;
-    media::mark_ready(&pool, id, vec![120], 120, 60).await?;
+    media::mark_ready(&pool, id, vec![120], 120, 60, 2).await?;
+    port_media::approve_readme_after_render(&pool, id, 120).await?;
 
     assert!(port_media::approved_for_port(&pool, port).await?.is_empty());
     Ok(())
@@ -166,7 +176,7 @@ async fn no_images_is_a_no_op(pool: PgPool) -> DbResult<()> {
     let game = make_game(&pool).await?;
     let port = make_port(&pool, game, "port", "https://github.com/a/b").await?;
 
-    port_media::record_readme_images(&pool, port, &[]).await?;
+    record(&pool, port, &[]).await?;
 
     assert!(port_media::approved_for_port(&pool, port).await?.is_empty());
     Ok(())
@@ -184,5 +194,53 @@ async fn a_second_upload_of_the_same_file_reuses_the_pending_row(pool: PgPool) -
     let second = port_media::insert_pending(&pool, port, media_id, user).await?;
 
     assert_eq!(first, second);
+    Ok(())
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn game_screenshot_filenames_follow_stable_relation_order(pool: PgPool) -> DbResult<()> {
+    let game = make_game(&pool).await?;
+    let first = media::enqueue(
+        &pool,
+        "screenshot",
+        "https://example.test/first.png",
+        "unrelated-hint",
+    )
+    .await?;
+    let second = media::enqueue(
+        &pool,
+        "screenshot",
+        "https://example.test/second.png",
+        "unrelated-hint",
+    )
+    .await?;
+    sqlx::query("INSERT INTO game_media (game_id, media_id, position) VALUES ($1, $2, $3)")
+        .bind(game)
+        .bind(first)
+        .bind(0)
+        .execute(&pool)
+        .await?;
+    sqlx::query("INSERT INTO game_media (game_id, media_id, position) VALUES ($1, $2, $3)")
+        .bind(game)
+        .bind(second)
+        .bind(1)
+        .execute(&pool)
+        .await?;
+
+    let first_row = media::get(&pool, first).await?.expect("queued first media");
+    let second_row = media::get(&pool, second).await?.expect("queued second media");
+    let (first_base, first_number) = media::public_filename_input(&pool, &first_row).await?;
+    let (second_base, second_number) = media::public_filename_input(&pool, &second_row).await?;
+    assert_eq!((first_base.as_str(), first_number), ("game-screenshot", 1));
+    assert_eq!((second_base.as_str(), second_number), ("game-screenshot", 2));
+
+    let (first_name, second_name) = tokio::try_join!(
+        media::assign_public_filename(&pool, first, &first_base, first_number),
+        media::assign_public_filename(&pool, second, &second_base, second_number),
+    )?;
+    assert_eq!(first_name, "game-screenshot-1.avif");
+    assert_eq!(second_name, "game-screenshot-2.avif");
+    assert!(!first_name.contains('@'));
+    assert!(!first_name.contains(&first_row.hash));
     Ok(())
 }

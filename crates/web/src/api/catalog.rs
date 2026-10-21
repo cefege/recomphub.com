@@ -724,16 +724,19 @@ async fn count_just_released(pool: &sqlx::PgPool) -> Result<i64, ServerFnError> 
 
 #[cfg(feature = "server")]
 fn media_ref(m: &MediaRow) -> MediaRef {
+    let filename = m.public_filename.clone().filter(|filename| !filename.is_empty());
+    let ready = m.status == "ready"
+        && m.render_version >= recomphub_ingest::media::MEDIA_RENDER_VERSION
+        && !m.widths.is_empty()
+        && filename.is_some();
     MediaRef {
         id: m.id,
         kind: m.kind.clone(),
-        hash: m.hash.clone(),
-        public_stem: m.public_stem.clone(),
-        render_version: m.render_version,
+        filename,
         widths: m.widths.clone(),
         width: m.width,
         height: m.height,
-        ready: m.status == "ready",
+        ready,
     }
 }
 

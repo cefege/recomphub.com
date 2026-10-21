@@ -1,6 +1,6 @@
 //! The media table: queued image downloads and their public AVIF outputs.
 
-use crate::DbResult;
+use crate::{DbError, DbResult, PgPool};
 use chrono::{DateTime, Utc};
 use recomphub_shared::slugify;
 use sha2::{Digest, Sha256};
@@ -21,6 +21,7 @@ pub struct MediaRow {
     pub error: Option<String>,
     pub render_version: i32,
     pub public_stem: String,
+    pub public_filename: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -93,7 +94,9 @@ pub async fn next_pending(
          ) g ON g.cover_media_id = m.id AND m.kind = 'cover'
          WHERE m.status = 'pending'
             OR (m.status = 'failed' AND m.attempts < 3)
-            OR (m.status = 'ready' AND m.render_version < $2 AND m.attempts < 3)
+            OR (m.status = 'ready'
+                AND (m.render_version < $2 OR m.public_filename IS NULL)
+                AND m.attempts < 3)
          ORDER BY CASE
                       WHEN m.kind = 'port_screenshot' AND m.source_url LIKE 'upload:%' THEN 0
                       WHEN m.kind = 'cover' THEN 1
@@ -115,10 +118,11 @@ pub async fn next_pending(
     Ok(rows)
 }
 
-/// Counts public renditions that could not be migrated to `render_version`.
+/// Counts ready rows that still need current bytes or a public filename.
 pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<i64> {
     let count = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM media WHERE status = 'ready' AND render_version < $1",
+        "SELECT COUNT(*) FROM media
+         WHERE status = 'ready' AND (render_version < $1 OR public_filename IS NULL)",
     )
     .bind(render_version)
     .fetch_one(ex)
@@ -126,16 +130,180 @@ pub async fn stale_ready_count(ex: impl PgExecutor<'_>, render_version: i32) -> 
     Ok(count)
 }
 
-/// Makes every stale public rendition eligible for one explicit renderer cutover.
+/// Makes every incomplete public rendition eligible for one explicit renderer cutover.
 pub async fn reset_stale_attempts(ex: impl PgExecutor<'_>, render_version: i32) -> DbResult<()> {
     sqlx::query(
         "UPDATE media SET attempts = 0
-         WHERE status = 'ready' AND render_version < $1",
+         WHERE status = 'ready' AND (render_version < $1 OR public_filename IS NULL)",
     )
     .bind(render_version)
     .execute(ex)
     .await?;
     Ok(())
+}
+
+/// The public kind is intentionally shorter than the internal storage kind.
+pub fn public_kind(kind: &str) -> &str {
+    match kind {
+        "port_screenshot" => "screenshot",
+        "og" => "preview",
+        "video_thumb" => "video",
+        _ => kind,
+    }
+}
+
+/// Finds the real owning context and stable preferred sequence for a ready row.
+///
+/// A shared media row keeps the first relation by the documented stable ordering. The old stem
+/// is used only when no public relation owns the row.
+pub async fn public_filename_input(pool: &PgPool, row: &MediaRow) -> DbResult<(String, i32)> {
+    let kind = public_kind(&row.kind);
+    let owner_and_number: Option<(String, i32)> = match row.kind.as_str() {
+        "cover" | "og" => {
+            sqlx::query_as(
+                "SELECT g.slug, 1
+                 FROM games g
+                 WHERE ($2 = 'cover' AND g.cover_media_id = $1)
+                    OR ($2 = 'og' AND g.og_media_id = $1)
+                 ORDER BY g.id
+                 LIMIT 1",
+            )
+            .bind(row.id)
+            .bind(&row.kind)
+            .fetch_optional(pool)
+            .await?
+        }
+        "screenshot" => {
+            sqlx::query_as(
+                "SELECT g.slug, gm.position + 1
+                 FROM game_media gm
+                 JOIN games g ON g.id = gm.game_id
+                 WHERE gm.media_id = $1
+                 ORDER BY g.id, gm.position
+                 LIMIT 1",
+            )
+            .bind(row.id)
+            .fetch_optional(pool)
+            .await?
+        }
+        "port_screenshot" => {
+            sqlx::query_as(
+                "SELECT CASE WHEN g.slug = p.slug THEN g.slug
+                             ELSE g.slug || '-' || p.slug END,
+                        coalesce(pm.position, pm.id::integer) + 1
+                 FROM port_media pm
+                 JOIN ports p ON p.id = pm.port_id
+                 JOIN games g ON g.id = p.game_id
+                 WHERE pm.media_id = $1
+                 ORDER BY p.id, pm.position NULLS LAST, pm.id
+                 LIMIT 1",
+            )
+            .bind(row.id)
+            .fetch_optional(pool)
+            .await?
+        }
+        "video_thumb" => {
+            sqlx::query_as(
+                "SELECT owner, sequence FROM (
+                    SELECT CASE WHEN p.id IS NULL OR g.slug = p.slug THEN g.slug
+                                ELSE g.slug || '-' || p.slug END AS owner,
+                           v.thumb_media_id,
+                           row_number() OVER (
+                               PARTITION BY v.game_id, v.port_id ORDER BY v.id
+                           )::integer AS sequence
+                    FROM videos v
+                    JOIN games g ON g.id = v.game_id
+                    LEFT JOIN ports p ON p.id = v.port_id
+                 ) videos
+                 WHERE thumb_media_id = $1
+                 LIMIT 1",
+            )
+            .bind(row.id)
+            .fetch_optional(pool)
+            .await?
+        }
+        "avatar" => {
+            sqlx::query_as(
+                "SELECT owner, 1 FROM (
+                    SELECT coalesce(nullif(pa.github_login, ''), pa.name) AS owner,
+                           0 AS source, p.id AS port_id, pa.position
+                    FROM port_authors pa
+                    JOIN ports p ON p.id = pa.port_id
+                    WHERE pa.avatar_media_id = $1 AND pa.github_login IS NOT NULL
+                    UNION ALL
+                    SELECT u.display_name AS owner, 1 AS source, u.id AS port_id, 0 AS position
+                    FROM users u
+                    WHERE u.avatar_media_id = $1
+                 ) owners
+                 ORDER BY source, port_id, position
+                 LIMIT 1",
+            )
+            .bind(row.id)
+            .fetch_optional(pool)
+            .await?
+        }
+        _ => None,
+    };
+    let (owner, preferred_number) = owner_and_number
+        .unwrap_or_else(|| (row.public_stem.clone(), 1));
+    Ok((
+        public_stem(&format!("{owner}-{kind}")),
+        preferred_number.max(1),
+    ))
+}
+
+/// Atomically reserves the stable public filename for one fully-written media row.
+pub async fn assign_public_filename(
+    pool: &PgPool,
+    media_id: i64,
+    base: &str,
+    preferred_number: i32,
+) -> DbResult<String> {
+    let base = public_stem(base);
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(&base)
+        .execute(&mut *tx)
+        .await?;
+    let existing: Option<Option<String>> =
+        sqlx::query_scalar("SELECT public_filename FROM media WHERE id = $1 FOR UPDATE")
+            .bind(media_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(existing) = existing else {
+        return Err(DbError::NotFound(format!("media {media_id}")));
+    };
+    if let Some(filename) = existing {
+        tx.commit().await?;
+        return Ok(filename);
+    }
+    for number in preferred_number.max(1).. {
+        let filename = format!("{base}-{number}.avif");
+        let claimed: bool = sqlx::query_scalar(
+            "SELECT NOT EXISTS (
+                 SELECT 1 FROM media WHERE public_filename = $1
+             )",
+        )
+        .bind(&filename)
+        .fetch_one(&mut *tx)
+        .await?;
+        if claimed {
+            sqlx::query(
+                "UPDATE media SET public_filename = $2
+                 WHERE id = $1 AND public_filename IS NULL",
+            )
+            .bind(media_id)
+            .bind(&filename)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(filename);
+        }
+        if number == i32::MAX {
+            return Err(DbError::Conflict("media filename sequence exhausted".to_string()));
+        }
+    }
+    unreachable!("unbounded positive sequence has an i32 maximum guard")
 }
 
 /// Atomically records the complete set of freshly-rendered assets and their source dimensions.

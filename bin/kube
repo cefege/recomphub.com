@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Run the production cluster's kubectl through the configured OVH SSH alias."""
+
+import os
+import shlex
+import sys
+
+if len(sys.argv) == 1:
+    print("Usage: bin/kube <kubectl arguments...>", file=sys.stderr)
+    raise SystemExit(2)
+
+remote = shlex.join(["sudo", "-n", "/usr/local/bin/kubectl", *sys.argv[1:]])
+os.execvp(
+    "ssh",
+    [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "ConnectTimeout=15",
+        "ovh1",
+        remote,
+    ],
+)
