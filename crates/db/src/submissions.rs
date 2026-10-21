@@ -248,12 +248,10 @@ pub fn merge_changes(
     Ok((full, before))
 }
 
-/// Creates a submission. Trusted submitters' `new_port` and `new_game` apply at once and are
-/// marked `auto_approved`: creating something new only adds to the catalog, so a few good
-/// submissions earning that is a reasonable bar. An `edit_port` changes a listing that may be
-/// someone else's work, and RecompHub cannot yet tell who that is (sign-in no longer carries a
-/// verified GitHub login), so edits always go to the moderation queue unless the submitter is a
-/// moderator. Enforces the banned check and the daily limit.
+/// Creates a submission. Every member `new_port` stays pending for automated triage and
+/// moderator review before publication. Trusted submitters may still auto-approve `new_game`
+/// submissions, while only moderators may auto-approve edits. Enforces the banned check and
+/// daily limit.
 pub async fn create(pool: &PgPool, new: &NewSubmission) -> DbResult<SubmissionRow> {
     if !SOURCES.contains(&new.source.as_str()) {
         return Err(DbError::InvalidPayload(format!(
@@ -278,11 +276,13 @@ pub async fn create(pool: &PgPool, new: &NewSubmission) -> DbResult<SubmissionRo
                 return Err(DbError::RateLimited(limit));
             }
             let role = user.role()?;
-            if new.kind == SubmissionKind::EditPort {
-                role.is_moderator()
-            } else {
-                let threshold = settings::get_i64(&mut *tx, "trust_threshold", 3).await?;
-                is_trusted(role, user.approved_count as i64, threshold)
+            match new.kind {
+                SubmissionKind::NewPort => false,
+                SubmissionKind::EditPort => role.is_moderator(),
+                _ => {
+                    let threshold = settings::get_i64(&mut *tx, "trust_threshold", 3).await?;
+                    is_trusted(role, user.approved_count as i64, threshold)
+                }
             }
         }
     };
@@ -301,10 +301,7 @@ pub async fn create(pool: &PgPool, new: &NewSubmission) -> DbResult<SubmissionRo
     .fetch_one(&mut *tx)
     .await?;
 
-    let auto = matches!(
-        new.kind,
-        SubmissionKind::NewPort | SubmissionKind::EditPort | SubmissionKind::NewGame
-    );
+    let auto = matches!(new.kind, SubmissionKind::EditPort | SubmissionKind::NewGame);
     if trusted && auto {
         apply(&mut tx, row.id, &ApproveOverrides::default()).await?;
         row = sqlx::query_as::<_, SubmissionRow>(

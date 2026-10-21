@@ -12,7 +12,7 @@ use recomphub::api::catalog::{self, GamesQuery};
 use recomphub::server::state::init_pool;
 use recomphub_db::PgPool;
 use recomphub_db::games::{self, IgdbGame};
-use recomphub_db::submissions::{self, NewSubmission};
+use recomphub_db::submissions::{self, ApproveOverrides, NewSubmission};
 use recomphub_shared::enums::{HitWindow, SubmissionKind};
 use serde_json::json;
 
@@ -80,14 +80,20 @@ async fn catalog_endpoints_return_expected_status_and_order() {
         .expect("gamma");
     drop(conn);
 
-    // Trusted submitter (approved_count >= threshold), so the port applies at once.
+    // New ports stay pending until a moderator approves them, including those from trusted members.
     let user: i64 = sqlx::query_scalar(
         "INSERT INTO users (display_name, github_login, approved_count) VALUES ('tester', 'tester', 3) RETURNING id",
     )
     .fetch_one(&pool)
     .await
     .expect("user");
-    submissions::create(
+    let moderator: i64 = sqlx::query_scalar(
+        "INSERT INTO users (display_name, github_login, role) VALUES ('moderator', 'moderator', 'moderator') RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("moderator");
+    let submission = submissions::create(
         &pool,
         &NewSubmission {
             kind: SubmissionKind::NewPort,
@@ -106,6 +112,16 @@ async fn catalog_endpoints_return_expected_status_and_order() {
     )
     .await
     .expect("trusted port");
+    assert_eq!(submission.status, "pending");
+    submissions::approve(
+        &pool,
+        submission.id,
+        moderator,
+        &ApproveOverrides::default(),
+        None,
+    )
+    .await
+    .expect("approve port");
 
     // Unknown slug and unknown id are 404, not empty pages.
     let err = catalog::game_detail("no-such-game".to_string())

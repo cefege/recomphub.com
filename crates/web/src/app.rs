@@ -6,11 +6,11 @@ use dioxus::prelude::*;
 use crate::api;
 use crate::components::styles::{
     BADGE, BADGE_PRIMARY, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_ICON, BUTTON_MD,
-    BUTTON_OUTLINE, BUTTON_SM, CARD_SURFACE, INPUT, MENU_ITEM, POPOVER,
+    BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM, CARD_SURFACE, INPUT, MENU_ITEM, POPOVER,
 };
 use crate::components::{
-    DiscordCount, DiscordLink, LibraryStore, LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl,
-    ViewerStore, initials_of, login_redirect, set_me, set_me_error,
+    DiscordCount, DiscordLink, LibraryStore, LiveSocket, LiveStore, Picture, SiteUrl, ViewerStore,
+    initials_of, login_redirect, set_me, set_me_error,
 };
 use crate::pages::RouteError;
 use crate::routes::Route;
@@ -167,7 +167,13 @@ pub fn Shell() -> Element {
                                     class: "{INPUT} h-8 w-full",
                                 }
                             }
-                            for (href, label) in NAV {
+                            for (href, label) in PRIMARY_NAV {
+                                a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
+                            }
+                            a { href: "/submit", class: MENU_ITEM, "Submit a port" }
+                            div { class: "mx-2 my-1 h-px bg-border" }
+                            p { class: "px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground", "More" }
+                            for (href, label) in MORE_NAV {
                                 a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
                             }
                             DiscordLink {
@@ -182,11 +188,20 @@ pub fn Shell() -> Element {
                         span { "RecompHub" }
                     }
                     nav { class: "hidden items-center gap-5 text-sm lg:flex", "aria-label": "Main",
-                        for (href, label) in NAV {
+                        for (href, label) in PRIMARY_NAV {
                             a { key: "{href}", href: "{href}", class: "text-muted-foreground transition-colors hover:text-foreground", "{label}" }
+                        }
+                        details { class: "relative",
+                            summary { class: "cursor-pointer list-none text-muted-foreground transition-colors hover:text-foreground", "More" }
+                            div { class: "{POPOVER} absolute left-0 mt-2 flex w-44 flex-col",
+                                for (href, label) in MORE_NAV {
+                                    a { key: "{href}", href: "{href}", class: MENU_ITEM, "{label}" }
+                                }
+                            }
                         }
                     }
                     div { class: "ml-auto flex items-center gap-2",
+                        a { href: "/submit", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM} hidden sm:inline-flex", "Submit a port" }
                         form { action: "/search", method: "get", role: "search", class: "hidden lg:block",
                             input {
                                 r#type: "search",
@@ -198,12 +213,6 @@ pub fn Shell() -> Element {
                         }
                         a { href: "/search", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} lg:hidden", "aria-label": "Search",
                             SearchIcon { class: "size-4" }
-                        }
-                        OnlineCount {}
-                        DiscordLink {
-                            href: DISCORD_INVITE_HEADER,
-                            label: "Join Discord",
-                            class: "{BUTTON} {BUTTON_DISCORD} {BUTTON_SM} hidden sm:inline-flex",
                         }
                         button {
                             r#type: "button",
@@ -302,9 +311,6 @@ pub fn Shell() -> Element {
                             a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
                             a { href: "/privacy#privacy-choices", class: "transition-colors hover:text-foreground", "Cookie settings" }
                         }
-                        a { href: "/feed.xml", class: "transition-colors hover:text-foreground", "RSS" }
-                        a { href: "/privacy", class: "transition-colors hover:text-foreground", "Privacy" }
-                        a { href: "/privacy#privacy-choices", class: "transition-colors hover:text-foreground", "Cookie settings" }
                     }
                 }
             }
@@ -312,16 +318,19 @@ pub fn Shell() -> Element {
     }
 }
 
-/// Main navigation: (href, label).
-const NAV: [(&str, &str); 8] = [
+/// Primary navigation: the three most common catalog destinations.
+const PRIMARY_NAV: [(&str, &str); 3] = [
+    ("/games", "Browse"),
     ("/trending", "Trending"),
-    ("/games", "Games"),
     ("/library", "Library"),
+];
+
+/// Secondary destinations, available without competing with the primary catalog flow.
+const MORE_NAV: [(&str, &str); 4] = [
     ("/platforms", "Platforms"),
-    ("/stats", "Stats"),
     ("/wanted", "Wanted"),
-    ("/creators", "For creators"),
-    ("/submit", "Submit"),
+    ("/stats", "Stats"),
+    ("/creators", "Creators"),
 ];
 
 /// Count of pending member submissions, screenshots and videos, shown next to the Moderation

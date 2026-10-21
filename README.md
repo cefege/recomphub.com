@@ -76,7 +76,7 @@ Publishing the message requires authenticated account access. Until it is publis
 
 Imported game descriptions are attributed to IGDB. FAQ comparisons describe recorded targets and community playability labels, not independent testing or editorial recommendations. Generated FAQs use the `facts-v2:` source-hash prefix; older cached answers are excluded until the existing ingest job regenerates them. This cutover requires no migration or manual database write.
 
-About, report dialogs and port download panels explain external releases, original game assets and copyright reporting. Reports can be emailed to `mateiasmihaiandrei@gmail.com` without signing in. These disclosures do not verify linked files or replace editorial review. Trusted-submitters' existing publication behavior is unchanged; review questionable listings and releases before seeking AdSense approval.
+About, report dialogs and port download panels explain external releases, original game assets and copyright reporting. Reports can be emailed to `mateiasmihaiandrei@gmail.com` without signing in. These disclosures do not verify linked files or replace editorial review. Every member-submitted new port stays pending for evidence triage and moderator approval before publication, regardless of contributor history.
 
 ## Environment variables
 

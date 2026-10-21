@@ -104,7 +104,7 @@ async fn media_claims_recover_after_worker_disconnect_and_retry_later(
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn trusted_new_port_is_auto_approved_and_published(pool: PgPool) -> DbResult<()> {
+async fn trusted_new_port_requires_review(pool: PgPool) -> DbResult<()> {
     let game = make_game(&pool, 1, "Game A", "game-a").await?;
     let uid = make_user(&pool, 100, "trusted", "user", 3).await?;
     let sub = submissions::create(
@@ -115,15 +115,14 @@ async fn trusted_new_port_is_auto_approved_and_published(pool: PgPool) -> DbResu
         ),
     )
     .await?;
-    assert_eq!(sub.status, "auto_approved");
-    let port_id = sub
-        .target_port_id
-        .expect("trusted submission sets the port id");
-    let status = sqlx::query_scalar::<_, String>("SELECT status FROM ports WHERE id = $1")
-        .bind(port_id)
-        .fetch_one(&pool)
-        .await?;
-    assert_eq!(status, "published");
+    assert_eq!(sub.status, "pending");
+    assert!(sub.target_port_id.is_none());
+    let ports_found =
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ports WHERE repo_url = $1")
+            .bind("https://github.com/a/port-a")
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(ports_found, 0);
     Ok(())
 }
 
@@ -188,7 +187,16 @@ async fn revert_of_edit_restores_old_values(pool: PgPool) -> DbResult<()> {
         ),
     )
     .await?;
-    let port_id = created.target_port_id.expect("port created");
+    assert_eq!(created.status, "pending");
+    let approved = submissions::approve(
+        &pool,
+        created.id,
+        moderator,
+        &ApproveOverrides::default(),
+        None,
+    )
+    .await?;
+    let port_id = approved.target_port_id.expect("approved port created");
 
     let edit = submissions::create(
         &pool,
@@ -285,7 +293,16 @@ async fn star_unstar_star_records_one_activity_row(pool: PgPool) -> DbResult<()>
         ),
     )
     .await?;
-    let port_id = created.target_port_id.expect("port created");
+    assert_eq!(created.status, "pending");
+    let approved = submissions::approve(
+        &pool,
+        created.id,
+        moderator,
+        &ApproveOverrides::default(),
+        None,
+    )
+    .await?;
+    let port_id = approved.target_port_id.expect("approved port created");
     let fan = make_user(&pool, 106, "fan", "user", 0).await?;
 
     let first = stars::toggle_star(&pool, port_id, fan).await?;

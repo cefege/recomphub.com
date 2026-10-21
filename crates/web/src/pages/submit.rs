@@ -10,7 +10,7 @@ use recomphub_shared::{
 
 use crate::api;
 use crate::components::styles::*;
-use crate::components::{GroundRules, Seo, SignedIn, ViewerStore, ai_text};
+use crate::components::{Seo, SignedIn, ViewerStore, ai_text};
 use crate::routes::Route;
 
 const DESCRIPTION_MAX: usize = 2000;
@@ -184,10 +184,9 @@ fn SubmitForm(game: String, repo: String) -> Element {
             start_preview(w, prefill_repo.clone());
         }
     });
-    if let Some(result) = w.result.read().clone() {
+    if w.result.read().is_some() {
         return rsx! {
             SubmitConfirmation {
-                result,
                 on_submit_another: move |_| reset_submit_form(w),
             }
         };
@@ -200,21 +199,24 @@ fn SubmitForm(game: String, repo: String) -> Element {
         .unwrap_or_default();
     let target_now = w.target.read().clone();
     let preview_now = w.preview.read().clone();
+    let preview_ready = preview_now.is_some();
 
     rsx! {
-        div { class: "mx-auto max-w-3xl space-y-12",
+        div { class: "mx-auto max-w-3xl space-y-8",
             header {
-                h1 { class: H1, "Submit a port" }
+                h1 { class: H1, "Add a port" }
                 p { class: "{LEAD} mt-2 max-w-2xl",
-                    "Paste a GitHub repository, pick the game, and check the details. Trusted accounts publish right away."
+                    "Paste a GitHub repository, match it to a game, and send it for review. We read the repository details and triage every submission before publication."
                 }
                 if let Some(msg) = w.error.read().clone() {
                     p { class: "mt-6 rounded-lg border border-destructive/50 p-4 text-sm text-destructive", "{msg}" }
                 }
             }
-            GroundRules { class: "mb-8" }
 
-            FormPanel { heading: "1. The repository".to_string(),
+            FormPanel { heading: "1. GitHub repository".to_string(),
+                p { class: "text-sm text-muted-foreground",
+                    "We import the project name, contributors, platforms, license, and AI signals for you."
+                }
                 div { class: "flex flex-col gap-2 sm:flex-row",
                     input {
                         class: INPUT,
@@ -228,7 +230,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
                         class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
                         disabled: *w.busy.read(),
                         onclick: move |_| start_preview(w, w.repo_url.read().clone()),
-                        "Fetch details"
+                        "Check repository"
                     }
                 }
                 if let Some((game_slug, port_slug)) = w.already.read().clone() {
@@ -246,7 +248,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
                 }
             }
 
-            FormPanel { heading: "2. The game".to_string(),
+            FormPanel { heading: "2. Match the game".to_string(),
                 if let Some(t) = target_now {
                     div { class: "flex flex-wrap items-center justify-between gap-3",
                         p { class: "font-medium",
@@ -279,7 +281,7 @@ fn SubmitForm(game: String, repo: String) -> Element {
                                 r#type: "button",
                                 class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}",
                                 onclick: move |_| search_games(w, game_query.read().clone(), true),
-                                "Not listed? Search all games"
+                                "Search all games"
                             }
                         }
                         ul { class: "grid gap-2 sm:grid-cols-2",
@@ -298,13 +300,18 @@ fn SubmitForm(game: String, repo: String) -> Element {
                 }
             }
 
-            FormPanel { heading: "3. The port".to_string(),
-                PortFields { draft: w.draft, full: true, platforms: platforms.clone() }
-            }
-
-            FormPanel { heading: "4. Submit".to_string(),
+            FormPanel { heading: "3. Send for review".to_string(),
                 p { class: "text-sm text-muted-foreground",
-                    "Everyone else's submission goes to the moderation queue, and moderators review it before it is published."
+                    "A moderator reviews the repository and its automated triage before anything is published."
+                }
+                details { class: "rounded-lg border p-4",
+                    summary { class: "cursor-pointer font-medium", "Correct imported details (optional)" }
+                    p { class: "mt-2 text-sm text-muted-foreground",
+                        "Most projects need no changes. Open this only when the repository data is wrong or incomplete."
+                    }
+                    div { class: "mt-4",
+                        PortFields { draft: w.draft, full: true, platforms: platforms.clone() }
+                    }
                 }
                 label { class: "flex items-start gap-2 text-sm",
                     input {
@@ -313,17 +320,24 @@ fn SubmitForm(game: String, repo: String) -> Element {
                         checked: *w.rules_ok.read(),
                         onchange: move |e| w.rules_ok.set(e.checked()),
                     }
-                    span { "This project follows the ground rules and ships no game data" }
+                    span {
+                        "This project follows the "
+                        Link { to: Route::About {}, class: TEXT_LINK, "ground rules" }
+                        " and ships no game data."
+                    }
+                }
+                if !preview_ready {
+                    p { class: "text-sm text-muted-foreground", "Check the repository before sending." }
                 }
                 button {
                     r#type: "button",
                     class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} w-fit",
-                    disabled: *w.busy.read() || !*w.rules_ok.read(),
+                    disabled: *w.busy.read() || !*w.rules_ok.read() || !preview_ready,
                     onclick: move |_| submit_port(w),
                     if *w.busy.read() {
-                        "Submitting…"
+                        "Sending…"
                     } else {
-                        "Submit port"
+                        "Send for review"
                     }
                 }
             }
@@ -671,7 +685,7 @@ fn PreviewSummary(data: RepoPreviewData) -> Element {
 /// Full confirmation shown after a new-port submission. Replacing the form makes a completed
 /// submission unambiguous and prevents an accidental second click from creating a duplicate.
 #[component]
-fn SubmitConfirmation(result: SubmitResult, on_submit_another: EventHandler<()>) -> Element {
+fn SubmitConfirmation(on_submit_another: EventHandler<()>) -> Element {
     let viewer = use_context::<ViewerStore>();
     let first_name = viewer
         .me
@@ -685,48 +699,26 @@ fn SubmitConfirmation(result: SubmitResult, on_submit_another: EventHandler<()>)
                 .to_string()
         })
         .unwrap_or_else(|| "there".to_string());
-    let (heading, detail) = if result.published {
-        (
-            "Your port is live.",
-            "It was published immediately and is now visible on RecompHub.",
-        )
-    } else {
-        (
-            "Submission received.",
-            "Your project is in the moderation queue and will be reviewed before it is published.",
-        )
-    };
     rsx! {
         div { class: "mx-auto max-w-2xl space-y-8 py-8",
             header { class: "space-y-2",
                 p { class: "text-sm font-medium text-success", "Thanks, {first_name}!" }
-                h1 { class: H1, "{heading}" }
-                p { class: LEAD, "{detail}" }
+                h1 { class: H1, "Submission received." }
+                p { class: LEAD, "Your project is in the moderation queue and will be reviewed before publication." }
             }
-            if !result.published {
-                div { class: "rounded-lg border border-success/50 bg-success/10 p-5 text-sm",
-                    p { class: "font-medium", "No need to submit it again — we have it." }
-                    ol { class: "mt-3 list-decimal space-y-1 pl-5 text-muted-foreground",
-                        li { "A moderator checks the project, game match, and submitted details." }
-                        li { "If it is approved, it will appear publicly on RecompHub." }
-                        li { "You can check its status anytime under My submissions." }
-                    }
+            div { class: "rounded-lg border border-success/50 bg-success/10 p-5 text-sm",
+                p { class: "font-medium", "No need to submit it again — we have it." }
+                ol { class: "mt-3 list-decimal space-y-1 pl-5 text-muted-foreground",
+                    li { "Automated triage checks the repository evidence." }
+                    li { "A moderator checks the project, game match, and submitted details." }
+                    li { "If it is approved, it will appear publicly on RecompHub." }
                 }
             }
             div { class: "flex flex-wrap gap-3",
-                if let (Some(game_slug), Some(port_slug)) = (result.game_slug.clone(), result.port_slug.clone()) {
-                    Link {
-                        to: Route::PortPage { game_slug, port_slug },
-                        class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}",
-                        "View the port"
-                    }
-                }
-                if !result.published {
-                    Link {
-                        to: Route::AccountPage {},
-                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
-                        "My submissions"
-                    }
+                Link {
+                    to: Route::AccountPage {},
+                    class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",
+                    "My submissions"
                 }
                 button {
                     r#type: "button",

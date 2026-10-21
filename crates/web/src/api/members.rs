@@ -477,7 +477,7 @@ pub async fn preview_repo(url: String) -> Result<RepoPreview, ServerFnError> {
     })))
 }
 
-/// Submits a new port for review. Trusted submitters' ports are published at once.
+/// Submits a new port for evidence triage and moderator review.
 #[post("/api/submit")]
 pub async fn submit(input: SubmitInput) -> Result<SubmitResult, ServerFnError> {
     let viewer = require_user().await?;
@@ -491,7 +491,6 @@ pub async fn submit(input: SubmitInput) -> Result<SubmitResult, ServerFnError> {
     let (game_id, new_game) = resolve_game(pool, game_id, igdb_id).await?;
     let full = port_from_form(port)?;
     let submitter_is_author = is_author_of(viewer.github_login.as_deref(), &full);
-    let repo_url = full.input.repo_url.clone();
     let ps = PortSubmission {
         game_id,
         new_game,
@@ -513,26 +512,11 @@ pub async fn submit(input: SubmitInput) -> Result<SubmitResult, ServerFnError> {
     )
     .await
     .map_err(db_error)?;
-    let published = sub.status == "auto_approved";
-    let (game_slug, port_slug) = if published {
-        match ports::find_by_repo_url(pool, &repo_url)
-            .await
-            .map_err(db_error)?
-        {
-            Some(row) => {
-                let (g, p) = slugs_for(pool, &row).await?;
-                (Some(g), Some(p))
-            }
-            None => (None, None),
-        }
-    } else {
-        (None, None)
-    };
     Ok(SubmitResult {
         submission_id: sub.id,
-        published,
-        game_slug,
-        port_slug,
+        published: false,
+        game_slug: None,
+        port_slug: None,
     })
 }
 
