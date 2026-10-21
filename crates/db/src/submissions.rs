@@ -4,7 +4,10 @@ use crate::games::IgdbGame;
 use crate::ports::{PortFull, normalize_repo_url};
 use crate::{DbError, DbResult, activity, games, ports, settings, users_sessions};
 use chrono::{DateTime, Utc};
-use recomphub_shared::{ModerationQueueCounts, ModerationQueueQuery, QueueLane, TriageStateFilter, PortKind, Role, SubmissionKind, SubmissionStatus};
+use recomphub_shared::{
+    ModerationQueueCounts, ModerationQueueQuery, PortKind, QueueLane, Role, SubmissionKind,
+    SubmissionStatus, TriageStateFilter,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sqlx::{PgConnection, PgPool};
@@ -132,11 +135,18 @@ pub async fn due_for_triage(
                     .as_ref()
                     .is_some_and(|v| v.get("assessment").is_none_or(Value::is_null))
             {
-                if submission.source == "user" { "unclassified_member" } else { "unclassified_candidate" }
+                if submission.source == "user" {
+                    "unclassified_member"
+                } else {
+                    "unclassified_candidate"
+                }
             } else {
                 "refresh"
             };
-            TriageDueRow { submission, reason: reason.to_string() }
+            TriageDueRow {
+                submission,
+                reason: reason.to_string(),
+            }
         })
         .collect())
 }
@@ -166,7 +176,8 @@ pub async fn save_triage(
     .bind(error)
     .execute(pool)
     .await?
-    .rows_affected() == 1;
+    .rows_affected()
+        == 1;
     Ok(changed)
 }
 
@@ -399,7 +410,10 @@ async fn apply_new_port(
         ps.port.input.playability = playability.as_str().to_string();
     }
     if let Some(targets) = &ov.declared_platforms {
-        ps.port.input.declared_platforms = targets.iter().map(|target| target.as_str().to_string()).collect();
+        ps.port.input.declared_platforms = targets
+            .iter()
+            .map(|target| target.as_str().to_string())
+            .collect();
     }
     let original_repo = ports::normalize_repo_url(&ps.port.input.repo_url)?;
     if let Some(existing) = ports::find_by_repo_url(&mut *conn, &original_repo).await? {
@@ -523,7 +537,9 @@ pub async fn approve(
     if let Some(expected) = expected_triage_revision
         && sub.triage_revision != expected
     {
-        return Err(DbError::Conflict("Submission evidence changed; reload before reviewing.".to_string()));
+        return Err(DbError::Conflict(
+            "Submission evidence changed; reload before reviewing.".to_string(),
+        ));
     }
     apply(&mut tx, id, ov).await?;
     if let Some(uid) = sub.submitter_id {
@@ -555,7 +571,9 @@ pub async fn reject(
     if let Some(expected) = expected_triage_revision
         && sub.triage_revision != expected
     {
-        return Err(DbError::Conflict("Submission evidence changed; reload before reviewing.".to_string()));
+        return Err(DbError::Conflict(
+            "Submission evidence changed; reload before reviewing.".to_string(),
+        ));
     }
     let row = sqlx::query_as::<_, SubmissionRow>(
         "UPDATE submissions SET status = 'rejected', reviewer_id = $2, review_note = $3, reviewed_at = now()
@@ -668,9 +686,11 @@ pub async fn get(conn: &mut PgConnection, id: i64) -> DbResult<SubmissionRow> {
         .ok_or_else(|| DbError::NotFound(format!("submission {id}")))
 }
 
-
 /// Loads one fixed-size pending queue lane plus global moderator counts.
-pub async fn list_pending_page(pool: &PgPool, query: &ModerationQueueQuery) -> DbResult<PendingPage> {
+pub async fn list_pending_page(
+    pool: &PgPool,
+    query: &ModerationQueueQuery,
+) -> DbResult<PendingPage> {
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         .execute(&mut *tx)
@@ -680,7 +700,12 @@ pub async fn list_pending_page(pool: &PgPool, query: &ModerationQueueQuery) -> D
     let confidence = query.confidence.map(enum_wire);
     let target = query.target.map(enum_wire);
     let playability = query.playability.map(enum_wire);
-    let state = match query.triage_state { TriageStateFilter::All => "all", TriageStateFilter::Untriaged => "untriaged", TriageStateFilter::Classified => "classified", TriageStateFilter::Failed => "failed" };
+    let state = match query.triage_state {
+        TriageStateFilter::All => "all",
+        TriageStateFilter::Untriaged => "untriaged",
+        TriageStateFilter::Classified => "classified",
+        TriageStateFilter::Failed => "failed",
+    };
     let member_lane = query.lane == QueueLane::Members;
     let version = recomphub_shared::TRIAGE_VERSION.to_string();
     let predicate = "s.status = 'pending' AND (s.source = 'user') = $1
@@ -690,8 +715,19 @@ pub async fn list_pending_page(pool: &PgPool, query: &ModerationQueueQuery) -> D
         AND ($6::text IS NULL OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->'assessment'->'targets' @> jsonb_build_array(to_jsonb($6::text)))
         AND (NOT $7 OR s.triage_error IS NULL AND s.triage->>'version' = $3 AND jsonb_array_length(COALESCE(s.triage->'assessment'->'warnings', '[]'::jsonb)) > 0)
         AND ($8 = 'all' OR ($8 = 'failed' AND s.triage_error IS NOT NULL) OR ($8 = 'classified' AND s.triage_error IS NULL AND s.triage->>'version' = $3 AND s.triage->>'assessment' IS NOT NULL) OR ($8 = 'untriaged' AND s.triage_error IS NULL AND (s.triage IS NULL OR s.triage->>'version' <> $3 OR s.triage->>'assessment' IS NULL)))";
-    let total: i64 = sqlx::query_scalar(&format!("SELECT count(*)::bigint FROM submissions s WHERE {predicate}"))
-        .bind(member_lane).bind(category.as_deref()).bind(&version).bind(confidence.as_deref()).bind(playability.as_deref()).bind(target.as_deref()).bind(query.flagged_only).bind(state).fetch_one(&mut *tx).await?;
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT count(*)::bigint FROM submissions s WHERE {predicate}"
+    ))
+    .bind(member_lane)
+    .bind(category.as_deref())
+    .bind(&version)
+    .bind(confidence.as_deref())
+    .bind(playability.as_deref())
+    .bind(target.as_deref())
+    .bind(query.flagged_only)
+    .bind(state)
+    .fetch_one(&mut *tx)
+    .await?;
     let pages = ((total + PAGE_SIZE - 1) / PAGE_SIZE).max(1);
     let page = query.page.clamp(1, pages);
     let items = sqlx::query_as::<_, PendingRow>(&format!("SELECT s.*, u.display_name AS submitter_name, u.approved_count::bigint AS submitter_approved FROM submissions s LEFT JOIN users u ON u.id=s.submitter_id WHERE {predicate} ORDER BY s.created_at, s.id LIMIT $9 OFFSET $10"))
@@ -707,11 +743,31 @@ pub async fn list_pending_page(pool: &PgPool, query: &ModerationQueueQuery) -> D
           count(*) FILTER (WHERE source<>'user' AND triage_error IS NOT NULL)::bigint FROM submissions WHERE status='pending'",
     ).bind(&version).fetch_one(&mut *tx).await?;
     tx.commit().await?;
-    Ok(PendingPage { items, page, pages, total, counts: ModerationQueueCounts { members: counts.0, found: counts.1, game_project: counts.2, tooling: counts.3, reference: counts.4, unrelated: counts.5, uncertain: counts.6, untriaged: counts.7, failed: counts.8 } })
+    Ok(PendingPage {
+        items,
+        page,
+        pages,
+        total,
+        counts: ModerationQueueCounts {
+            members: counts.0,
+            found: counts.1,
+            game_project: counts.2,
+            tooling: counts.3,
+            reference: counts.4,
+            unrelated: counts.5,
+            uncertain: counts.6,
+            untriaged: counts.7,
+            failed: counts.8,
+        },
+    })
 }
 
 fn enum_wire<T: Serialize>(value: T) -> String {
-    serde_json::to_value(value).expect("triage enum serialization").as_str().expect("triage enum string").to_string()
+    serde_json::to_value(value)
+        .expect("triage enum serialization")
+        .as_str()
+        .expect("triage enum string")
+        .to_string()
 }
 
 /// Count of pending submissions from real members (not discovery/import), for the admin nav badge.

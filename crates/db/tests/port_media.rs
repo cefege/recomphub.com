@@ -228,11 +228,16 @@ async fn game_screenshot_filenames_follow_stable_relation_order(pool: PgPool) ->
         .await?;
 
     let first_row = media::get(&pool, first).await?.expect("queued first media");
-    let second_row = media::get(&pool, second).await?.expect("queued second media");
+    let second_row = media::get(&pool, second)
+        .await?
+        .expect("queued second media");
     let (first_base, first_number) = media::public_filename_input(&pool, &first_row).await?;
     let (second_base, second_number) = media::public_filename_input(&pool, &second_row).await?;
     assert_eq!((first_base.as_str(), first_number), ("game-screenshot", 1));
-    assert_eq!((second_base.as_str(), second_number), ("game-screenshot", 2));
+    assert_eq!(
+        (second_base.as_str(), second_number),
+        ("game-screenshot", 2)
+    );
 
     let (first_name, second_name) = tokio::try_join!(
         media::assign_public_filename(&pool, first, &first_base, first_number),

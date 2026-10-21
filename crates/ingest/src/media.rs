@@ -51,9 +51,9 @@ pub fn output_path(
     render_version: i32,
     width: u32,
 ) -> PathBuf {
-    media_dir
-        .join(kind)
-        .join(format!("{public_stem}-{hash}-v{render_version}-{width}.avif"))
+    media_dir.join(kind).join(format!(
+        "{public_stem}-{hash}-v{render_version}-{width}.avif"
+    ))
 }
 
 fn legacy_output_path(media_dir: &Path, kind: &str, hash: &str, width: u32) -> PathBuf {
@@ -98,7 +98,11 @@ pub async fn download(http: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
         bail!("{url} is {len} bytes, over the {MAX_DOWNLOAD_BYTES} byte cap");
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.with_context(|| format!("reading {url}"))? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .with_context(|| format!("reading {url}"))?
+    {
         if body.len() + chunk.len() > MAX_DOWNLOAD_BYTES {
             bail!("{url} exceeds the {MAX_DOWNLOAD_BYTES} byte cap");
         }
@@ -114,8 +118,14 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
             .with_context(|| format!("creating {}", parent.display()))?;
     }
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
-    let filename = path.file_name().and_then(|name| name.to_str()).unwrap_or("media");
-    let tmp = path.with_file_name(format!(".{filename}-{:016x}.{extension}.tmp", random::<u64>()));
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("media");
+    let tmp = path.with_file_name(format!(
+        ".{filename}-{:016x}.{extension}.tmp",
+        random::<u64>()
+    ));
     std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
     Ok(())
@@ -148,7 +158,9 @@ fn encode_avif(img: &DynamicImage, width: u32, quality: u8) -> Result<Vec<u8>> {
     let branded = watermark(resized, width, width >= 160)?;
     let mut out = Vec::new();
     branded
-        .write_with_encoder(AvifEncoder::new_with_speed_quality(&mut out, AVIF_SPEED, quality))
+        .write_with_encoder(AvifEncoder::new_with_speed_quality(
+            &mut out, AVIF_SPEED, quality,
+        ))
         .context("encoding AVIF")?;
     Ok(out)
 }
@@ -159,9 +171,7 @@ fn encode_og(img: &DynamicImage) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     branded
         .write_with_encoder(AvifEncoder::new_with_speed_quality(
-            &mut out,
-            AVIF_SPEED,
-            OG_QUALITY,
+            &mut out, AVIF_SPEED, OG_QUALITY,
         ))
         .context("encoding og AVIF")?;
     Ok(out)
@@ -190,7 +200,14 @@ pub async fn render(
                 bail!("og source is {src_w} px wide; at least {OG_WIDTH} px is required");
             }
             write_atomic(
-                &output_path(&media_dir, &kind, &public_stem, &hash, render_version, OG_WIDTH),
+                &output_path(
+                    &media_dir,
+                    &kind,
+                    &public_stem,
+                    &hash,
+                    render_version,
+                    OG_WIDTH,
+                ),
                 &encode_og(&img)?,
             )?;
             return Ok((src_w, src_h, vec![OG_WIDTH]));
@@ -201,7 +218,14 @@ pub async fn render(
         }
         for width in &widths {
             write_atomic(
-                &output_path(&media_dir, &kind, &public_stem, &hash, render_version, *width),
+                &output_path(
+                    &media_dir,
+                    &kind,
+                    &public_stem,
+                    &hash,
+                    render_version,
+                    *width,
+                ),
                 &encode_avif(&img, *width, AVIF_QUALITY)?,
             )?;
         }
@@ -353,9 +377,9 @@ pub async fn process_row(
         let bytes = if row.status == "ready" && row.render_version < MEDIA_RENDER_VERSION {
             match existing_rendition(dir, row).await {
                 Ok(bytes) => bytes,
-                Err(existing_error) => source
-                    .await
-                    .with_context(|| format!("reading prior rendition failed: {existing_error:#}"))?,
+                Err(existing_error) => source.await.with_context(|| {
+                    format!("reading prior rendition failed: {existing_error:#}")
+                })?,
             }
         } else {
             match source.await {
@@ -454,7 +478,10 @@ async fn process_claimed_one(
     http: &reqwest::Client,
     media_dir: &Path,
 ) -> Result<Option<bool>> {
-    let mut connection = pool.acquire().await.context("acquiring media claim connection")?;
+    let mut connection = pool
+        .acquire()
+        .await
+        .context("acquiring media claim connection")?;
     let Some(row) = media::claim_next(&mut connection, MEDIA_RENDER_VERSION).await? else {
         return Ok(None);
     };
@@ -586,7 +613,15 @@ mod tests {
         let old_jpeg = dir.join("og").join(format!("{}-1200.jpg", og.hash));
         std::fs::create_dir_all(old_jpeg.parent().expect("OG parent"))?;
         std::fs::write(&old_jpeg, jpeg.into_inner())?;
-        media::mark_ready(&pool, og.id, vec![1200], 1200, 630, MEDIA_RENDER_VERSION - 1).await?;
+        media::mark_ready(
+            &pool,
+            og.id,
+            vec![1200],
+            1200,
+            630,
+            MEDIA_RENDER_VERSION - 1,
+        )
+        .await?;
         let old_og = media::get(&pool, og.id).await?.expect("ready OG media");
         assert!(process_row(&pool, &http, &dir, &old_og).await?);
         let refreshed_og = media::get(&pool, og.id).await?.expect("refreshed OG media");
@@ -602,9 +637,16 @@ mod tests {
         );
         assert_eq!(image::open(og_path)?.dimensions(), (1200, 630));
 
-        let failed_id =
-            media::enqueue(&pool, "screenshot", "https://127.0.0.1:1/failed.png", "failed").await?;
-        let failed = media::get(&pool, failed_id).await?.expect("queued failed fixture");
+        let failed_id = media::enqueue(
+            &pool,
+            "screenshot",
+            "https://127.0.0.1:1/failed.png",
+            "failed",
+        )
+        .await?;
+        let failed = media::get(&pool, failed_id)
+            .await?
+            .expect("queued failed fixture");
         media::mark_ready(
             &pool,
             failed.id,
@@ -625,17 +667,28 @@ mod tests {
         std::fs::create_dir_all(failed_path.parent().expect("failed parent"))?;
         let original = b"old-but-corrupt-rendition".to_vec();
         std::fs::write(&failed_path, &original)?;
-        let failed_before = media::get(&pool, failed.id).await?.expect("ready failed fixture");
+        let failed_before = media::get(&pool, failed.id)
+            .await?
+            .expect("ready failed fixture");
         assert!(!process_row(&pool, &http, &dir, &failed_before).await?);
-        let failed_after = media::get(&pool, failed.id).await?.expect("failed refresh fixture");
+        let failed_after = media::get(&pool, failed.id)
+            .await?
+            .expect("failed refresh fixture");
         assert_eq!(failed_after.status, "ready");
         assert_eq!(failed_after.render_version, MEDIA_RENDER_VERSION - 1);
         assert_eq!(failed_after.widths, vec![960]);
         assert_eq!(std::fs::read(&failed_path)?, original);
 
-        let current_id =
-            media::enqueue(&pool, "screenshot", "https://127.0.0.1:1/current.png", "current").await?;
-        let current = media::get(&pool, current_id).await?.expect("queued current fixture");
+        let current_id = media::enqueue(
+            &pool,
+            "screenshot",
+            "https://127.0.0.1:1/current.png",
+            "current",
+        )
+        .await?;
+        let current = media::get(&pool, current_id)
+            .await?
+            .expect("queued current fixture");
         let mut png = Cursor::new(Vec::new());
         DynamicImage::new_rgba8(960, 540).write_to(&mut png, ImageFormat::Png)?;
         let (width, height, widths) = render(
@@ -665,9 +718,13 @@ mod tests {
             960,
         );
         let bytes_before = std::fs::read(&current_path)?;
-        let current_before = media::get(&pool, current.id).await?.expect("ready current fixture");
+        let current_before = media::get(&pool, current.id)
+            .await?
+            .expect("ready current fixture");
         assert!(process_row(&pool, &http, &dir, &current_before).await?);
-        let current_after = media::get(&pool, current.id).await?.expect("named current fixture");
+        let current_after = media::get(&pool, current.id)
+            .await?
+            .expect("named current fixture");
         assert!(current_after.public_filename.is_some());
         assert_eq!(std::fs::read(current_path)?, bytes_before);
 

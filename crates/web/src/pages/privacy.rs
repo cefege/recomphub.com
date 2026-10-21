@@ -61,6 +61,7 @@ pub fn PrivacyPage() -> Element {
                     }
                     li { "Your light or dark theme choice is kept in your browser's local storage." }
                     li { "Gameplay videos load from youtube-nocookie.com only after you press play. YouTube's own privacy policy applies to the player." }
+                    li { "If you save games while signed out, their game ids are stored only in this browser's local storage. They are not installed games, do not contain game files or saves, and can be cleared from Your library. Browser storage may be unavailable or cleared by browser settings." }
                 }
             }
             Section { heading: "Advertising".to_string(),
@@ -117,13 +118,14 @@ pub fn PrivacyPage() -> Element {
                     li { "your email address, shown only to the site admin and used to recognise the admin account. It is never shown publicly." }
                 }
                 p { "A sign-in cookie keeps you signed in for up to 30 days. RecompHub does not post anything or read anything else from your Google account." }
+                p { "Saved games are private account bookmarks. When you sign in, valid device-only saved games are additively copied into your account; existing account saved games are never replaced. Signing out does not copy account saved games back to device storage." }
                 p { "Stars, wants, ratings, comments and submissions you make are stored with your account. Comments, ratings and submissions are public; stars and wants are counted without showing who made them." }
             }
             Section { heading: "Deleting your data".to_string(),
                 p {
-                    "To have your account and everything attached to it deleted, open an issue at "
+                    "To have your account and everything attached to it, including private saved games, deleted, open an issue at "
                     a { href: "https://github.com/cefege/recomphub.com/issues", class: "underline underline-offset-4", "github.com/cefege/recomphub.com" }
-                    " or email mateiasmihaiandrei@gmail.com from the address you signed in with."
+                    " or email mateiasmihaiandrei@gmail.com from the address you signed in with. Deleting an account or a catalog game removes its related saved-game bookmarks."
                 }
             }
         }

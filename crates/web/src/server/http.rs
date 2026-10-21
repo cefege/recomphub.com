@@ -3,7 +3,6 @@
 //! site-wide middleware (canonical redirects, cache headers, compression).
 
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use dioxus::server::axum::Router;
 use dioxus::server::axum::extract::{DefaultBodyLimit, Path, Request};
 use dioxus::server::axum::http::{
@@ -17,6 +16,7 @@ use recomphub_shared::enums::TargetPlatform;
 use recomphub_shared::media_avif_path;
 use recomphub_shared::seo::xml_escape;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, Predicate};
 use tower_http::services::ServeFile;
@@ -120,7 +120,13 @@ async fn serve_media(Path(filename): Path<String>, req: Request) -> Response {
     let width = match requested_width {
         Some(width) if media.widths.contains(&width) && width > 0 => width,
         Some(_) => return plain(StatusCode::NOT_FOUND, "no such media width"),
-        None => match media.widths.iter().copied().filter(|width| *width > 0).max() {
+        None => match media
+            .widths
+            .iter()
+            .copied()
+            .filter(|width| *width > 0)
+            .max()
+        {
             Some(width) => width,
             None => return plain(StatusCode::NOT_FOUND, "no such media width"),
         },
@@ -147,9 +153,7 @@ async fn serve_media(Path(filename): Path<String>, req: Request) -> Response {
     }
 }
 
-async fn redirect_old_media(
-    Path((kind, old_filename)): Path<(String, String)>,
-) -> Response {
+async fn redirect_old_media(Path((kind, old_filename)): Path<(String, String)>) -> Response {
     let kind = kind.to_ascii_lowercase();
     let old_filename = old_filename.to_ascii_lowercase();
     let Some(hash) = old_media_hash(&kind, &old_filename) else {
@@ -181,7 +185,13 @@ async fn redirect_old_media(
     let [media] = rows.as_slice() else {
         return plain(StatusCode::NOT_FOUND, "no such media");
     };
-    let Some(width) = media.widths.iter().copied().filter(|width| *width > 0).max() else {
+    let Some(width) = media
+        .widths
+        .iter()
+        .copied()
+        .filter(|width| *width > 0)
+        .max()
+    else {
         return plain(StatusCode::NOT_FOUND, "no such media");
     };
     let path = output_path(
@@ -196,7 +206,10 @@ async fn redirect_old_media(
         Ok(metadata) if metadata.is_file() && metadata.len() > 0 => (
             StatusCode::MOVED_PERMANENTLY,
             [
-                (header::LOCATION, format!("{}/media/{}", config::get().site_url, media.public_filename)),
+                (
+                    header::LOCATION,
+                    format!("{}/media/{}", config::get().site_url, media.public_filename),
+                ),
                 (header::CACHE_CONTROL, MEDIA_REDIRECT_CACHE.to_string()),
             ],
         )
@@ -269,6 +282,7 @@ async fn robots() -> Response {
         "/api/",
         "/search",
         "/submit",
+        "/library",
         "/account",
         "/moderation",
         "/admin",
@@ -489,7 +503,10 @@ async fn port_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
     let mut entries = Vec::new();
     for (game, port, updated, filename) in rows {
         let path = format!("/games/{game}/{port}");
-        if let Some(entry) = entries.last_mut().filter(|entry: &&mut Entry| entry.path == path) {
+        if let Some(entry) = entries
+            .last_mut()
+            .filter(|entry: &&mut Entry| entry.path == path)
+        {
             if let Some(filename) = filename {
                 let image = media_avif_path(&filename, None);
                 if !entry.images.contains(&image) {
@@ -580,7 +597,10 @@ async fn author_entries(pool: &PgPool) -> anyhow::Result<Vec<Entry>> {
     let mut entries = Vec::new();
     for (login, filename) in rows {
         let path = format!("/authors/{login}");
-        if let Some(entry) = entries.last_mut().filter(|entry: &&mut Entry| entry.path == path) {
+        if let Some(entry) = entries
+            .last_mut()
+            .filter(|entry: &&mut Entry| entry.path == path)
+        {
             if let Some(filename) = filename {
                 let image = media_avif_path(&filename, None);
                 if !entry.images.contains(&image) {
@@ -623,9 +643,6 @@ fn urlset(site: &str, entries: &[Entry]) -> String {
     body.push_str("</urlset>\n");
     body
 }
-
-/// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
-
 
 /// Redirects to the canonical URL: `www` host to the apex, no trailing slash, lowercase path.
 /// GET and HEAD only, so POST server functions are never redirected.
@@ -683,11 +700,19 @@ fn canonical_path(path: &str) -> String {
     lower
 }
 
-/// Cache successful media responses for one hour; handler-set redirect policy always wins.
+/// Cache account-library responses privately and successful media responses for one hour.
 async fn cache_headers(req: Request, next: Next) -> Response {
+    let is_library = req.uri().path().starts_with("/api/v1/library/");
     let is_read = matches!(*req.method(), Method::GET | Method::HEAD);
     let is_media = req.uri().path().starts_with("/media/");
     let mut response = next.run(req).await;
+    if is_library {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+        return response;
+    }
     if !is_read || response.headers().contains_key(header::CACHE_CONTROL) {
         return response;
     }
@@ -802,7 +827,9 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "../db/migrations")]
-    async fn named_media_serves_variants_and_redirects_legacy_urls(pool: PgPool) -> anyhow::Result<()> {
+    async fn named_media_serves_variants_and_redirects_legacy_urls(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         use dioxus::server::axum::body::{Body, to_bytes};
         use image::{DynamicImage, GenericImageView, ImageFormat};
         use std::io::Cursor;
@@ -832,7 +859,9 @@ mod tests {
             "fixture",
         )
         .await?;
-        let row = recomphub_db::media::get(&pool, id).await?.expect("queued media");
+        let row = recomphub_db::media::get(&pool, id)
+            .await?
+            .expect("queued media");
         let mut source = Cursor::new(Vec::new());
         DynamicImage::new_rgba8(960, 540).write_to(&mut source, ImageFormat::Png)?;
         let (source_width, source_height, widths) = recomphub_ingest::media::render(
@@ -854,13 +883,8 @@ mod tests {
             MEDIA_RENDER_VERSION,
         )
         .await?;
-        let filename = recomphub_db::media::assign_public_filename(
-            &pool,
-            id,
-            "fixture-screenshot",
-            1,
-        )
-        .await?;
+        let filename =
+            recomphub_db::media::assign_public_filename(&pool, id, "fixture-screenshot", 1).await?;
         let app = with_site_routes(Router::new());
         let get = |uri: String| {
             app.clone().oneshot(
@@ -880,8 +904,14 @@ mod tests {
         let response = get(format!("/media/{filename}?w=480")).await?;
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         assert_eq!(image::load_from_memory(&bytes)?.dimensions(), (480, 270));
-        assert_eq!(get(format!("/media/{filename}?w=481")).await?.status(), StatusCode::NOT_FOUND);
-        assert_eq!(get(format!("/media/{filename}?w=bad")).await?.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            get(format!("/media/{filename}?w=481")).await?.status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            get(format!("/media/{filename}?w=bad")).await?.status(),
+            StatusCode::BAD_REQUEST
+        );
 
         let head = app
             .clone()
@@ -928,7 +958,9 @@ mod tests {
             "fixture",
         )
         .await?;
-        let og = recomphub_db::media::get(&pool, og_id).await?.expect("queued OG media");
+        let og = recomphub_db::media::get(&pool, og_id)
+            .await?
+            .expect("queued OG media");
         let mut og_source = Cursor::new(Vec::new());
         DynamicImage::new_rgba8(1600, 900).write_to(&mut og_source, ImageFormat::Png)?;
         let (width, height, widths) = recomphub_ingest::media::render(
@@ -950,15 +982,17 @@ mod tests {
         )
         .await?;
         let og_filename =
-            recomphub_db::media::assign_public_filename(&pool, og.id, "fixture-preview", 1)
-                .await?;
+            recomphub_db::media::assign_public_filename(&pool, og.id, "fixture-preview", 1).await?;
         let response = get(format!("/media/og/{}-1200.jpg", og.hash)).await?;
         assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
         assert_eq!(
             response.headers()[header::LOCATION],
             format!("https://recomphub.test/media/{og_filename}")
         );
-        assert_eq!(get(format!("/media/{og_filename}")).await?.status(), StatusCode::OK);
+        assert_eq!(
+            get(format!("/media/{og_filename}")).await?.status(),
+            StatusCode::OK
+        );
 
         let missing = recomphub_db::media::enqueue(
             &pool,
@@ -967,19 +1001,15 @@ mod tests {
             "missing",
         )
         .await?;
-        recomphub_db::media::mark_ready(
-            &pool,
-            missing,
-            vec![960],
-            960,
-            540,
-            MEDIA_RENDER_VERSION,
-        )
-        .await?;
+        recomphub_db::media::mark_ready(&pool, missing, vec![960], 960, 540, MEDIA_RENDER_VERSION)
+            .await?;
         let missing_name =
             recomphub_db::media::assign_public_filename(&pool, missing, "missing-screenshot", 1)
                 .await?;
-        assert_eq!(get(format!("/media/{missing_name}")).await?.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            get(format!("/media/{missing_name}")).await?.status(),
+            StatusCode::NOT_FOUND
+        );
 
         let pending = recomphub_db::media::enqueue(
             &pool,
@@ -991,10 +1021,12 @@ mod tests {
         let pending_name =
             recomphub_db::media::assign_public_filename(&pool, pending, "pending-screenshot", 1)
                 .await?;
-        assert_eq!(get(format!("/media/{pending_name}")).await?.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            get(format!("/media/{pending_name}")).await?.status(),
+            StatusCode::NOT_FOUND
+        );
 
         std::fs::remove_dir_all(media_dir)?;
         Ok(())
     }
-
 }

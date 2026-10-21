@@ -198,4 +198,20 @@ async fn catalog_endpoints_return_expected_status_and_order() {
     let trending: Vec<&str> = home.trending.iter().map(|r| r.game.slug.as_str()).collect();
     assert_eq!(trending, ["gamma-quest", "alpha-quest", "beta-quest"]);
     assert_eq!(home.wanted.len(), 2);
+    // Batch card lookup keeps the caller's deduplicated order, skips missing ids,
+    // and leaves the existing public media mapping untouched.
+    let cards = catalog::game_cards_by_ids(vec![alpha_id, 999_999, alpha_id])
+        .await
+        .expect("batch cards");
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0].id, alpha_id);
+    assert!(cards[0].cover.is_none());
+    let err = catalog::game_cards_by_ids(vec![0])
+        .await
+        .expect_err("invalid id");
+    assert_eq!(status_of(&err), Some(400));
+    let err = catalog::game_cards_by_ids((1..=51).collect())
+        .await
+        .expect_err("batch limit");
+    assert_eq!(status_of(&err), Some(400));
 }

@@ -16,8 +16,8 @@ use recomphub::server::session::{SESSION_COOKIE, new_token};
 use recomphub::server::state::init_pool;
 use recomphub_db::identities::{self, IdentityProfile};
 use recomphub_db::users_sessions;
-use recomphub_shared::{ModerationQueueQuery, QueueLane, TriageStateFilter};
 use recomphub_shared::dto::ReviewOverrides;
+use recomphub_shared::{ModerationQueueQuery, QueueLane, TriageStateFilter};
 use sqlx::{Connection, PgConnection, PgPool, postgres::PgPoolOptions};
 
 struct TestDb {
@@ -33,8 +33,14 @@ struct Viewer {
 
 fn queue_query() -> ModerationQueueQuery {
     ModerationQueueQuery {
-        lane: QueueLane::Members, page: 1, category: None, confidence: None, target: None,
-        playability: None, flagged_only: false, triage_state: TriageStateFilter::All,
+        lane: QueueLane::Members,
+        page: 1,
+        category: None,
+        confidence: None,
+        target: None,
+        playability: None,
+        flagged_only: false,
+        triage_state: TriageStateFilter::All,
     }
 }
 
@@ -171,7 +177,11 @@ async fn plain_user(fx: &Fixtures, plain: &Viewer) {
 }
 
 async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
-    let queue = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
+    let queue = as_user(moderator, moderation_queue(queue_query()))
+        .await
+        .expect("queue")
+        .rows
+        .items;
     let report = queue
         .iter()
         .find(|item| item.kind == "report")
@@ -181,7 +191,11 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
     as_user(moderator, reject(first, "Thanks, noted".into(), None))
         .await
         .expect("reject");
-    let after = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
+    let after = as_user(moderator, moderation_queue(queue_query()))
+        .await
+        .expect("queue")
+        .rows
+        .items;
     assert!(after.iter().all(|item| item.id != first));
 
     as_user(
@@ -190,7 +204,11 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
     )
     .await
     .expect("second report");
-    let queue = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
+    let queue = as_user(moderator, moderation_queue(queue_query()))
+        .await
+        .expect("queue")
+        .rows
+        .items;
     let second = queue
         .iter()
         .find(|item| item.kind == "report")
@@ -199,7 +217,11 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
     as_user(moderator, approve(second, ReviewOverrides::default(), None))
         .await
         .expect("approve");
-    let after = as_user(moderator, moderation_queue(queue_query())).await.expect("queue").rows.items;
+    let after = as_user(moderator, moderation_queue(queue_query()))
+        .await
+        .expect("queue")
+        .rows
+        .items;
     assert!(after.iter().all(|item| item.id != second));
 
     expect_status(
@@ -218,7 +240,11 @@ async fn moderator_user(fx: &Fixtures, moderator: &Viewer, plain: &Viewer) {
         400,
     );
     expect_status(
-        as_user(moderator, approve(999_999_999, ReviewOverrides::default(), None)).await,
+        as_user(
+            moderator,
+            approve(999_999_999, ReviewOverrides::default(), None),
+        )
+        .await,
         404,
     );
 

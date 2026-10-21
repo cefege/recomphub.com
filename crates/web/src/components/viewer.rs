@@ -13,7 +13,10 @@ use crate::api;
 #[derive(Clone, Copy)]
 pub struct ViewerStore {
     pub me: Signal<Option<SessionUser>>,
+    /// True only after `/api/me` confirmed an identity or a guest session.
     pub ready: Signal<bool>,
+    pub error: Signal<Option<String>>,
+    pub retry: Signal<u64>,
     pub starred: Signal<HashSet<i64>>,
     pub wanted: Signal<HashSet<i64>>,
 }
@@ -24,6 +27,8 @@ impl ViewerStore {
         let store = Self {
             me: use_signal(|| None),
             ready: use_signal(|| false),
+            error: use_signal(|| None),
+            retry: use_signal(|| 0),
             starred: use_signal(HashSet::new),
             wanted: use_signal(HashSet::new),
         };
@@ -228,12 +233,33 @@ pub fn Burst(seed: u32) -> Element {
     }
 }
 
-/// Applies a fetched session user to the viewer store.
+/// Applies a confirmed session result to the viewer store.
 pub fn set_me(viewer: ViewerStore, me: Option<SessionUser>) {
+    let mut error = viewer.error;
+    error.set(None);
     let mut signal = viewer.me;
     signal.set(me);
     let mut ready = viewer.ready;
     ready.set(true);
+}
+
+/// Leaves the identity unresolved; callers must offer retry instead of falling back to guest mode.
+pub fn set_me_error(viewer: ViewerStore) {
+    let mut me = viewer.me;
+    me.set(None);
+    let mut ready = viewer.ready;
+    ready.set(false);
+    let mut error = viewer.error;
+    error.set(Some(
+        "Could not check your session. Device and account favorites remain unchanged.".to_string(),
+    ));
+}
+
+/// Requests another identity lookup from the app shell.
+pub fn retry_identity(viewer: ViewerStore) {
+    let previous = *viewer.retry.peek();
+    let mut retry = viewer.retry;
+    retry.set(previous.wrapping_add(1));
 }
 
 /// Renders its children for a signed-in viewer and a sign-in prompt otherwise.

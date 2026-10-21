@@ -57,3 +57,65 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --features recomphub/server -- -D warnings
+
+      - name: Check browser target
+        run: cargo check -p recomphub --no-default-features --features web --target wasm32-unknown-unknown
+
+  browser-library:
+    needs: test
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: recomphub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create isolated browser database
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c 'CREATE DATABASE recomphub_browser_test'
+
+      - name: Build production image without publishing
+        run: docker build --tag recomphub-browser-ci .
+
+      - name: Start isolated website container
+        run: >-
+          docker run --detach --rm --name recomphub-browser-ci --network host
+          --env DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/recomphub_browser_test
+          --env SITE_URL=http://127.0.0.1:8080
+          --env MEDIA_DIR=/tmp/recomphub-media
+          recomphub-browser-ci
+
+      - name: Install browser test dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check 'psycopg[binary]' playwright
+          python3 -m playwright install --with-deps chromium
+
+      - name: Exercise private library in a real browser
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/recomphub_browser_test
+          RECOMPHUB_BROWSER_BASE: http://127.0.0.1:8080
+        run: |
+          mkdir -p artifacts
+          python3 crates/web/tests/browser/library_smoke.py
+
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-library
+          path: artifacts
+          if-no-files-found: warn
+
+      - name: Stop isolated website container
+        if: always()
+        run: docker stop recomphub-browser-ci || true

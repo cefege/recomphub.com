@@ -9,8 +9,8 @@ use crate::components::styles::{
     BUTTON_OUTLINE, BUTTON_SM, CARD_SURFACE, INPUT, MENU_ITEM, POPOVER,
 };
 use crate::components::{
-    DiscordCount, DiscordLink, LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl, ViewerStore,
-    initials_of, login_redirect, set_me,
+    DiscordCount, DiscordLink, LibraryStore, LiveSocket, LiveStore, OnlineCount, Picture, SiteUrl,
+    ViewerStore, initials_of, login_redirect, set_me, set_me_error,
 };
 use crate::pages::RouteError;
 use crate::routes::Route;
@@ -120,6 +120,7 @@ pub fn Shell() -> Element {
     use_context_provider(|| SiteUrl(site()));
     let _live = LiveStore::provide();
     let viewer = ViewerStore::provide();
+    let _library = LibraryStore::provide(viewer);
     let mut hydrated = use_signal(|| false);
 
     use_effect(move || {
@@ -132,9 +133,14 @@ pub fn Shell() -> Element {
              var q=document.querySelector('input[name=q]');\
              if(q){e.preventDefault();q.focus();}});",
         );
+    });
+    use_effect(move || {
+        let _retry = *viewer.retry.read();
         spawn(async move {
-            let me = api::me().await.ok().flatten();
-            set_me(viewer, me);
+            match api::me().await {
+                Ok(me) => set_me(viewer, me),
+                Err(_) => set_me_error(viewer),
+            }
         });
     });
 
@@ -147,7 +153,7 @@ pub fn Shell() -> Element {
             a { href: "#main", class: "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 {BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Skip to content" }
             header { class: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
                 div { class: "mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8",
-                    details { class: "relative md:hidden",
+                    details { class: "relative lg:hidden",
                         summary { class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} list-none", "aria-label": "Menu",
                             MenuIcon { class: "size-5" }
                         }
@@ -175,7 +181,7 @@ pub fn Shell() -> Element {
                         img { src: "{RECOMPHUB_LOGO}", alt: "", class: "size-7 rounded-md" }
                         span { "RecompHub" }
                     }
-                    nav { class: "hidden items-center gap-5 text-sm md:flex", "aria-label": "Main",
+                    nav { class: "hidden items-center gap-5 text-sm lg:flex", "aria-label": "Main",
                         for (href, label) in NAV {
                             a { key: "{href}", href: "{href}", class: "text-muted-foreground transition-colors hover:text-foreground", "{label}" }
                         }
@@ -225,7 +231,7 @@ pub fn Shell() -> Element {
                                 div { class: "{POPOVER} absolute right-0 mt-2 flex w-48 flex-col",
                                     p { class: "truncate px-2 py-1.5 text-sm font-medium", "{me.display_name}" }
                                     div { class: "-mx-1 my-1 h-px bg-border" }
-                                    a { href: "/account", class: MENU_ITEM, "Account" }
+                                    a { href: "/library", class: MENU_ITEM, "Your library" }
                                     if me.role == "moderator" || me.role == "admin" {
                                         a { href: "/moderation", class: "{MENU_ITEM} flex items-center justify-between gap-2",
                                             "Moderation"
@@ -307,9 +313,10 @@ pub fn Shell() -> Element {
 }
 
 /// Main navigation: (href, label).
-const NAV: [(&str, &str); 7] = [
+const NAV: [(&str, &str); 8] = [
     ("/trending", "Trending"),
     ("/games", "Games"),
+    ("/library", "Library"),
     ("/platforms", "Platforms"),
     ("/stats", "Stats"),
     ("/wanted", "Wanted"),

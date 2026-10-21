@@ -6,8 +6,6 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
-/// Images kept per README, in order of first appearance.
-
 /// One accepted README screenshot, retaining the contextual alt text for review and delivery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadmeImage {

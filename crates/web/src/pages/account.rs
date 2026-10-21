@@ -83,6 +83,7 @@ fn AccountDetails() -> Element {
                     }
                 }
                 a { class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", href: "/submit", "Submit a port" }
+                a { class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", href: "/library", "Your library" }
                 if can_moderate {
                     Link {
                         class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}",

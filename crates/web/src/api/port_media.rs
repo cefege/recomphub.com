@@ -17,11 +17,9 @@ use recomphub_db::port_media;
 #[cfg(feature = "server")]
 use recomphub_db::ports;
 #[cfg(feature = "server")]
-use recomphub_db::videos::{self, NewVideo};
-#[cfg(feature = "server")]
 use recomphub_db::video_discovery;
 #[cfg(feature = "server")]
-use sqlx;
+use recomphub_db::videos::{self, NewVideo};
 #[cfg(feature = "server")]
 use recomphub_ingest::{media as media_render, video_links};
 #[cfg(feature = "server")]
@@ -29,12 +27,28 @@ use recomphub_shared::dto::{MediaRef, VideoDto};
 #[cfg(feature = "server")]
 use sha2::{Digest, Sha256};
 #[cfg(feature = "server")]
+use sqlx;
+#[cfg(feature = "server")]
 use tokio::io::AsyncWriteExt;
 
 #[cfg(feature = "server")]
 use crate::server::session::{db_error, http_error, require_moderator, require_user};
 #[cfg(feature = "server")]
 use crate::server::{config, state::pool};
+#[cfg(feature = "server")]
+type DiscoveredVideoRow = (
+    i64,
+    String,
+    String,
+    Option<i64>,
+    String,
+    Option<String>,
+    chrono::DateTime<chrono::Utc>,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// Largest decoded upload accepted, matching the download cap for GitHub-sourced images.
 #[cfg(feature = "server")]
@@ -42,7 +56,10 @@ const MAX_UPLOAD_BYTES: usize = recomphub_ingest::media::MAX_DOWNLOAD_BYTES;
 
 #[cfg(feature = "server")]
 fn media_ref(m: &MediaRow) -> MediaRef {
-    let filename = m.public_filename.clone().filter(|filename| !filename.is_empty());
+    let filename = m
+        .public_filename
+        .clone()
+        .filter(|filename| !filename.is_empty());
     let ready = m.status == "ready"
         && m.render_version >= recomphub_ingest::media::MEDIA_RENDER_VERSION
         && !m.widths.is_empty()
@@ -273,19 +290,7 @@ pub async fn pending_submitted_videos() -> Result<Vec<PendingVideoDto>, ServerFn
     let pool = pool()?;
     let rows = videos::list_pending(pool).await.map_err(db_error)?;
     let mut thumb_ids: Vec<i64> = rows.iter().filter_map(|r| r.video.thumb_media_id).collect();
-    let discovered: Vec<(
-        i64,
-        String,
-        String,
-        Option<i64>,
-        String,
-        Option<String>,
-        chrono::DateTime<chrono::Utc>,
-        String,
-        String,
-        String,
-        String,
-    )> = sqlx::query_as(
+    let discovered: Vec<DiscoveredVideoRow> = sqlx::query_as(
         "SELECT c.id, c.youtube_id, c.title, c.thumbnail_media_id, c.source, c.decision_reason,
                 c.created_at, g.name, g.slug, p.name, p.slug
          FROM video_discovery_candidates c
@@ -304,10 +309,22 @@ pub async fn pending_submitted_videos() -> Result<Vec<PendingVideoDto>, ServerFn
     let mut pending: Vec<PendingVideoDto> = rows
         .into_iter()
         .map(|r| {
-            let thumb = r.video.thumb_media_id.and_then(|id| by_id.get(&id)).map(|m| media_ref(m));
+            let thumb = r
+                .video
+                .thumb_media_id
+                .and_then(|id| by_id.get(&id))
+                .map(|m| media_ref(m));
             PendingVideoDto {
                 id: r.video.id,
-                video: VideoDto { id: r.video.id, youtube_id: r.video.youtube_id, title: r.video.title, channel: r.video.channel, target: r.video.target, thumb, hidden: r.video.hidden },
+                video: VideoDto {
+                    id: r.video.id,
+                    youtube_id: r.video.youtube_id,
+                    title: r.video.title,
+                    channel: r.video.channel,
+                    target: r.video.target,
+                    thumb,
+                    hidden: r.video.hidden,
+                },
                 game_name: r.game_name,
                 game_slug: r.game_slug,
                 port_name: r.port_name,
@@ -318,29 +335,59 @@ pub async fn pending_submitted_videos() -> Result<Vec<PendingVideoDto>, ServerFn
             }
         })
         .collect();
-    pending.extend(discovered.into_iter().map(|(id, youtube_id, title, thumb_id, source, decision_reason, created_at, game_name, game_slug, port_name, port_slug)| PendingVideoDto {
-        id,
-        video: VideoDto { id, youtube_id, title, channel: None, target: "any".to_string(), thumb: thumb_id.and_then(|id| by_id.get(&id)).map(|m| media_ref(m)), hidden: false },
-        game_name,
-        game_slug,
-        port_name: Some(port_name),
-        port_slug: Some(port_slug),
-        source,
-        decision_reason,
-        created_at,
-    }));
+    pending.extend(discovered.into_iter().map(
+        |(
+            id,
+            youtube_id,
+            title,
+            thumb_id,
+            source,
+            decision_reason,
+            created_at,
+            game_name,
+            game_slug,
+            port_name,
+            port_slug,
+        )| PendingVideoDto {
+            id,
+            video: VideoDto {
+                id,
+                youtube_id,
+                title,
+                channel: None,
+                target: "any".to_string(),
+                thumb: thumb_id.and_then(|id| by_id.get(&id)).map(|m| media_ref(m)),
+                hidden: false,
+            },
+            game_name,
+            game_slug,
+            port_name: Some(port_name),
+            port_slug: Some(port_slug),
+            source,
+            decision_reason,
+            created_at,
+        },
+    ));
     pending.sort_by_key(|item| item.created_at);
     Ok(pending)
 }
 
 /// Approves or rejects a pending member submission or discovery candidate.
 #[post("/api/port_media/review_video")]
-pub async fn review_submitted_video(id: i64, source: String, approve: bool) -> Result<(), ServerFnError> {
+pub async fn review_submitted_video(
+    id: i64,
+    source: String,
+    approve: bool,
+) -> Result<(), ServerFnError> {
     let moderator = require_moderator().await?;
     if source == "member" {
-        videos::review_pending(pool()?, id, approve).await.map_err(db_error)
+        videos::review_pending(pool()?, id, approve)
+            .await
+            .map_err(db_error)
     } else if approve {
-        let candidate = video_discovery::candidate(pool()?, id).await.map_err(db_error)?;
+        let candidate = video_discovery::candidate(pool()?, id)
+            .await
+            .map_err(db_error)?;
         recomphub_ingest::media_discovery::publish_and_enqueue_thumbnail(
             pool()?,
             id,
@@ -351,7 +398,9 @@ pub async fn review_submitted_video(id: i64, source: String, approve: bool) -> R
         .map(|_| ())
         .map_err(|error| ServerFnError::new(error.to_string()))
     } else {
-        video_discovery::reject_candidate(pool()?, id, moderator.id).await.map_err(db_error)
+        video_discovery::reject_candidate(pool()?, id, moderator.id)
+            .await
+            .map_err(db_error)
     }
 }
 
@@ -364,10 +413,11 @@ pub async fn pending_media_count() -> Result<i64, ServerFnError> {
     let pool = pool()?;
     let images = port_media::count_pending(pool).await.map_err(db_error)?;
     let clips = videos::count_pending(pool).await.map_err(db_error)?;
-    let discovered: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM video_discovery_candidates WHERE decision = 'pending'")
-            .fetch_one(pool)
-            .await
-            .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let discovered: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM video_discovery_candidates WHERE decision = 'pending'",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|error| ServerFnError::new(error.to_string()))?;
     Ok(images + clips + discovered)
 }

@@ -146,15 +146,15 @@ pub async fn sync_igdb(conn: &mut PgConnection, g: &IgdbGame) -> DbResult<i64> {
     let id = upsert_igdb(&mut *conn, g).await?;
     set_platforms(&mut *conn, id, g.platform_igdb_ids.clone()).await?;
     let cover = match &g.cover_url {
-        Some(url) => Some(
-            media::enqueue(&mut *conn, "cover", url, &format!("{}-cover", g.slug)).await?,
-        ),
+        Some(url) => {
+            Some(media::enqueue(&mut *conn, "cover", url, &format!("{}-cover", g.slug)).await?)
+        }
         None => None,
     };
     let og = match &g.og_url {
-        Some(url) => Some(
-            media::enqueue(&mut *conn, "og", url, &format!("{}-preview", g.slug)).await?,
-        ),
+        Some(url) => {
+            Some(media::enqueue(&mut *conn, "og", url, &format!("{}-preview", g.slug)).await?)
+        }
         None => None,
     };
     let mut screenshots = Vec::new();
@@ -198,6 +198,16 @@ pub async fn get(ex: impl PgExecutor<'_>, id: i64) -> DbResult<GameRow> {
         .fetch_optional(ex)
         .await?
         .ok_or_else(|| DbError::NotFound(format!("game {id}")))
+}
+
+/// Existing games whose ids occur in `ids`. The caller owns result ordering.
+pub async fn by_ids(ex: impl PgExecutor<'_>, ids: &[i64]) -> DbResult<Vec<GameRow>> {
+    Ok(
+        sqlx::query_as::<_, GameRow>("SELECT * FROM games WHERE id = ANY($1)")
+            .bind(ids)
+            .fetch_all(ex)
+            .await?,
+    )
 }
 
 /// Sort order for game listings.

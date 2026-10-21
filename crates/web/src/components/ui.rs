@@ -286,9 +286,9 @@ pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Elemen
                     span { class: "text-xs text-muted-foreground tabular", "{port.github_stars} GitHub stars" }
                 }
                 div { class: "ml-auto flex gap-2",
-                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Source" }
+                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "View source" }
                     if let Some(url) = port.latest_release_url.clone() {
-                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM}", "Download" }
+                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM}", "View releases ↗" }
                     }
                 }
             }

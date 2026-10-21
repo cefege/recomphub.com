@@ -147,13 +147,16 @@ pub async fn callback(headers: HeaderMap, Query(query): Query<CallbackQuery>) ->
         }
     };
     let avatar_media_id = match account.avatar_url.as_deref() {
-        Some(url) => match media::enqueue(pool, "avatar", url, &format!("{}-avatar", account.subject)).await {
-            Ok(id) => Some(id),
-            Err(err) => {
-                tracing::warn!(error = %err, "could not queue the avatar; continuing without it");
-                None
+        Some(url) => {
+            match media::enqueue(pool, "avatar", url, &format!("{}-avatar", account.subject)).await
+            {
+                Ok(id) => Some(id),
+                Err(err) => {
+                    tracing::warn!(error = %err, "could not queue the avatar; continuing without it");
+                    None
+                }
             }
-        },
+        }
         None => None,
     };
     let is_admin = account.email_verified

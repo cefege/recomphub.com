@@ -3,6 +3,7 @@ pub mod comments;
 pub mod discord;
 pub mod funding;
 pub mod icons;
+pub mod library;
 pub mod listing;
 pub mod live;
 pub mod maintenance;
@@ -19,6 +20,10 @@ pub use cards::GameCardView;
 pub use comments::PortComments;
 pub use discord::{DiscordCount, DiscordLink};
 pub use funding::FundingLinks;
+pub use library::{
+    FavoriteButton, LibraryIdentityRetry, LibraryStore, StorageState, prune_missing_guest,
+    reset_device_favorites,
+};
 pub use listing::{
     GameListTable, PRIMARY_TARGETS, PortTable, RankingTable, WINDOWS, WatchVisible, chip_class,
     parse_page, query_string,
@@ -36,6 +41,6 @@ pub use ui::{
     VideoPlayer, ViewToggle, ai_text, initials_of, keyed, target_label, url_encode, with_query,
 };
 pub use viewer::{
-    Burst, RoleGate, SignedIn, StarButton, ViewerStore, WantButton, login_redirect, set_me,
-    use_marks,
+    Burst, RoleGate, SignedIn, StarButton, ViewerStore, WantButton, login_redirect, retry_identity,
+    set_me, set_me_error, use_marks,
 };

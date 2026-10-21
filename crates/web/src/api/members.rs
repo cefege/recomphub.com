@@ -47,7 +47,10 @@ fn sql_error(e: sqlx::Error) -> ServerFnError {
 
 #[cfg(feature = "server")]
 pub(crate) fn media_ref(m: &MediaRow) -> MediaRef {
-    let filename = m.public_filename.clone().filter(|filename| !filename.is_empty());
+    let filename = m
+        .public_filename
+        .clone()
+        .filter(|filename| !filename.is_empty());
     let ready = m.status == "ready"
         && m.render_version >= recomphub_ingest::media::MEDIA_RENDER_VERSION
         && !m.widths.is_empty()

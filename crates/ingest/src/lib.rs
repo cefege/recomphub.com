@@ -1,5 +1,5 @@
-pub mod candidate_triage;
 pub mod best_sellers;
+pub mod candidate_triage;
 pub mod describe;
 pub mod detect;
 pub mod digest;

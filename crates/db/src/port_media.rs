@@ -149,7 +149,6 @@ pub async fn review(
     Ok(())
 }
 
-
 /// Applies the deterministic README-render gate. Only a ready image at least 480px wide becomes
 /// public automatically; smaller images stay reviewable rather than silently disappearing.
 pub async fn approve_readme_after_render(
@@ -179,10 +178,7 @@ pub async fn approve_readme_after_render(
 
 /// Records a renderer failure on automated README screenshots without changing their review
 /// state. The detailed bounded error remains on `media.error`.
-pub async fn note_readme_render_failure(
-    ex: impl PgExecutor<'_>,
-    media_id: i64,
-) -> DbResult<()> {
+pub async fn note_readme_render_failure(ex: impl PgExecutor<'_>, media_id: i64) -> DbResult<()> {
     sqlx::query(
         "UPDATE port_media
          SET decision_reason = 'README image failed to render; see media error'
