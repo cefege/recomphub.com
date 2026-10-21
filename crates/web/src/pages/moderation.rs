@@ -1,7 +1,6 @@
 //! Moderation pages: the review queue and the audit log. Both are moderator-only, so
 //! their data loads after hydration and never enters the SSR HTML.
 
-use std::collections::BTreeSet;
 use chrono::{DateTime, Utc};
 use dioxus::prelude::*;
 use recomphub_shared::{
@@ -11,6 +10,7 @@ use recomphub_shared::{
     TriageCategory, TriageStateFilter,
 };
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 use crate::api;
 use crate::components::styles::*;
@@ -70,7 +70,11 @@ fn QueueList() -> Element {
         let _ = reload();
         let active_tab = tab();
         let query = ModerationQueueQuery {
-            lane: if active_tab == Tab::Found { QueueLane::Found } else { QueueLane::Members },
+            lane: if active_tab == Tab::Found {
+                QueueLane::Found
+            } else {
+                QueueLane::Members
+            },
             page: page(),
             category: (active_tab == Tab::Found).then_some(TriageCategory::GameProject),
             confidence: None,
@@ -82,7 +86,9 @@ fn QueueList() -> Element {
         let generation = *request_generation.peek() + 1;
         request_generation.set(generation);
         spawn(async move {
-            let result = api::moderation_queue(query).await.map_err(|e| e.to_string());
+            let result = api::moderation_queue(query)
+                .await
+                .map_err(|e| e.to_string());
             if request_generation() == generation {
                 submissions.set(Some(result));
             }
@@ -511,7 +517,11 @@ fn VideoQueueCard(item: PendingVideoDto, on_done: EventHandler<()>) -> Element {
 }
 
 #[component]
-fn QueueCard(item: QueueItem, on_done: EventHandler<()>, selected: Signal<BTreeSet<i64>>) -> Element {
+fn QueueCard(
+    item: QueueItem,
+    on_done: EventHandler<()>,
+    selected: Signal<BTreeSet<i64>>,
+) -> Element {
     let diff = field_rows(&item.payload_json, item.before_json.as_deref());
     let submitter = item
         .submitter_name
@@ -553,7 +563,9 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>, selected: Signal<BTreeS
     };
     let needs_match = item.needs_game_match || item.kind == "candidate";
     let triage_view = match (&item.triage, &item.triage_error) {
-        (_, Some(error)) => rsx! { p { class: "mt-3 text-sm text-destructive", "Evidence preparation failed: {error}" } },
+        (_, Some(error)) => {
+            rsx! { p { class: "mt-3 text-sm text-destructive", "Evidence preparation failed: {error}" } }
+        }
         (Some(triage), _) => rsx! {
             div { class: "mt-3 text-sm",
                 p { class: "font-medium", "{triage.assessment.category:?} · {triage.assessment.confidence:?}" }
@@ -570,7 +582,9 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>, selected: Signal<BTreeS
                 }
             }
         },
-        (None, None) => rsx! { p { class: "mt-3 text-sm text-muted-foreground", "Untriaged — no evidence-backed recommendation." } },
+        (None, None) => {
+            rsx! { p { class: "mt-3 text-sm text-muted-foreground", "Untriaged — no evidence-backed recommendation." } }
+        }
     };
 
     let item_id = item.id;
@@ -619,7 +633,13 @@ fn QueueCard(item: QueueItem, on_done: EventHandler<()>, selected: Signal<BTreeS
 
 /// Approve and reject controls. Candidates and unmatched imports need a game first.
 #[component]
-fn Decision(item_id: i64, kind: String, revision: i64, needs_match: bool, on_done: EventHandler<()>) -> Element {
+fn Decision(
+    item_id: i64,
+    kind: String,
+    revision: i64,
+    needs_match: bool,
+    on_done: EventHandler<()>,
+) -> Element {
     let is_candidate = kind == "candidate";
     let mut query = use_signal(String::new);
     let mut choices = use_signal(Vec::<GameChoice>::new);
@@ -980,7 +1000,10 @@ fn LogRow(row: LogItem, on_revert: EventHandler<i64>) -> Element {
         .map(stamp)
         .unwrap_or_else(|| "—".to_string());
     let created = stamp(row.created_at);
-    let reviewer = row.reviewer_id.map(|id| format!("#{id}")).unwrap_or_else(|| "—".to_string());
+    let reviewer = row
+        .reviewer_id
+        .map(|id| format!("#{id}"))
+        .unwrap_or_else(|| "—".to_string());
     let note = row.review_note.clone().unwrap_or_else(|| "—".to_string());
     let id = row.id;
     rsx! {

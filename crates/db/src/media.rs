@@ -310,8 +310,8 @@ pub async fn public_filename_input(pool: &PgPool, row: &MediaRow) -> DbResult<(S
         }
         _ => None,
     };
-    let (owner, preferred_number) = owner_and_number
-        .unwrap_or_else(|| (row.public_stem.clone(), 1));
+    let (owner, preferred_number) =
+        owner_and_number.unwrap_or_else(|| (row.public_stem.clone(), 1));
     Ok((
         public_stem(&format!("{owner}-{kind}")),
         preferred_number.max(1),
@@ -366,7 +366,9 @@ pub async fn assign_public_filename(
             return Ok(filename);
         }
         if number == i32::MAX {
-            return Err(DbError::Conflict("media filename sequence exhausted".to_string()));
+            return Err(DbError::Conflict(
+                "media filename sequence exhausted".to_string(),
+            ));
         }
     }
     unreachable!("unbounded positive sequence has an i32 maximum guard")
@@ -450,15 +452,23 @@ mod tests {
 
     #[sqlx::test(migrations = "./migrations")]
     async fn stale_candidate_is_rechecked_after_lock_acquisition(pool: PgPool) -> DbResult<()> {
-        let id = enqueue(&pool, "screenshot", "https://example.test/stale.png", "fixture").await?;
+        let id = enqueue(
+            &pool,
+            "screenshot",
+            "https://example.test/stale.png",
+            "fixture",
+        )
+        .await?;
         let mut stale_reader = pool.acquire().await?;
         assert_eq!(next_pending(&mut *stale_reader, 1, 2).await?[0].id, id);
 
         let mut finisher = pool.acquire().await?;
-        assert!(sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_lock($1)")
-            .bind(id)
-            .fetch_one(&mut *finisher)
-            .await?);
+        assert!(
+            sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_lock($1)")
+                .bind(id)
+                .fetch_one(&mut *finisher)
+                .await?
+        );
         mark_ready(&pool, id, vec![960], 960, 540, 2).await?;
         assign_public_filename(&pool, id, "fixture-screenshot", 1).await?;
         release_claim(&mut finisher, id).await?;

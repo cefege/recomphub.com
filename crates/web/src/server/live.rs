@@ -544,7 +544,10 @@ async fn load_media(pool: &PgPool, ids: Vec<i64>) -> DbResult<HashMap<i64, Media
 }
 
 fn media_ref(row: &MediaRow) -> MediaRef {
-    let filename = row.public_filename.clone().filter(|filename| !filename.is_empty());
+    let filename = row
+        .public_filename
+        .clone()
+        .filter(|filename| !filename.is_empty());
     let ready = row.status == "ready"
         && row.render_version >= recomphub_ingest::media::MEDIA_RENDER_VERSION
         && !row.widths.is_empty()

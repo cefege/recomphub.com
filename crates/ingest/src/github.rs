@@ -299,7 +299,6 @@ impl GithubClient {
         Ok(body.items)
     }
 
-
     /// Last 12 weeks of commit totals from `stats/participation`, oldest first. GitHub computes
     /// this lazily: 202 means "not ready" and 404 means "no stats", both `None`, so the stored
     /// sparkline is kept.
@@ -333,11 +332,14 @@ impl GithubClient {
         let Some(metadata): Option<CandidateRepoJson> = self.rest_json(&base, ABSENT).await? else {
             return Ok(None);
         };
-        let repo_url = github_links::canonical_repo_url(&format!(
-            "https://github.com/{}",
-            metadata.full_name
-        ))
-        .ok_or_else(|| anyhow!("GitHub returned an unusable repository name: {}", metadata.full_name))?;
+        let repo_url =
+            github_links::canonical_repo_url(&format!("https://github.com/{}", metadata.full_name))
+                .ok_or_else(|| {
+                    anyhow!(
+                        "GitHub returned an unusable repository name: {}",
+                        metadata.full_name
+                    )
+                })?;
 
         let root: Option<Vec<CandidateContentEntry>> = self
             .rest_json(&format!("{base}/contents/"), ABSENT_LIST)
@@ -385,34 +387,36 @@ impl GithubClient {
         let commits: Option<Vec<CandidateCommitJson>> = self
             .rest_json(&format!("{base}/commits?per_page=5"), ABSENT_LIST)
             .await?;
-        let recent_commits = commits.map(|items| {
-            items
-                .into_iter()
-                .take(5)
-                .map(|commit| {
-                    let date = commit
-                        .commit
-                        .author
-                        .as_ref()
-                        .and_then(|author| author.date.as_deref())
-                        .or_else(|| {
-                            commit
-                                .commit
-                                .committer
-                                .as_ref()
-                                .and_then(|committer| committer.date.as_deref())
+        let recent_commits = commits
+            .map(|items| {
+                items
+                    .into_iter()
+                    .take(5)
+                    .map(|commit| {
+                        let date = commit
+                            .commit
+                            .author
+                            .as_ref()
+                            .and_then(|author| author.date.as_deref())
+                            .or_else(|| {
+                                commit
+                                    .commit
+                                    .committer
+                                    .as_ref()
+                                    .and_then(|committer| committer.date.as_deref())
+                            })
+                            .map(parse_ts)
+                            .transpose()?;
+                        Ok(CandidateCommit {
+                            sha: commit.sha,
+                            url: commit.html_url,
+                            message: crate::describe::clean_markdown(&commit.commit.message, 500),
+                            at: date,
                         })
-                        .map(parse_ts)
-                        .transpose()?;
-                    Ok(CandidateCommit {
-                        sha: commit.sha,
-                        url: commit.html_url,
-                        message: crate::describe::clean_markdown(&commit.commit.message, 500),
-                        at: date,
                     })
-                })
-                .collect::<Result<Vec<_>>>()
-        }).transpose()?;
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?;
 
         Ok(Some(CandidateEvidenceSnapshot {
             repo_url,
@@ -936,7 +940,8 @@ pub async fn run_github_sync(pool: &PgPool, client: &GithubClient) -> Result<Git
                     .map(|image| (image.url.clone(), image.alt.clone()))
                     .collect();
                 if let Err(e) =
-                    port_media::record_readme_images(pool, port.id, &readme_images, &port.slug).await
+                    port_media::record_readme_images(pool, port.id, &readme_images, &port.slug)
+                        .await
                 {
                     tracing::warn!(port_id = port.id, error = %format!("{e:#}"), "README images not recorded");
                 }

@@ -4,8 +4,8 @@ use crate::app::Shell;
 use crate::pages::{
     About, AccountPage, AdminPage, AuthorPage, CreatorsHub, CreatorsPlatforms, CreatorsRecompile,
     CreatorsVideos, EditPortPage, GamePage, GamesIndex, Home, LibraryPage, ModerationLog,
-    ModerationQueue, NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex,
-    PortPage, PrivacyPage, RunsOnPage, SearchPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
+    ModerationQueue, NewPage, NotFound, PlatformPage, PlatformTargetPage, PlatformsIndex, PortPage,
+    PrivacyPage, RunsOnPage, SearchPage, StatsPage, SubmitPage, TrendingPage, WantedPage,
 };
 
 #[derive(Routable, Clone, PartialEq)]

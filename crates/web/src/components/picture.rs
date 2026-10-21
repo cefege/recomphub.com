@@ -7,7 +7,10 @@ pub fn srcset(filename: &str, widths: &[i32]) -> String {
     widths
         .iter()
         .map(|width| {
-            let url = media_avif_path(filename, (*width != largest.unwrap_or(*width)).then_some(*width));
+            let url = media_avif_path(
+                filename,
+                (*width != largest.unwrap_or(*width)).then_some(*width),
+            );
             format!("{url} {width}w")
         })
         .collect::<Vec<_>>()

@@ -6,19 +6,46 @@ pub const TRIAGE_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TriageCategory { GameProject, Tooling, Reference, Unrelated, Uncertain }
+pub enum TriageCategory {
+    GameProject,
+    Tooling,
+    Reference,
+    Unrelated,
+    Uncertain,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TriageConfidence { Strong, Limited, Insufficient }
+pub enum TriageConfidence {
+    Strong,
+    Limited,
+    Insufficient,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkEvidence { Implementation, DocumentedProgress, IntentOnly, Unknown }
+pub enum WorkEvidence {
+    Implementation,
+    DocumentedProgress,
+    IntentOnly,
+    Unknown,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TriageSource { Description, Readme, RootEntries, RecentCommits, ReleaseNotes }
+pub enum TriageSource {
+    Description,
+    Readme,
+    RootEntries,
+    RecentCommits,
+    ReleaseNotes,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TriageWarningCode { ClaimedLeakedSource, PartialImplementation, ConflictingClaims, MultiGameRepository, MissingRepository }
+pub enum TriageWarningCode {
+    ClaimedLeakedSource,
+    PartialImplementation,
+    ConflictingClaims,
+    MultiGameRepository,
+    MissingRepository,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TriageCitation {
@@ -42,7 +69,10 @@ pub struct TriageAssessment {
     pub citations: Vec<TriageCitation>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TriageGameMatch { pub game_id: i64, pub name: String }
+pub struct TriageGameMatch {
+    pub game_id: i64,
+    pub name: String,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TriageSummary {
     pub version: u32,
@@ -59,10 +89,18 @@ pub struct TriageSummary {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum QueueLane { Members, Found }
+pub enum QueueLane {
+    Members,
+    Found,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TriageStateFilter { All, Untriaged, Classified, Failed }
+pub enum TriageStateFilter {
+    All,
+    Untriaged,
+    Classified,
+    Failed,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModerationQueueQuery {
     pub lane: QueueLane,
@@ -76,21 +114,51 @@ pub struct ModerationQueueQuery {
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModerationQueueCounts {
-    pub members: i64, pub found: i64, pub game_project: i64, pub tooling: i64,
-    pub reference: i64, pub unrelated: i64, pub uncertain: i64, pub untriaged: i64, pub failed: i64,
+    pub members: i64,
+    pub found: i64,
+    pub game_project: i64,
+    pub tooling: i64,
+    pub reference: i64,
+    pub unrelated: i64,
+    pub uncertain: i64,
+    pub untriaged: i64,
+    pub failed: i64,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModerationQueuePage { pub rows: crate::dto::Page<crate::dto::QueueItem>, pub counts: ModerationQueueCounts }
+pub struct ModerationQueuePage {
+    pub rows: crate::dto::Page<crate::dto::QueueItem>,
+    pub counts: ModerationQueueCounts,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BatchReviewAction { Approve, Reject }
+pub enum BatchReviewAction {
+    Approve,
+    Reject,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BatchReviewItem { pub item_id: i64, pub expected_triage_revision: i64, pub overrides: crate::dto::ReviewOverrides }
+pub struct BatchReviewItem {
+    pub item_id: i64,
+    pub expected_triage_revision: i64,
+    pub overrides: crate::dto::ReviewOverrides,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BatchReviewRequest { pub action: BatchReviewAction, pub items: Vec<BatchReviewItem>, pub note: String }
+pub struct BatchReviewRequest {
+    pub action: BatchReviewAction,
+    pub items: Vec<BatchReviewItem>,
+    pub note: String,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BatchReviewStatus { Approved, Rejected, Conflict, Error }
+pub enum BatchReviewStatus {
+    Approved,
+    Rejected,
+    Conflict,
+    Error,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BatchReviewOutcome { pub item_id: i64, pub status: BatchReviewStatus, pub error: Option<String> }
+pub struct BatchReviewOutcome {
+    pub item_id: i64,
+    pub status: BatchReviewStatus,
+    pub error: Option<String>,
+}

@@ -64,7 +64,6 @@ pub struct DiscoverReport {
     pub reddit_skipped: bool,
 }
 
-
 /// Payload stored on a GitHub-discovered candidate.
 pub fn github_payload(repo: &SearchRepo) -> Value {
     json!({

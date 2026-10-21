@@ -3,9 +3,9 @@ pub mod comments;
 pub mod discord;
 pub mod funding;
 pub mod icons;
+pub mod library;
 pub mod listing;
 pub mod live;
-pub mod library;
 pub mod maintenance;
 pub mod picture;
 pub mod report;
@@ -20,15 +20,15 @@ pub use cards::GameCardView;
 pub use comments::PortComments;
 pub use discord::{DiscordCount, DiscordLink};
 pub use funding::FundingLinks;
+pub use library::{
+    FavoriteButton, LibraryIdentityRetry, LibraryStore, StorageState, prune_missing_guest,
+    reset_device_favorites,
+};
 pub use listing::{
     GameListTable, PRIMARY_TARGETS, PortTable, RankingTable, WINDOWS, WatchVisible, chip_class,
     parse_page, query_string,
 };
 pub use live::{LiveCount, LiveSocket, LiveStore, OnlineCount, use_live_watch};
-pub use library::{
-    FavoriteButton, LibraryIdentityRetry, LibraryStore, StorageState, prune_missing_guest,
-    reset_device_favorites,
-};
 pub use maintenance::{MaintenanceBadge, MaintenancePanel};
 pub use picture::Picture;
 pub use report::ReportDialog;

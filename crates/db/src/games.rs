@@ -146,15 +146,15 @@ pub async fn sync_igdb(conn: &mut PgConnection, g: &IgdbGame) -> DbResult<i64> {
     let id = upsert_igdb(&mut *conn, g).await?;
     set_platforms(&mut *conn, id, g.platform_igdb_ids.clone()).await?;
     let cover = match &g.cover_url {
-        Some(url) => Some(
-            media::enqueue(&mut *conn, "cover", url, &format!("{}-cover", g.slug)).await?,
-        ),
+        Some(url) => {
+            Some(media::enqueue(&mut *conn, "cover", url, &format!("{}-cover", g.slug)).await?)
+        }
         None => None,
     };
     let og = match &g.og_url {
-        Some(url) => Some(
-            media::enqueue(&mut *conn, "og", url, &format!("{}-preview", g.slug)).await?,
-        ),
+        Some(url) => {
+            Some(media::enqueue(&mut *conn, "og", url, &format!("{}-preview", g.slug)).await?)
+        }
         None => None,
     };
     let mut screenshots = Vec::new();

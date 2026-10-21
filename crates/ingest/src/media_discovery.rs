@@ -66,7 +66,8 @@ impl DataForSeoClient {
     /// database, so a suspended/unconfigured CronJob cannot create local work accidentally.
     pub fn from_env() -> Result<Self> {
         let login = env::var("DATAFORSEO_LOGIN").context("DATAFORSEO_LOGIN is required")?;
-        let password = env::var("DATAFORSEO_PASSWORD").context("DATAFORSEO_PASSWORD is required")?;
+        let password =
+            env::var("DATAFORSEO_PASSWORD").context("DATAFORSEO_PASSWORD is required")?;
         if login.trim().is_empty() || password.trim().is_empty() {
             bail!("DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD must not be empty");
         }
@@ -74,7 +75,11 @@ impl DataForSeoClient {
             .user_agent("recomphub/1.0 (+https://recomphub.com)")
             .build()
             .context("building DataForSEO client")?;
-        Ok(Self { http, login, password })
+        Ok(Self {
+            http,
+            login,
+            password,
+        })
     }
 
     async fn post(&self, path: &str, body: Value) -> Result<Value> {
@@ -88,7 +93,10 @@ impl DataForSeoClient {
             .with_context(|| format!("POST DataForSEO {path}"))?
             .error_for_status()
             .with_context(|| format!("DataForSEO {path} returned an error"))?;
-        response.json().await.context("decoding DataForSEO response")
+        response
+            .json()
+            .await
+            .context("decoding DataForSEO response")
     }
 
     pub async fn submit(&self, ports: &[DiscoveryPort]) -> Result<HashMap<i64, String>> {
@@ -103,7 +111,9 @@ impl DataForSeoClient {
     }
 
     pub async fn results(&self, provider_task_id: &str) -> Result<Vec<OrganicResult>> {
-        let response = self.post(&format!("task_get/{provider_task_id}"), json!({})).await?;
+        let response = self
+            .post(&format!("task_get/{provider_task_id}"), json!({}))
+            .await?;
         parse_organic_results(&response)
     }
 }
@@ -150,7 +160,6 @@ fn port_id_from_tag(tag: &str) -> Option<i64> {
     tag.strip_prefix("port:")?.parse().ok()
 }
 
-
 /// Provider task IDs keyed by the local port tag. Responses without a successful task ID are
 /// rejected instead of writing a task we cannot collect later.
 pub fn parse_submitted_tasks(value: &Value) -> Result<HashMap<i64, String>> {
@@ -165,7 +174,9 @@ pub fn parse_submitted_tasks(value: &Value) -> Result<HashMap<i64, String>> {
             continue;
         }
         let tag = task.get("tag").and_then(Value::as_str).unwrap_or_default();
-        let Some(port_id) = port_id_from_tag(tag) else { continue };
+        let Some(port_id) = port_id_from_tag(tag) else {
+            continue;
+        };
         let id = task
             .get("id")
             .and_then(Value::as_str)
@@ -195,8 +206,18 @@ pub fn parse_organic_results(value: &Value) -> Result<Vec<OrganicResult>> {
         .ok_or_else(|| anyhow!("DataForSEO result response has no tasks"))?;
     let mut results = Vec::new();
     for task in tasks {
-        for result in task.get("result").and_then(Value::as_array).into_iter().flatten() {
-            for item in result.get("items").and_then(Value::as_array).into_iter().flatten() {
+        for result in task
+            .get("result")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            for item in result
+                .get("items")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 if item.get("type").and_then(Value::as_str) != Some("organic") {
                     continue;
                 }
@@ -272,7 +293,9 @@ pub fn qualify(port: &DiscoveryPort, result: &OrganicResult) -> CandidateDecisio
         return CandidateDecision::Ignore;
     }
     if !(1..=3).contains(&result.rank) {
-        return CandidateDecision::Pending("Google rank is outside the automatic top-three window".to_string());
+        return CandidateDecision::Pending(
+            "Google rank is outside the automatic top-three window".to_string(),
+        );
     }
     if !contains_name(&text, &port.game_name) {
         return CandidateDecision::Pending("title and snippet do not name the game".to_string());
@@ -285,7 +308,10 @@ pub fn qualify(port: &DiscoveryPort, result: &OrganicResult) -> CandidateDecisio
     };
     if !contains_name(&text, qualifying_name) {
         return CandidateDecision::Pending(if same_name {
-            format!("title and snippet do not name the {}", kind_term(&port.kind))
+            format!(
+                "title and snippet do not name the {}",
+                kind_term(&port.kind)
+            )
         } else {
             "title and snippet do not name the port".to_string()
         });
@@ -295,7 +321,6 @@ pub fn qualify(port: &DiscoveryPort, result: &OrganicResult) -> CandidateDecisio
 fn thumbnail_url(youtube_id: &str) -> String {
     format!("https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg")
 }
-
 
 /// Materializes a candidate and queues its thumbnail. Every publication path, including
 /// moderator approval, uses this function so public videos do not lose their thumbnail job.
@@ -310,8 +335,13 @@ pub async fn publish_and_enqueue_thumbnail(
         bail!("rejected video discovery candidate {candidate_id}");
     }
     let thumbnail_url = thumbnail_url(&candidate.youtube_id);
-    let thumbnail =
-        media::enqueue(pool, "video_thumb", &thumbnail_url, &format!("{stem}-video")).await?;
+    let thumbnail = media::enqueue(
+        pool,
+        "video_thumb",
+        &thumbnail_url,
+        &format!("{stem}-video"),
+    )
+    .await?;
     video_discovery::attach_thumbnail(pool, candidate_id, thumbnail).await?;
     Ok(video_discovery::publish_candidate(pool, candidate_id, reviewer_id).await?)
 }
@@ -368,7 +398,9 @@ pub async fn record_readme_videos(
     youtube_ids: &[String],
 ) -> Result<()> {
     for youtube_id in youtube_ids {
-        if !is_youtube_id(youtube_id) || video_discovery::is_rejected(pool, port_id, youtube_id).await? {
+        if !is_youtube_id(youtube_id)
+            || video_discovery::is_rejected(pool, port_id, youtube_id).await?
+        {
             continue;
         }
         let candidate = video_discovery::store_candidate(
@@ -425,7 +457,9 @@ pub async fn run_media_discovery(
         .filter_map(|task| task.provider_task_id.as_deref().map(|id| (id, task)))
         .collect();
     for provider_id in ready {
-        let Some(task) = by_provider.get(provider_id.as_str()) else { continue };
+        let Some(task) = by_provider.get(provider_id.as_str()) else {
+            continue;
+        };
         match client.results(&provider_id).await {
             Ok(results) => {
                 let Some(port) = video_discovery::discovery_port(pool, task.port_id).await? else {
@@ -443,7 +477,9 @@ pub async fn run_media_discovery(
                 video_discovery::mark_task_collected(pool, task.id).await?;
                 report.collected += 1;
             }
-            Err(error) => video_discovery::mark_task_error(pool, task.id, &format!("{error:#}")).await?,
+            Err(error) => {
+                video_discovery::mark_task_error(pool, task.id, &format!("{error:#}")).await?
+            }
         }
     }
 
@@ -451,9 +487,9 @@ pub async fn run_media_discovery(
     if !ports.is_empty() {
         let submitted_ids = client.submit(&ports).await?;
         for port in &ports {
-            let provider_id = submitted_ids
-                .get(&port.port_id)
-                .ok_or_else(|| anyhow!("DataForSEO did not accept task for port {}", port.port_id))?;
+            let provider_id = submitted_ids.get(&port.port_id).ok_or_else(|| {
+                anyhow!("DataForSEO did not accept task for port {}", port.port_id)
+            })?;
             let task = video_discovery::new_task(port, query_for(port), provider_id.clone());
             video_discovery::record_provider_task(pool, &task).await?;
             report.submitted += 1;
@@ -478,10 +514,17 @@ mod tests {
 
     #[test]
     fn google_tasks_are_bounded_plain_and_tagged() {
-        let tasks = task_payloads(&[port("Zelda64Recomp", "The Legend of Zelda", "static_recomp")])
-            .expect("valid task");
+        let tasks = task_payloads(&[port(
+            "Zelda64Recomp",
+            "The Legend of Zelda",
+            "static_recomp",
+        )])
+        .expect("valid task");
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0]["keyword"], "The Legend of Zelda Zelda64Recomp gameplay");
+        assert_eq!(
+            tasks[0]["keyword"],
+            "The Legend of Zelda Zelda64Recomp gameplay"
+        );
         assert_eq!(tasks[0]["priority"], "normal");
         assert_eq!(tasks[0]["depth"], 10);
         assert_eq!(tasks[0]["tag"], "port:7");
@@ -489,7 +532,11 @@ mod tests {
 
     #[test]
     fn qualification_requires_normal_watch_url_and_named_top_result() {
-        let port = port("Ship of Harkinian", "The Legend of Zelda: Ocarina of Time", "static_recomp");
+        let port = port(
+            "Ship of Harkinian",
+            "The Legend of Zelda: Ocarina of Time",
+            "static_recomp",
+        );
         let accepted = OrganicResult {
             url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&utm=x".to_string(),
             title: "The Legend of Zelda Ocarina of Time Ship of Harkinian gameplay".to_string(),
@@ -498,7 +545,10 @@ mod tests {
         };
         assert_eq!(qualify(&port, &accepted), CandidateDecision::Publish);
 
-        let shorts = OrganicResult { url: "https://www.youtube.com/shorts/dQw4w9WgXcQ".to_string(), ..accepted };
+        let shorts = OrganicResult {
+            url: "https://www.youtube.com/shorts/dQw4w9WgXcQ".to_string(),
+            ..accepted
+        };
         assert_eq!(qualify(&port, &shorts), CandidateDecision::Ignore);
     }
 

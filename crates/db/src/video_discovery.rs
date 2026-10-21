@@ -116,10 +116,7 @@ pub async fn ports_due_for_discovery(
 
 /// Records a successfully submitted provider task. The local UUID is supplied as the durable
 /// request identity; the provider task id is used when matching Tasks Ready results.
-pub async fn record_provider_task(
-    ex: impl PgExecutor<'_>,
-    task: &DiscoveryTask,
-) -> DbResult<()> {
+pub async fn record_provider_task(ex: impl PgExecutor<'_>, task: &DiscoveryTask) -> DbResult<()> {
     sqlx::query(
         "INSERT INTO video_discovery_tasks
              (id, port_id, game_id, query, provider_task_id, state, submitted_at, collected_at, last_error)
@@ -225,11 +222,13 @@ pub async fn store_candidate(
 }
 
 pub async fn candidate(ex: impl PgExecutor<'_>, id: i64) -> DbResult<DiscoveryCandidate> {
-    sqlx::query_as::<_, DiscoveryCandidate>("SELECT * FROM video_discovery_candidates WHERE id = $1")
-        .bind(id)
-        .fetch_optional(ex)
-        .await?
-        .ok_or_else(|| DbError::NotFound(format!("video discovery candidate {id}")))
+    sqlx::query_as::<_, DiscoveryCandidate>(
+        "SELECT * FROM video_discovery_candidates WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(ex)
+    .await?
+    .ok_or_else(|| DbError::NotFound(format!("video discovery candidate {id}")))
 }
 
 pub async fn is_rejected(
@@ -259,7 +258,9 @@ pub async fn publish_candidate(
     let mut tx = pool.begin().await?;
     let row = candidate(&mut *tx, id).await?;
     if row.decision == DECISION_REJECTED {
-        return Err(DbError::InvalidState(format!("rejected video discovery candidate {id}")));
+        return Err(DbError::InvalidState(format!(
+            "rejected video discovery candidate {id}"
+        )));
     }
     videos::upsert_video(
         &mut *tx,
@@ -303,16 +304,14 @@ pub async fn reject_candidate(pool: &PgPool, id: i64, reviewer_id: i64) -> DbRes
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {
-        return Err(DbError::NotFound(format!("pending video discovery candidate {id}")));
+        return Err(DbError::NotFound(format!(
+            "pending video discovery candidate {id}"
+        )));
     }
     Ok(())
 }
 
-pub async fn attach_thumbnail(
-    pool: &PgPool,
-    candidate_id: i64,
-    media_id: i64,
-) -> DbResult<()> {
+pub async fn attach_thumbnail(pool: &PgPool, candidate_id: i64, media_id: i64) -> DbResult<()> {
     let mut tx = pool.begin().await?;
     let candidate = candidate(&mut *tx, candidate_id).await?;
     sqlx::query(

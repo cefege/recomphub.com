@@ -6,7 +6,6 @@ use recomphub_ingest::media::{extension_for, output_path, planned_widths, widths
 use recomphub_ingest::reddit::RedditRepo;
 use std::path::Path;
 
-
 #[test]
 fn github_candidate_payload_uses_lowercase_canonical_url() {
     let repo = SearchRepo {
