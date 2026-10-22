@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use chrono::{Duration, NaiveDate, Utc};
 use recomphub_db::games::{self, IgdbGame};
 use recomphub_db::stats;
-use recomphub_db::submissions::{self, NewSubmission};
+use recomphub_db::submissions::{self, ApproveOverrides, NewSubmission};
 use recomphub_db::{DbResult, PgPool};
 use recomphub_shared::SubmissionKind;
 use serde_json::json;
@@ -23,7 +23,7 @@ async fn make_user(pool: &PgPool, login: &str, approved: i32) -> DbResult<i64> {
     Ok(id)
 }
 
-/// A published port for a new game, created through the trusted submission path.
+/// A published port for a new game, approved by a moderator.
 async fn make_port(pool: &PgPool, owner: i64, igdb_id: i64, slug: &str) -> DbResult<i64> {
     let mut conn = pool.acquire().await?;
     let g = IgdbGame {
@@ -52,9 +52,16 @@ async fn make_port(pool: &PgPool, owner: i64, igdb_id: i64, slug: &str) -> DbRes
         },
     )
     .await?;
-    Ok(sub
+    let moderator = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO users (display_name, github_login, role) VALUES ('moderator', 'moderator', 'moderator') RETURNING id",
+    )
+    .fetch_one(pool)
+    .await?;
+    let approved =
+        submissions::approve(pool, sub.id, moderator, &ApproveOverrides::default(), None).await?;
+    Ok(approved
         .target_port_id
-        .expect("trusted submission sets the port id"))
+        .expect("approved submission sets the port id"))
 }
 
 /// Sets the declared platforms and the day the port was added.
