@@ -125,7 +125,7 @@ jobs:
         include:
           - os: macos-14
             target: aarch64-apple-darwin
-            package_types: macos --package-types dmg
+            package_types: macos
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             package_types: nsis
@@ -175,6 +175,12 @@ jobs:
         run: |
           codesign --verify --deep --strict --verbose=2 target/desktop-artifacts/debug/RecompHub.app
           codesign --verify --deep --strict --verbose=2 target/desktop-artifacts/release/RecompHub.app
+
+      - name: Package and mount-verify Apple Silicon disk images
+        if: runner.os == 'macOS'
+        run: |
+          python .github/package_macos_dmg.py target/desktop-artifacts/debug/RecompHub.app target/desktop-artifacts/debug
+          python .github/package_macos_dmg.py target/desktop-artifacts/release/RecompHub.app target/desktop-artifacts/release
 
       - name: Install and open the signed-out Windows library
         if: runner.os == 'Windows'

@@ -31,15 +31,18 @@ rustup run stable cargo install dioxus-cli --version 0.7.10 --locked
 ```
 
 On an Apple Silicon Mac, build the app bundle and DMG into fresh output directories. Replacing a previously launched executable in place can leave stale macOS launch/signature state. The configured `-` identity seals local development bundles and their resources without selecting a developer certificate; it is not Developer ID signing or notarization.
+The DMG helper selects non-indexed APFS explicitly, then mounts each image read-only and checks the enclosed app signature and arm64-only executable. It does not retry image-tool failures or alter app signatures.
 
 ```sh
 mkdir -p target/desktop-artifacts
 macos_debug="$(mktemp -d target/desktop-artifacts/macos-debug.XXXXXX)"
 macos_release="$(mktemp -d target/desktop-artifacts/macos.XXXXXX)"
-env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --package recomphub --fullstack false --codesign false --package-types macos --package-types dmg --out-dir "$macos_debug"
-env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --release --package recomphub --fullstack false --codesign false --package-types macos --package-types dmg --out-dir "$macos_release"
+env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --package recomphub --fullstack false --codesign false --package-types macos --out-dir "$macos_debug"
+env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --release --package recomphub --fullstack false --codesign false --package-types macos --out-dir "$macos_release"
 codesign --verify --deep --strict "$macos_debug/RecompHub.app"
 codesign --verify --deep --strict "$macos_release/RecompHub.app"
+python3 .github/package_macos_dmg.py "$macos_debug/RecompHub.app" "$macos_debug"
+python3 .github/package_macos_dmg.py "$macos_release/RecompHub.app" "$macos_release"
 ```
 
 On Windows x64, build the current-user NSIS installer:
