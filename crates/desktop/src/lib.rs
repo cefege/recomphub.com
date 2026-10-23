@@ -3733,7 +3733,7 @@ mod tests {
         assert!(!still_alive);
     }
 }
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "macos", windows)))]
 #[path = "lifecycle.rs"]
 mod lifecycle;
 #[cfg(test)]

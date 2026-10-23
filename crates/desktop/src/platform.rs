@@ -84,8 +84,11 @@ pub fn detect_host_platform() -> Result<HostPlatform, DesktopError> {
         }
     };
 
+    #[cfg(target_os = "macos")]
     let os_version = sysinfo::System::os_version()
         .ok_or_else(|| DesktopError::UnsupportedHost("OS version is unavailable".into()))?;
+    #[cfg(windows)]
+    let os_version = windows_os_version()?;
     let host = HostPlatform {
         os,
         arch,
@@ -102,6 +105,34 @@ pub fn detect_host_platform() -> Result<HostPlatform, DesktopError> {
         "{} is not supported",
         std::env::consts::OS
     )))
+}
+
+#[cfg(windows)]
+fn windows_os_version() -> Result<String, DesktopError> {
+    use windows_sys::Win32::System::SystemInformation::OSVERSIONINFOW;
+
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(version: *mut OSVERSIONINFOW) -> i32;
+    }
+    let mut version = OSVERSIONINFOW {
+        dwOSVersionInfoSize: std::mem::size_of::<OSVERSIONINFOW>() as u32,
+        dwMajorVersion: 0,
+        dwMinorVersion: 0,
+        dwBuildNumber: 0,
+        dwPlatformId: 0,
+        szCSDVersion: [0; 128],
+    };
+    // SAFETY: the structure is initialized and advertises its exact writable size.
+    if unsafe { RtlGetVersion(&mut version) } < 0 {
+        return Err(DesktopError::UnsupportedHost(
+            "Windows version is unavailable".into(),
+        ));
+    }
+    Ok(format!(
+        "{}.{}.{}",
+        version.dwMajorVersion, version.dwMinorVersion, version.dwBuildNumber
+    ))
 }
 
 /// Checks a numeric minimum version using the same shared policy as offer matching.
@@ -1079,13 +1110,6 @@ fn native_process_start_time(pid: u32) -> Result<u64, DesktopError> {
         .checked_mul(1_000_000)
         .and_then(|value| value.checked_add(info.start_usec))
         .ok_or_else(|| DesktopError::Package("game process creation time overflow".into()))
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
-fn native_process_start_time(_pid: u32) -> Result<u64, DesktopError> {
-    Err(DesktopError::Package(
-        "native high-resolution process timestamps are unavailable on this host".into(),
-    ))
 }
 
 #[cfg(windows)]

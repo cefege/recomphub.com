@@ -14,7 +14,13 @@ fn reject_symlink_or_reparse_components(path: &Path) -> Result<(), DesktopError>
     let mut current = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::Prefix(prefix) => {
+                // A Windows prefix (for example, `C:`) is a path namespace,
+                // not a filesystem entry. Inspecting it before the root is
+                // attached can fail with ERROR_INVALID_FUNCTION.
+                current.push(prefix.as_os_str());
+                continue;
+            }
             Component::RootDir => current.push(component.as_os_str()),
             Component::CurDir => continue,
             Component::ParentDir => {

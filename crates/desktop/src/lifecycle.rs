@@ -252,10 +252,11 @@ pub(crate) fn offer(
         asset_name_template: "game-{tag}.zip".into(),
         package_format: recomphub_shared::PackageFormat::Zip,
         launch: recomphub_shared::LaunchSpec {
-            #[cfg(windows)]
-            executable: "fixture.exe".into(),
-            #[cfg(target_os = "macos")]
-            executable: "fixture".into(),
+            executable: match host.os {
+                HostOs::Macos => "fixture",
+                HostOs::Windows => "fixture.exe",
+            }
+            .into(),
             working_directory: ".".into(),
             arguments: Vec::new(),
         },
