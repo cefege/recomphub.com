@@ -52,6 +52,8 @@ enum Command {
     },
     /// Refresh GitHub metadata, releases, authors and AI usage for stale ports.
     GithubSync,
+    /// Refresh reviewed native installer offers without the ordinary catalog sync.
+    LauncherSync,
     /// Re-derive port display names from the README text github-sync already stored. No GitHub calls.
     DeriveNames {
         /// Print every change and write nothing.
@@ -186,8 +188,26 @@ async fn run(command: Command) -> Result<()> {
         Command::GithubSync => {
             let pool = pool().await?;
             let client = GithubClient::from_env()?;
-            let report = github::run_github_sync(&pool, &client).await?;
-            info!(?report, "github-sync finished");
+            let catalog = github::run_github_sync(&pool, &client).await;
+            let launcher = recomphub_ingest::launcher::sync_install_offers(&pool, &client).await;
+            match (catalog, launcher) {
+                (Ok(report), Ok(())) => info!(?report, "github-sync finished"),
+                (catalog, launcher) => {
+                    if let Err(error) = &catalog {
+                        error!(error = %format!("{error:#}"), "catalog GitHub sync failed");
+                    }
+                    if let Err(error) = &launcher {
+                        error!(error = %format!("{error:#}"), "launcher offer sync failed");
+                    }
+                    bail!("github-sync failed after attempting catalog and launcher refresh");
+                }
+            }
+        }
+        Command::LauncherSync => {
+            let pool = pool().await?;
+            let client = GithubClient::from_env()?;
+            recomphub_ingest::launcher::sync_install_offers(&pool, &client).await?;
+            info!("launcher-sync finished");
         }
         Command::DeriveNames { dry_run } => {
             let pool = pool().await?;

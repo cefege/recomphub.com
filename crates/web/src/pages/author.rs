@@ -6,7 +6,9 @@ use crate::components::AuthorAchievements;
 use crate::components::icons::GithubIcon;
 use crate::components::listing::WatchVisible;
 use crate::components::styles::{BUTTON, BUTTON_OUTLINE, BUTTON_SM, H1};
-use crate::components::{Breadcrumb, FundingLinks, Picture, Section, Seo, initials_of, keyed};
+use crate::components::{
+    Breadcrumb, ExternalLink, FundingLinks, Picture, Section, Seo, initials_of, keyed,
+};
 use crate::pages::browse::{PortGrid, count_label};
 
 /// `/authors/:login`: the GitHub-linked author profile and their published ports.
@@ -61,11 +63,9 @@ fn AuthorInner(login: String) -> Element {
                 div { class: "min-w-0 flex-1 space-y-1",
                     h1 { class: H1, "{name}" }
                     p { class: "text-sm text-muted-foreground", "@{profile.login}" }
-                    a {
-                        href: "https://github.com/{profile.login}",
-                        target: "_blank",
-                        rel: "noopener",
-                        class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} mt-3 w-fit",
+                    ExternalLink {
+                        url: format!("https://github.com/{}", profile.login),
+                        class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} mt-3 w-fit"),
                         GithubIcon { class: "h-4 w-4" }
                         "GitHub profile"
                     }

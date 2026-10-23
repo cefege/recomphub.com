@@ -1,0 +1,40 @@
+[package]
+name = "recomphub-desktop"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+recomphub-shared = { path = "../shared" }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+semver = "1"
+directories = "5"
+fs2 = "0.4"
+sysinfo = "0.33"
+thiserror = "2"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+futures-util = "0.3"
+uuid = { version = "1", features = ["v4"] }
+goblin = "0.9"
+url = "2"
+memmap2 = "0.9"
+unicode-normalization = "0.1"
+unicode-casefold = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Credentials", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_System_Registry", "Win32_System_Com", "Win32_Storage_FileSystem"] }
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+[dev-dependencies]
+tempfile = "3"

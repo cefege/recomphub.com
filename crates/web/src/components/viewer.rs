@@ -54,8 +54,30 @@ impl ViewerStore {
     }
 }
 
-/// Send the visitor to Google sign-in, returning to the current page.
+/// Subscribe native account controls to online/offline state without changing
+/// website guest sign-in affordances.
+pub fn use_account_network_ready() -> bool {
+    #[cfg(feature = "desktop")]
+    {
+        let auth = use_context::<Signal<crate::desktop::session::AuthView>>();
+        auth.read().online()
+    }
+    #[cfg(not(feature = "desktop"))]
+    {
+        true
+    }
+}
+
+pub fn require_account_network() -> Result<(), String> {
+    #[cfg(feature = "desktop")]
+    return crate::desktop::runtime().account.require(true);
+    #[cfg(not(feature = "desktop"))]
+    Ok(())
+}
+
+/// Send the visitor to Google sign-in on the website. Native sign-in is owned by the root auth gate.
 pub fn login_redirect() {
+    #[cfg(not(feature = "desktop"))]
     let _ = document::eval(
         "location.href='/auth/google?next='+encodeURIComponent(location.pathname+location.search)",
     );
@@ -65,8 +87,9 @@ pub fn login_redirect() {
 /// Ids are batched per page, so one request covers every card on the page.
 pub fn use_marks(port_ids: Vec<i64>, game_ids: Vec<i64>) {
     let viewer = use_context::<ViewerStore>();
-    use_effect(use_reactive!(|(port_ids, game_ids)| {
-        if !viewer.logged_in() {
+    let online = use_account_network_ready();
+    use_effect(use_reactive!(|(port_ids, game_ids, online)| {
+        if !viewer.logged_in() || !online {
             return;
         }
         if port_ids.is_empty() && game_ids.is_empty() {
@@ -74,8 +97,15 @@ pub fn use_marks(port_ids: Vec<i64>, game_ids: Vec<i64>) {
         }
         let mut starred = viewer.starred;
         let mut wanted = viewer.wanted;
+        let user_id = viewer.me.peek().as_ref().map(|user| user.id);
         spawn(async move {
+            if require_account_network().is_err() {
+                return;
+            }
             if let Ok(marks) = api::my_marks(port_ids, game_ids).await {
+                if viewer.me.peek().as_ref().map(|user| user.id) != user_id {
+                    return;
+                }
                 starred.write().extend(marks.starred);
                 wanted.write().extend(marks.wanted);
             }
@@ -87,6 +117,7 @@ pub fn use_marks(port_ids: Vec<i64>, game_ids: Vec<i64>) {
 #[component]
 pub fn StarButton(port_id: i64, count: i64) -> Element {
     let viewer = use_context::<ViewerStore>();
+    let online = use_account_network_ready();
     let mut total = use_signal(|| count);
     let mut burst = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
@@ -99,6 +130,7 @@ pub fn StarButton(port_id: i64, count: i64) -> Element {
                 r#type: "button",
                 class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} {tone}",
                 "aria-pressed": "{starred}",
+                disabled: !online,
                 onclick: move |_| {
                     if !viewer.logged_in() {
                         login_redirect();
@@ -107,7 +139,10 @@ pub fn StarButton(port_id: i64, count: i64) -> Element {
                     let next = *burst.peek() + 1;
                     burst.set(next);
                     spawn(async move {
+                        if let Err(message) = require_account_network() { error.set(Some(message)); return; }
+                        let user_id = viewer.me.peek().as_ref().map(|user| user.id);
                         match api::toggle_star(port_id).await {
+                            _ if viewer.me.peek().as_ref().map(|user| user.id) != user_id => {}
                             Ok(state) => {
                                 let mut starred_set = viewer.starred;
                                 if state.starred {
@@ -142,6 +177,7 @@ pub fn StarButton(port_id: i64, count: i64) -> Element {
 #[component]
 pub fn WantButton(game_id: i64, count: i64) -> Element {
     let viewer = use_context::<ViewerStore>();
+    let online = use_account_network_ready();
     let mut total = use_signal(|| count);
     let mut burst = use_signal(|| 0u32);
     let mut error = use_signal(|| None::<String>);
@@ -158,6 +194,7 @@ pub fn WantButton(game_id: i64, count: i64) -> Element {
                 r#type: "button",
                 class: "{BUTTON} {style} {BUTTON_SM}",
                 "aria-pressed": "{wanted}",
+                disabled: !online,
                 onclick: move |_| {
                     if !viewer.logged_in() {
                         login_redirect();
@@ -166,7 +203,10 @@ pub fn WantButton(game_id: i64, count: i64) -> Element {
                     let next = *burst.peek() + 1;
                     burst.set(next);
                     spawn(async move {
+                        if let Err(message) = require_account_network() { error.set(Some(message)); return; }
+                        let user_id = viewer.me.peek().as_ref().map(|user| user.id);
                         match api::toggle_want(game_id).await {
+                            _ if viewer.me.peek().as_ref().map(|user| user.id) != user_id => {}
                             Ok(state) => {
                                 let mut wanted_set = viewer.wanted;
                                 if state.wanted {

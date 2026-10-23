@@ -6,14 +6,67 @@ RecompHub (recomphub.com) is a searchable database of console and PC game recomp
 
 `/library` is a private game-bookmark library, not an installed-games list. Guests can save existing catalog games in browser local storage. On sign-in, valid device favorites are additively imported into the account; existing account favorites are never replaced. Signing out does not copy account favorites back to the browser. Account favorites are private, have no public count or activity entry, and are removed automatically if the account or catalog game is deleted.
 
-The website links only to recorded upstream release pages or project source. It does not install, launch, verify binary assets, supply original-game data, or advertise an unshipped desktop client. A later Dioxus desktop client may reuse this catalog and account contract, but needs independently verified release assets, native install/launch instructions and state, secure native authentication/storage, platform signing/update work, and separately approved cloud-save or overlay designs.
+The website remains a catalog and account service. It does not install or launch games, verify downloaded binaries, or supply original-game data. The native desktop client shares its catalog, account APIs, components and design tokens while keeping installations and original data on the user's device. Desktop CI packages are development artifacts, not public releases.
+
+## Native desktop builds — Mac ARM and Windows x64
+
+The supported desktop targets are macOS Apple Silicon (`aarch64-apple-darwin`) and Windows x64 (`x86_64-pc-windows-msvc`). Intel Mac is not a delivery target.
+
+Customers install the desktop client only. Postgres, OAuth credentials and ingestion workers stay on the website server. **Sign-in is optional:** the library, public catalog, managed installs, game-data setup, launch, repair, updates and uninstall do not require an account. Catalog reads and new downloads require a network connection, not an authenticated session.
+
+The native workspace has a persistent installed-games sidebar, local filtering and selection, and a selected-game action panel. Saved games, catalog/search/detail pages, media and action controls reuse the website's components and data rather than a separate catalog or copied implementation.
+
+Signed-out and offline saved-game selections persist in native SQLite, independently of WebView storage. Optional **Continue with Google** connects the existing RecompHub account and additively syncs device selections; only server-acknowledged IDs are removed from the pending device selection. Account credentials stay in macOS Keychain or Windows Credential Manager. Account errors, sign-out and expiry never lock local games or cancel their operations.
+
+Installations use device-local SQLite and managed package directories. Game updates require an explicit click; rollback restores the previous package and its repair metadata. Original game files, saves, configuration and backups stay outside package removal. RecompHub does not supply ROMs or bypass Gatekeeper or SmartScreen. A normal macOS assessment refusal is shown as a launch error, not a false Running state.
+
+The library is per OS user: `~/Library/Application Support/RecompHub` on macOS and `%LOCALAPPDATA%\RecompHub` on Windows. The current-user Windows installer puts the client under `%LOCALAPPDATA%\Programs`, separate from managed games.
+
+Reviewed managed packages currently cover Banjo: Recompiled on macOS Intel/Apple Silicon and Windows x64. Other catalog entries keep their upstream links without a guessed installer. The flat macOS app layout is present in v1.0.2; the published v1.0.0 and v1.0.1 archives wrap another ZIP and do not match that reviewed executable layout.
+
+Install the pinned Dioxus CLI version before bundling:
+
+```sh
+rustup run stable cargo install dioxus-cli --version 0.7.10 --locked
+```
+
+On an Apple Silicon Mac, build the app bundle and DMG into fresh output directories. Replacing a previously launched executable in place can leave stale macOS launch/signature state. The configured `-` identity seals local development bundles and their resources without selecting a developer certificate; it is not Developer ID signing or notarization.
+The DMG helper selects non-indexed APFS explicitly, then mounts each image read-only and checks the enclosed app signature and arm64-only executable. It does not retry image-tool failures or alter app signatures.
+
+```sh
+mkdir -p target/desktop-artifacts
+macos_debug="$(mktemp -d target/desktop-artifacts/macos-debug.XXXXXX)"
+macos_release="$(mktemp -d target/desktop-artifacts/macos.XXXXXX)"
+env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --package recomphub --fullstack false --codesign false --package-types macos --out-dir "$macos_debug"
+env -u APPLE_CERTIFICATE -u APPLE_ID -u APPLE_API_KEY rustup run stable "$HOME/.cargo/bin/dx" bundle --desktop --target aarch64-apple-darwin --no-default-features --features desktop --release --package recomphub --fullstack false --codesign false --package-types macos --out-dir "$macos_release"
+codesign --verify --deep --strict "$macos_debug/RecompHub.app"
+codesign --verify --deep --strict "$macos_release/RecompHub.app"
+python3 .github/package_macos_dmg.py "$macos_debug/RecompHub.app" "$macos_debug"
+python3 .github/package_macos_dmg.py "$macos_release/RecompHub.app" "$macos_release"
+```
+
+On Windows x64, build the current-user NSIS installer:
+
+```powershell
+rustup run stable "$HOME/.cargo/bin/dx.exe" bundle --desktop --no-default-features --features desktop --package recomphub --fullstack false --codesign false --package-types nsis --out-dir target/desktop-artifacts/windows-debug
+rustup run stable "$HOME/.cargo/bin/dx.exe" bundle --desktop --no-default-features --features desktop --release --package recomphub --fullstack false --codesign false --package-types nsis --out-dir target/desktop-artifacts/windows
+```
+
+Windows x64 builds statically link the C runtime through `.cargo/config.toml`; no separate Visual C++ redistributable is required. Preserve `-C target-feature=+crt-static` when overriding target Rust flags. The NSIS installer includes the WebView2 bootstrapper.
+
+Native CI targets Mac ARM and Windows x64 only. It runs engine lifecycle and account-state checks, excludes database/ingestion/SQLx/server-renderer dependencies from the client, verifies Mac bundle signatures, and uploads local development debug/release artifacts. Mac artifacts are ad-hoc signed, not Developer ID signed or notarized; Windows artifacts are unsigned. Intel Mac is not built.
+
+Treat implementation, runtime verification and distribution readiness as separate gates. Implementation requires the behavioral suites and native acceptance scenarios to pass. Runtime verification is recorded separately for each operating system and scenario. Distribution readiness also requires the authorized production backend, signing and notarization where applicable. CI artifacts and successful builds alone do not establish runtime verification or distribution readiness.
+
+Debug builds accept `RECOMPHUB_API_URL=http://localhost:8080` and `RECOMPHUB_LIBRARY_ROOT` for an isolated local backend and library. Release builds ignore both overrides and use `https://recomphub.com` with the normal device library directory. These variables belong to the app process, not its build command alone.
 
 The site is a Rust workspace:
 
 - `crates/shared`: serde DTOs, enums, slug helpers and SEO text builders (compiles to wasm).
 - `crates/db`: sqlx Postgres pool, migrations, queries and submission logic.
+- `crates/desktop`: native package lifecycle, device SQLite, OS credentials and process tracking.
 - `crates/ingest`: IGDB, GitHub, Reddit and seed-import clients, AI and platform detection, media pipeline.
-- `crates/web`: the Dioxus 0.7 fullstack app (binary `server` when built with `dx`).
+- `crates/web`: the shared Dioxus website and native desktop UI (web server binary `server` when built with `dx`).
 - `crates/worker`: the `worker` CLI that runs sync and import jobs.
 
 ## Local development
@@ -23,8 +76,10 @@ brew services start postgresql@18
 createdb recomphub
 createdb recomphub_test
 cp .env.example .env        # then fill in the keys listed below
-dx serve --package recomphub
+rustup run stable "$HOME/.cargo/bin/dx" serve --web --no-default-features --package recomphub
 ```
+
+Let `dx` select each renderer's feature. Do not pass `--features web` as shared fullstack arguments: Dioxus 0.7.10 also enables it on the server, silently dropping SSR hydration data ([upstream issue #5427](https://github.com/dioxuslabs/dioxus/issues/5427)). Explicit overrides must use separate `@client` and `@server` arguments. The crate rejects mixed renderer features.
 
 Run the worker commands from the repository root:
 
@@ -103,6 +158,7 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 ## Container and deployment
 
 - `Dockerfile` builds the site with `dx bundle --web --release --package recomphub` and the worker with `cargo build --release -p recomphub-worker`. The runtime image puts the bundle in `/usr/local/app/` (entrypoint `server`) and the worker at `/usr/local/app/worker`. If the bundle path printed by `dx bundle` differs from `target/dx/recomphub/release/web/`, update the `COPY` line in the Dockerfile.
+- Desktop production activation is separate from local builds. After approval, deploy the tested server/worker image through the existing image/Flux workflow; server bootstrap applies SQLx migrations. Then run `/usr/local/app/worker launcher-sync` and verify desktop authorization headers and host-filtered offers before distributing a production-origin app. A main push can trigger deployment; do not use it as a smoke test.
 - CI (`.github/workflows/ci.yml`) runs fmt, clippy and tests against a `postgres:17-alpine` service.
 - `discover` is intake: it searches GitHub and scans the newest 100 posts from each of r/recomps, r/decomps and r/macgaming for linked GitHub repositories, placing distinct new repositories in the pending candidate queue. `triage-candidates` is the separate evidence-preparation stage: it fetches bounded repository evidence, proposes a category and review hints, and records citations for moderators. Popularity, releases, recent activity, archive status, or unfinished work are not admission requirements; substantive game-specific implementation or documented progress can qualify even when source-only or archived. Missing or insufficient evidence remains uncertain rather than being automatically rejected.
 - The `candidate-triage` CronJob is intentionally paused (`suspend: true`), with schedule `15 */6 * * *` (four times daily), `Forbid` concurrency, at most 100 preparations and 100 completion attempts per run including provider fallbacks. Keep it paused through the reviewed calibration process below. Candidates remain pending until human moderators publish or reject them using the server-filtered, 50-row review pages; triage never decides lifecycle outcomes.

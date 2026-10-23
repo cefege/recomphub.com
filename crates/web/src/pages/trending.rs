@@ -89,9 +89,9 @@ fn TrendingInner(window: HitWindow, page: i64, list: bool) -> Element {
             div { class: "flex flex-wrap items-center justify-between gap-4",
                 nav { class: TABS_LIST, "aria-label": "Ranking window",
                     for (_, key, chip) in WINDOWS {
-                        a {
+                        Link {
                             key: "{key}",
-                            href: "/trending?window={key}",
+                            to: crate::routes::Route::TrendingPage { window: key.to_string(), page: String::new(), view: String::new() },
                             class: window_tab_class(key == window.as_str()),
                             "{chip}"
                         }

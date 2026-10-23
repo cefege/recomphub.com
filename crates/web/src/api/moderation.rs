@@ -1,12 +1,12 @@
 //! Moderator queue, admin tools, and the game search used by the submit and moderation pages.
 
 use dioxus::prelude::*;
-use recomphub_shared::dto::{
-    GameChoice, LogItem, Page, QueueItem, ReviewOverrides, SettingRow, UserAdminRow,
-};
-use recomphub_shared::{
-    BatchReviewAction, BatchReviewOutcome, BatchReviewRequest, BatchReviewStatus,
-};
+#[cfg(feature = "server")]
+use recomphub_shared::dto::QueueItem;
+use recomphub_shared::dto::{GameChoice, LogItem, Page, ReviewOverrides, SettingRow, UserAdminRow};
+#[cfg(feature = "server")]
+use recomphub_shared::{BatchReviewAction, BatchReviewStatus};
+use recomphub_shared::{BatchReviewOutcome, BatchReviewRequest};
 use recomphub_shared::{ModerationQueuePage, ModerationQueueQuery};
 
 #[cfg(feature = "server")]

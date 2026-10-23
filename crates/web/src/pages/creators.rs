@@ -12,7 +12,9 @@ use crate::components::styles::{
     BUTTON, BUTTON_GHOST, BUTTON_OUTLINE, BUTTON_SM, H1, H2, LEAD, TAB, TAB_ACTIVE, TABLE,
     TABLE_HEAD_ROW, TABLE_ROW, TABLE_TD, TABLE_TH, TABLE_TH_NUM, TABLE_WRAP, TABS_LIST,
 };
-use crate::components::{Breadcrumb, EmptyState, Pager, Seo, keyed, target_label, with_query};
+use crate::components::{
+    Breadcrumb, EmptyState, ExternalLink, Pager, Seo, keyed, target_label, with_query,
+};
 use crate::routes::Route;
 
 /// Video filters. Keep in step with `TargetPlatform::youtube_searchable`.
@@ -533,11 +535,9 @@ fn PortGapTable(rows: Vec<PortGapItem>, start: i64) -> Element {
                                     }
                                     td { class: "{TABLE_TD} text-sm", "{why}" }
                                     td { class: "{TABLE_TD} text-right",
-                                        a {
-                                            href: "{row.repo_url}",
-                                            target: "_blank",
-                                            rel: "noopener noreferrer",
-                                            class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}",
+                                        ExternalLink {
+                                            url: row.repo_url.clone(),
+                                            class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}"),
                                             "Open repo"
                                         }
                                     }

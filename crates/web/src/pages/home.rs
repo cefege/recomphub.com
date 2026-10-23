@@ -29,6 +29,9 @@ pub fn Home(window: String) -> Element {
 #[component]
 fn HomeInner(selected: HitWindow) -> Element {
     let selected_key = selected.as_str();
+    let mut search_query = use_signal(String::new);
+    #[cfg(feature = "desktop")]
+    let navigator = use_navigator();
     let data = use_loader(move || api::home(selected))?;
     let coverage = use_loader(api::stats_coverage)?;
     let d = data();
@@ -44,10 +47,25 @@ fn HomeInner(selected: HitWindow) -> Element {
                 }
                 p { class: "mt-4 max-w-2xl text-lg {LEAD}", "{description}" }
             }
-            form { action: "/search", method: "get", role: "search", class: "flex w-full max-w-xl gap-2",
+            form {
+                action: "/search",
+                method: "get",
+                role: "search",
+                class: "flex w-full max-w-xl gap-2",
+                onsubmit: move |event| {
+                    #[cfg(feature = "desktop")]
+                    {
+                        event.prevent_default();
+                        navigator.push(crate::routes::Route::SearchPage { q: search_query() });
+                    }
+                    #[cfg(not(feature = "desktop"))]
+                    let _ = event;
+                },
                 input {
                     r#type: "search",
                     name: "q",
+                    value: "{search_query}",
+                    oninput: move |event| search_query.set(event.value()),
                     "aria-label": "Search a game or port",
                     placeholder: "Search a game or port…",
                     class: "{INPUT} h-10",
@@ -76,16 +94,16 @@ fn HomeInner(selected: HitWindow) -> Element {
                 div { class: "flex items-center gap-2",
                     nav { class: TABS_LIST, "aria-label": "Ranking window",
                         for (w, key, label) in WINDOWS {
-                            a {
+                            Link {
                                 key: "{key}",
-                                href: "/?window={key}",
+                                to: crate::routes::Route::Home { window: key.to_string() },
                                 class: if w == selected { "{TAB} {TAB_ACTIVE}" } else { "{TAB}" },
                                 "aria-current": if w == selected { "page" } else { "false" },
                                 "{label}"
                             }
                         }
                     }
-                    a { href: "/trending?window={selected_key}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "Full ranking" }
+                    Link { to: crate::routes::Route::TrendingPage { window: selected_key.to_string(), page: String::new(), view: String::new() }, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "Full ranking" }
                 }
             }
             if !d.window_has_scores {
@@ -110,7 +128,7 @@ fn HomeInner(selected: HitWindow) -> Element {
                 ul { class: "rail flex snap-x gap-3 overflow-x-auto pb-2",
                     for g in d.live_top.iter().cloned() {
                         li { key: "{g.game_id}", class: "shrink-0 snap-start",
-                            a { href: "/games/{g.slug}", class: "{CARD_SURFACE} flex w-56 flex-col gap-1 p-3 transition-colors hover:bg-accent",
+                            Link { to: crate::routes::Route::GamePage { slug: g.slug.clone() }, class: "{CARD_SURFACE} flex w-56 flex-col gap-1 p-3 transition-colors hover:bg-accent",
                                 span { class: "truncate text-sm font-medium", "{g.name}" }
                                 LiveCount { game_id: g.game_id, portless: g.port_count == 0 }
                             }
@@ -124,7 +142,7 @@ fn HomeInner(selected: HitWindow) -> Element {
             section { class: "lg:col-span-2",
                 div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
                     h2 { class: H2, "Just released" }
-                    a { href: "/new", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
+                    Link { to: crate::routes::Route::NewPage { page: String::new(), view: String::new() }, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
                 }
                 ul { class: "{CARD_SURFACE} divide-y",
                     for p in d.just_released.iter().cloned() {
@@ -139,7 +157,7 @@ fn HomeInner(selected: HitWindow) -> Element {
                 ol { class: "flex flex-col gap-1 text-sm",
                     for a in d.activity.iter().cloned() {
                         li { key: "{a.id}", class: "animate-rise",
-                            a { href: "/games/{a.game_slug}", class: "block rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                            Link { to: crate::routes::Route::GamePage { slug: a.game_slug.clone() }, class: "block rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                                 "{activity_text(&a)}"
                             }
                         }
@@ -151,7 +169,7 @@ fn HomeInner(selected: HitWindow) -> Element {
         section { class: "mt-12",
             div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
                 h2 { class: H2, "Most wanted, no port yet" }
-                a { href: "/wanted", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
+                Link { to: crate::routes::Route::WantedPage { page: String::new(), view: String::new() }, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "View all" }
             }
             ul { class: "grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 lg:grid-cols-8",
                 for g in d.wanted.iter().cloned() {
@@ -167,14 +185,14 @@ fn HomeInner(selected: HitWindow) -> Element {
                     "The most wanted games without a port, ports missing platforms, and ports nobody has filmed yet."
                 }
             }
-            a { href: "/creators", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} self-start sm:self-auto", "What to work on next" }
+            Link { to: crate::routes::Route::CreatorsHub {}, class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} self-start sm:self-auto", "What to work on next" }
         }
 
         div { class: "mt-12 grid gap-12 lg:grid-cols-2",
             section {
                 div { class: "mb-4 flex min-h-8 items-center justify-between gap-4",
                     h2 { class: H2, "Original platforms" }
-                    a { href: "/platforms", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "All platforms" }
+                    Link { to: crate::routes::Route::PlatformsIndex {}, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM}", "All platforms" }
                 }
                 ul { class: "grid grid-cols-2 gap-3 sm:grid-cols-3",
                     for p in d.platforms.iter().take(12).cloned() {
@@ -189,7 +207,7 @@ fn HomeInner(selected: HitWindow) -> Element {
                 ul { class: "grid grid-cols-2 gap-3",
                     for t in d.runs_on.iter().cloned() {
                         li { key: "{t.target}",
-                            a { href: "/runs-on/{t.target}",
+                            Link { to: crate::routes::Route::RunsOnPage { target: t.target.clone(), page: String::new(), view: String::new() },
                                 class: "{CARD_SURFACE} flex flex-col gap-0.5 p-4 transition-colors hover:bg-accent",
                                 span { class: "font-medium", "{t.label}" }
                                 span { class: "text-sm text-muted-foreground tabular", "{plural(t.port_count, \"port\", \"ports\")}" }
@@ -216,10 +234,9 @@ fn Stat(value: i64, label: &'static str) -> Element {
 /// One row of the "Just released" list: cover, port and game, version and time.
 #[component]
 fn ReleaseRow(port: PortCard) -> Element {
-    let href = format!("/games/{}/{}", port.game_slug, port.slug);
     rsx! {
         li {
-            a { href: "{href}", class: "flex items-center gap-3 p-3 transition-colors hover:bg-muted/50",
+            Link { to: crate::routes::Route::PortPage { game_slug: port.game_slug.clone(), port_slug: port.slug.clone() }, class: "flex items-center gap-3 p-3 transition-colors hover:bg-muted/50",
                 div { class: "h-12 w-9 shrink-0 overflow-hidden rounded-sm bg-muted",
                     Picture {
                         media: port.cover.clone(),
@@ -251,7 +268,7 @@ fn PlatformTile(platform: PlatformRef) -> Element {
     let slug = platform.slug.clone().unwrap_or_default();
     rsx! {
         li {
-            a { href: "/platforms/{slug}",
+            Link { to: crate::routes::Route::PlatformPage { slug: slug.clone(), page: String::new(), view: String::new() },
                 class: "{CARD_SURFACE} flex h-full flex-col gap-0.5 p-4 transition-colors hover:bg-accent",
                 span { class: "font-medium leading-snug", "{platform.name}" }
                 span { class: "text-sm text-muted-foreground tabular", "{platform.ported_count} ported" }

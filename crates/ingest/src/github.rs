@@ -69,6 +69,36 @@ pub struct ReleaseInfo {
     pub assets: Vec<String>,
 }
 
+/// Stable release data retained for a reviewed native installer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstallRelease {
+    pub id: i64,
+    pub tag: String,
+    pub published_at: DateTime<Utc>,
+    pub url: String,
+    pub draft: bool,
+    pub prerelease: bool,
+    pub assets: Vec<InstallAsset>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InstallReleaseFetch {
+    Missing,
+    Malformed(String),
+    Release(InstallRelease),
+}
+
+/// One release asset, including the GitHub-provided integrity digest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstallAsset {
+    pub id: i64,
+    pub name: String,
+    pub download_url: String,
+    pub size: u64,
+    pub state: String,
+    pub digest: Option<String>,
+}
+
 /// A credited contributor, already filtered by `select_contributors`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contributor {
@@ -274,6 +304,53 @@ impl GithubClient {
                     body: r.body,
                 },
             ))),
+        }
+    }
+
+    /// Fetches GitHub's stable latest release endpoint. HTTP/network failures remain errors;
+    /// invalid JSON shape or required metadata is conclusive malformed release data.
+    pub async fn latest_install_release(&self, repo_url: &str) -> Result<InstallReleaseFetch> {
+        let (owner, repo) = crate::github_links::normalize_repo_url(repo_url)
+            .ok_or_else(|| anyhow!("invalid GitHub repository URL: {repo_url}"))?;
+        let path = format!("/repos/{owner}/{repo}/releases/latest");
+        let body = self.rest_raw(&path, JSON_ACCEPT, ABSENT).await?;
+        let Some(body) = body else {
+            return Ok(InstallReleaseFetch::Missing);
+        };
+        let json: Value = match serde_json::from_str(&body) {
+            Ok(value) => value,
+            Err(error) => return Ok(InstallReleaseFetch::Malformed(error.to_string())),
+        };
+        match serde_json::from_value::<InstallReleaseJson>(json) {
+            Ok(release) => {
+                let release = InstallRelease {
+                    id: release.id,
+                    tag: release.tag_name,
+                    published_at: match parse_ts(&release.published_at) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            return Ok(InstallReleaseFetch::Malformed(error.to_string()));
+                        }
+                    },
+                    url: release.html_url,
+                    draft: release.draft,
+                    prerelease: release.prerelease,
+                    assets: release
+                        .assets
+                        .into_iter()
+                        .map(|asset| InstallAsset {
+                            id: asset.id,
+                            name: asset.name,
+                            download_url: asset.browser_download_url,
+                            size: asset.size,
+                            state: asset.state,
+                            digest: asset.digest,
+                        })
+                        .collect(),
+                };
+                Ok(InstallReleaseFetch::Release(release))
+            }
+            Err(error) => Ok(InstallReleaseFetch::Malformed(error.to_string())),
         }
     }
 
@@ -1248,6 +1325,27 @@ struct ReleaseJson {
 #[derive(Deserialize)]
 struct AssetJson {
     name: String,
+}
+
+#[derive(Deserialize)]
+struct InstallReleaseJson {
+    id: i64,
+    tag_name: String,
+    html_url: String,
+    published_at: String,
+    draft: bool,
+    prerelease: bool,
+    assets: Vec<InstallAssetJson>,
+}
+
+#[derive(Deserialize)]
+struct InstallAssetJson {
+    id: i64,
+    name: String,
+    browser_download_url: String,
+    size: u64,
+    state: String,
+    digest: Option<String>,
 }
 
 #[derive(Deserialize)]

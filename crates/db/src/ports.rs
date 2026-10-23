@@ -491,6 +491,20 @@ pub async fn find_published(
     Ok(row)
 }
 
+/// Published ports by ID with their game card fields. Missing or hidden IDs are omitted.
+pub async fn published_by_ids(ex: impl PgExecutor<'_>, ids: &[i64]) -> DbResult<Vec<PortWithGame>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query_as::<_, PortWithGame>(&format!(
+        "{PORT_CARD_SQL} WHERE p.status = 'published' AND p.id = ANY($1)"
+    ))
+    .bind(ids)
+    .fetch_all(ex)
+    .await?;
+    Ok(rows)
+}
+
 /// A port by repo URL. The URL is normalized first, so any GitHub spelling works.
 pub async fn find_by_repo_url(
     ex: impl PgExecutor<'_>,

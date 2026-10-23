@@ -69,3 +69,31 @@ pub enum Route {
     #[route("/:..segments")]
     NotFound { segments: Vec<String> },
 }
+
+#[cfg(feature = "desktop")]
+#[component]
+pub fn NativeWebsiteOnly(path: String, heading: String) -> Element {
+    let mut error = use_signal(|| None::<String>);
+    let url = format!("{}{path}", crate::desktop::runtime().origin);
+    rsx! {
+        main { class: "mx-auto flex min-h-[60vh] max-w-2xl flex-col items-start justify-center gap-4 p-6",
+            h1 { class: "text-2xl font-semibold", "{heading}" }
+            p { class: "text-muted-foreground",
+                "This page is available on the RecompHub website. Open it in your system browser to continue."
+            }
+            button {
+                r#type: "button",
+                class: "rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground",
+                onclick: move |_| {
+                    if let Err(message) = crate::desktop::external::open_external_http(&url) {
+                        error.set(Some(message));
+                    }
+                },
+                "Open on RecompHub website"
+            }
+            if let Some(message) = error.read().as_ref() {
+                p { class: "text-sm text-destructive", "{message}" }
+            }
+        }
+    }
+}

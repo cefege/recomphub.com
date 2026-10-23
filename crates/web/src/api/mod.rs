@@ -9,6 +9,7 @@ pub mod discord;
 pub mod games {
     pub use super::catalog::GamesQuery;
 }
+pub mod launcher;
 pub mod library;
 pub mod live;
 pub mod members;
@@ -21,6 +22,7 @@ pub use catalog::*;
 pub use comments::*;
 pub use creators::*;
 pub use discord::*;
+pub use launcher::*;
 pub use library::*;
 pub use live::*;
 pub use members::*;

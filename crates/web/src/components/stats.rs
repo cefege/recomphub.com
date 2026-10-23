@@ -154,7 +154,7 @@ pub fn PlatformCoverage(coverage: ParityDto, #[props(default = 6)] limit: usize)
                         "How many of our ported games run on each major platform."
                     }
                 }
-                a { href: "/stats", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Full platform board" }
+                Link { to: crate::routes::Route::StatsPage {}, class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Full platform board" }
             }
             ParityMeter { parity: coverage.clone() }
             if let Some(text) = to_next {

@@ -6,13 +6,14 @@ publish = false
 
 [dependencies]
 recomphub-shared = { path = "../shared" }
-dioxus = { version = "=0.7.10", features = ["router", "fullstack"] }
+dioxus = { version = "=0.7.10", features = ["router"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 base64 = "0.22"
 recomphub-db = { path = "../db", optional = true }
 recomphub-ingest = { path = "../ingest", optional = true }
+recomphub-desktop = { path = "../desktop", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 sqlx = { version = "0.8", optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "json"] }
 dotenvy = { version = "0.15", optional = true }
@@ -23,13 +24,20 @@ sha2 = { version = "0.10", optional = true }
 rand = { version = "0.9", optional = true }
 regex = { version = "1", optional = true }
 tower-http = { version = "0.6", features = ["fs", "compression-gzip", "set-header"], optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies"], optional = true }
+rfd = { version = "0.15", optional = true }
+webbrowser = { version = "1", optional = true }
 
 [features]
 default = []
-web = ["dioxus/web", "chrono/wasmbind"]
+# DX 0.7.10 treats a direct fullstack feature as a request to build a server,
+# even with --fullstack false. Desktop needs the client APIs, not that server.
+client-api = ["dioxus/fullstack"]
+web = ["dioxus/web", "dioxus/fullstack", "chrono/wasmbind"]
+desktop = ["client-api", "dioxus/desktop", "dep:recomphub-desktop", "dep:reqwest", "dep:rfd", "dep:tokio", "dep:rand", "dep:sha2", "dep:webbrowser"]
 server = [
   "dioxus/server",
+  "dioxus/fullstack",
   "dep:recomphub-db",
   "dep:recomphub-ingest",
   "dep:tokio",

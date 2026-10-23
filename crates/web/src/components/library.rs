@@ -4,15 +4,18 @@ use std::collections::HashSet;
 
 use dioxus::prelude::*;
 use recomphub_shared::dto::GameFavoriteState;
+#[cfg(any(not(feature = "desktop"), test))]
 use serde::{Deserialize, Serialize};
 
 use crate::api;
 use crate::components::styles::{BUTTON, BUTTON_GHOST, BUTTON_ICON};
 use crate::components::viewer::{ViewerStore, retry_identity};
 
+#[cfg(any(not(feature = "desktop"), test))]
 const STORAGE_VERSION: u8 = 1;
 const MERGE_CHUNK: usize = 200;
 
+#[cfg(any(not(feature = "desktop"), test))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct DeviceFavorites {
     version: u8,
@@ -32,31 +35,67 @@ pub struct LibraryStore {
     pub ids: Signal<Vec<i64>>,
     pub initialized: Signal<bool>,
     pub account_mode: Signal<bool>,
+    #[cfg(feature = "desktop")]
+    device_ids: Signal<Vec<i64>>,
     pub pending: Signal<HashSet<i64>>,
     pub error: Signal<Option<String>>,
     pub warning: Signal<Option<String>>,
     pub storage: Signal<StorageState>,
     generation: Signal<u64>,
     retry: Signal<u64>,
+    owner: dioxus::core::ScopeId,
 }
 
 impl LibraryStore {
     /// Provides one library state tree. It waits for the session check, so no personalized ids
     /// render in SSR output or before the viewer has a confirmed identity.
     pub fn provide(viewer: ViewerStore) -> Self {
+        #[cfg(feature = "desktop")]
+        let _ = viewer;
+        #[allow(unused_mut)]
         let mut store = Self {
             ids: use_signal(Vec::new),
             initialized: use_signal(|| false),
             account_mode: use_signal(|| false),
+            #[cfg(feature = "desktop")]
+            device_ids: use_signal(Vec::new),
             pending: use_signal(HashSet::new),
             error: use_signal(|| None),
             warning: use_signal(|| None),
             storage: use_signal(|| StorageState::Loading),
             generation: use_signal(|| 0),
             retry: use_signal(|| 0),
+            owner: dioxus::core::current_scope_id(),
         };
+        #[cfg(feature = "desktop")]
+        {
+            let auth = use_context::<Signal<crate::desktop::session::AuthView>>();
+            let mut last_user = use_signal(|| None::<i64>);
+            let account_source = use_memo(move || {
+                let account = auth.read();
+                (account.user.as_ref().map(|user| user.id), account.online())
+            });
+            use_effect(move || {
+                let (user_id, online) = account_source();
+                let _retry = *store.retry.read();
+                let generation = store.generation.peek().wrapping_add(1);
+                store.generation.set(generation);
+                store.pending.set(HashSet::new());
+                store.account_mode.set(online);
+                if !online || *last_user.peek() != user_id {
+                    store.ids.set(Vec::new());
+                    last_user.set(user_id);
+                }
+                store.initialized.set(false);
+                store.error.set(None);
+                store.warning.set(None);
+                store.storage.set(StorageState::Loading);
+                spawn(initialize_native(store, user_id, online, generation));
+            });
+        }
         use_context_provider(|| store);
 
+        #[cfg(not(feature = "desktop"))]
         use_effect(move || {
             if !*viewer.ready.read() {
                 return;
@@ -76,6 +115,7 @@ impl LibraryStore {
             spawn(initialize(store, user_id, generation));
         });
 
+        #[cfg(not(feature = "desktop"))]
         use_effect(move || {
             let mut eval = document::eval(
                 r#"
@@ -106,6 +146,7 @@ await new Promise(() => {});
                 }
             });
         });
+        #[cfg(not(feature = "desktop"))]
         use_drop(|| {
             let _ = document::eval(
                 r#"
@@ -125,7 +166,11 @@ delete window.__recomphubFavoriteStorageHandler;
     pub fn controls_ready(&self) -> bool {
         *self.initialized.read()
             && self.error.read().is_none()
-            && (*self.account_mode.read() || *self.storage.read() != StorageState::Invalid)
+            && if cfg!(feature = "desktop") {
+                *self.account_mode.read() || *self.storage.read() == StorageState::Ready
+            } else {
+                *self.account_mode.read() || *self.storage.read() != StorageState::Invalid
+            }
     }
 
     pub fn retry(&self) {
@@ -165,7 +210,10 @@ pub fn FavoriteButton(game_id: i64, game_name: String) -> Element {
             "aria-pressed": "{saved}",
             disabled: !ready || pending,
             onclick: move |_| {
-                spawn(change_favorite(store, game_id, !saved));
+                dioxus::core::Runtime::current().spawn(
+                    store.owner,
+                    change_favorite(store, game_id, !saved),
+                );
             },
             span { class: "text-lg leading-none", "aria-hidden": "true", if saved { "♥" } else { "♡" } }
             span { class: "sr-only", "{text}" }
@@ -196,6 +244,7 @@ pub fn LibraryIdentityRetry() -> Element {
     }
 }
 
+#[cfg(not(feature = "desktop"))]
 /// Removes guest ids only after the public catalog batch has confirmed they no longer exist.
 ///
 /// Each storage operation can yield to an identity change. A prune that started for a guest must
@@ -223,6 +272,7 @@ pub async fn prune_missing_guest(mut store: LibraryStore, requested: Vec<i64>, p
         store.ids.set(current);
     }
 }
+#[cfg(not(feature = "desktop"))]
 pub async fn reset_device_favorites(mut store: LibraryStore) {
     match clear_device().await {
         Ok(()) => {
@@ -236,6 +286,224 @@ pub async fn reset_device_favorites(mut store: LibraryStore) {
     }
 }
 
+#[cfg(feature = "desktop")]
+async fn initialize_native(
+    mut store: LibraryStore,
+    user_id: Option<i64>,
+    online: bool,
+    generation: u64,
+) {
+    let manager = match crate::desktop::runtime().library().await {
+        Ok(manager) => manager,
+        Err(message) => {
+            if online && user_id.is_some() {
+                initialize_native_account_only(
+                    store,
+                    generation,
+                    format!("Device saved games are unavailable: {message}"),
+                )
+                .await;
+            } else if !stale(store, generation) {
+                store.storage.set(StorageState::Unavailable);
+                store.initialized.set(true);
+                store
+                    .error
+                    .set(Some("Device saved games are unavailable.".into()));
+                store.warning.set(Some(message));
+            }
+            return;
+        }
+    };
+    let read_manager = manager.clone();
+    let device_ids =
+        match tokio::task::spawn_blocking(move || read_manager.favorite_game_ids()).await {
+            Ok(Ok(ids)) => ids,
+            Ok(Err(error)) => {
+                if online && user_id.is_some() {
+                    initialize_native_account_only(
+                        store,
+                        generation,
+                        format!("Device saved games could not be read: {error}"),
+                    )
+                    .await;
+                } else if !stale(store, generation) {
+                    store.storage.set(StorageState::Unavailable);
+                    store.initialized.set(true);
+                    store
+                        .error
+                        .set(Some("Device saved games could not be read.".into()));
+                }
+                return;
+            }
+            Err(_) => {
+                if online && user_id.is_some() {
+                    initialize_native_account_only(
+                        store,
+                        generation,
+                        "The device saved-games worker stopped unexpectedly.".into(),
+                    )
+                    .await;
+                } else if !stale(store, generation) {
+                    store.storage.set(StorageState::Unavailable);
+                    store.initialized.set(true);
+                    store
+                        .error
+                        .set(Some("Device saved games could not be read.".into()));
+                }
+                return;
+            }
+        };
+    if stale(store, generation) {
+        return;
+    }
+    store.device_ids.set(device_ids.clone());
+    store.storage.set(StorageState::Ready);
+    if !online || user_id.is_none() {
+        store.ids.set(device_ids);
+        store.initialized.set(true);
+        return;
+    }
+    if crate::desktop::runtime().account.require(true).is_err() {
+        store.ids.set(device_ids);
+        store.initialized.set(true);
+        store
+            .error
+            .set(Some("Sign in again before syncing saved games.".into()));
+        return;
+    }
+    let prior_ids = store.ids.peek().clone();
+    let account_before = match api::favorite_game_ids().await {
+        Ok(ids) => ids,
+        Err(_) => {
+            if !stale(store, generation) {
+                store.ids.set(union_ids(prior_ids, device_ids));
+                store.initialized.set(true);
+                store.error.set(Some(
+                    "Could not refresh saved games. Device selections remain saved for retry."
+                        .into(),
+                ));
+            }
+            return;
+        }
+    };
+    if stale(store, generation) {
+        return;
+    }
+    store.ids.set(union_ids(account_before, device_ids.clone()));
+    for chunk in device_ids.chunks(MERGE_CHUNK) {
+        if crate::desktop::runtime().account.require(true).is_err() {
+            if !stale(store, generation) {
+                store.initialized.set(true);
+                store
+                    .error
+                    .set(Some("Sign in again before syncing saved games.".into()));
+            }
+            return;
+        }
+        let acknowledged = match api::merge_game_favorites(chunk.to_vec()).await {
+            Ok(result) => {
+                let mut ids = result.accepted_game_ids;
+                ids.extend(result.missing_game_ids);
+                ids.retain(|id| chunk.contains(id));
+                ids.sort_unstable();
+                ids.dedup();
+                ids
+            }
+            Err(_) => {
+                if !stale(store, generation) {
+                    store.initialized.set(true);
+                    store.error.set(Some("Could not sync device saved games. Unconfirmed selections remain on this device.".into()));
+                }
+                return;
+            }
+        };
+        if stale(store, generation) {
+            return;
+        }
+        let fully_acknowledged = chunk.iter().all(|id| acknowledged.contains(id));
+        let ack_manager = manager.clone();
+        match tokio::task::spawn_blocking(move || {
+            ack_manager.acknowledge_favorite_games(&acknowledged)
+        })
+        .await
+        {
+            Ok(Ok(remaining)) if !stale(store, generation) => {
+                store.device_ids.set(remaining.clone());
+                let account_ids = store.ids.peek().clone();
+                store.ids.set(union_ids(account_ids, remaining));
+                if !fully_acknowledged {
+                    store.initialized.set(true);
+                    store.error.set(Some("The server did not confirm every device saved game. Unconfirmed selections remain on this device.".into()));
+                    return;
+                }
+            }
+            _ if !stale(store, generation) => {
+                store.warning.set(Some("Saved games synced, but device selections could not be acknowledged. Retry is safe.".into()));
+            }
+            _ => return,
+        }
+    }
+    match api::favorite_game_ids().await {
+        Ok(ids) if !stale(store, generation) => {
+            let remaining = store.device_ids.peek().clone();
+            store.ids.set(union_ids(ids, remaining));
+            store.initialized.set(true);
+        }
+        Err(_) if !stale(store, generation) => {
+            store.initialized.set(true);
+            store.error.set(Some(
+                "Could not confirm saved-game sync. Remaining device selections are preserved."
+                    .into(),
+            ));
+        }
+        _ => {}
+    }
+}
+
+#[cfg(feature = "desktop")]
+async fn initialize_native_account_only(mut store: LibraryStore, generation: u64, warning: String) {
+    if stale(store, generation) {
+        return;
+    }
+    store.storage.set(StorageState::Unavailable);
+    store.warning.set(Some(warning));
+    let prior_ids = store.ids.peek().clone();
+    let device_ids = store.device_ids.peek().clone();
+    if crate::desktop::runtime().account.require(true).is_err() {
+        store.ids.set(union_ids(prior_ids, device_ids));
+        store.initialized.set(true);
+        store
+            .error
+            .set(Some("Sign in again before refreshing saved games.".into()));
+        return;
+    }
+    match api::favorite_game_ids().await {
+        Ok(ids) if !stale(store, generation) => {
+            store.ids.set(union_ids(ids, device_ids));
+            store.initialized.set(true);
+        }
+        Err(_) if !stale(store, generation) => {
+            store.ids.set(union_ids(prior_ids, device_ids));
+            store.initialized.set(true);
+            store.error.set(Some(
+                "Could not refresh saved games. Device selections remain saved for retry.".into(),
+            ));
+        }
+        _ => {}
+    }
+}
+
+#[cfg(feature = "desktop")]
+fn union_ids(mut account_ids: Vec<i64>, device_ids: Vec<i64>) -> Vec<i64> {
+    for id in device_ids {
+        if !account_ids.contains(&id) {
+            account_ids.push(id);
+        }
+    }
+    account_ids
+}
+
+#[cfg(not(feature = "desktop"))]
 async fn initialize(mut store: LibraryStore, user_id: Option<i64>, generation: u64) {
     let (guest_ids, storage_state, warning) = match read_device().await {
         Ok(ids) => (ids, StorageState::Ready, None),
@@ -312,27 +580,63 @@ async fn change_favorite(mut store: LibraryStore, game_id: i64, favorite: bool) 
     }
     let generation = *store.generation.peek();
     store.pending.write().insert(game_id);
+    #[cfg(feature = "desktop")]
     if *store.account_mode.read() {
-        match api::set_game_favorite(game_id, favorite).await {
-            Ok(GameFavoriteState { favorite, .. }) if !stale(store, generation) => {
-                let mut ids = store.ids.read().clone();
-                apply_favorite(&mut ids, game_id, favorite);
-                store.ids.set(ids);
+        if let Err(message) = crate::desktop::runtime().account.require(true) {
+            store.error.set(Some(message));
+        } else {
+            change_account_favorite(store, game_id, favorite, generation).await;
+        }
+    } else {
+        match crate::desktop::runtime().library().await {
+            Ok(manager) => {
+                let write_manager = manager.clone();
+                match tokio::task::spawn_blocking(move || {
+                    write_manager.set_favorite_game(game_id, favorite)
+                })
+                .await
+                {
+                    Ok(Ok(_)) if !stale(store, generation) => {
+                        // Independent device writes may finish out of order. Publish only this
+                        // acknowledged change instead of replacing newer IDs with an old snapshot.
+                        for mut target in [store.device_ids, store.ids] {
+                            let mut ids = target.write();
+                            if favorite {
+                                if !ids.contains(&game_id) {
+                                    ids.push(game_id);
+                                }
+                            } else {
+                                ids.retain(|id| *id != game_id);
+                            }
+                        }
+                        store.storage.set(StorageState::Ready);
+                    }
+                    Ok(Err(error)) if !stale(store, generation) => {
+                        store
+                            .error
+                            .set(Some("Could not save this game on this device.".into()));
+                        store.warning.set(Some(error.to_string()));
+                    }
+                    Err(_) if !stale(store, generation) => {
+                        store.error.set(Some(
+                            "The device saved-games worker stopped unexpectedly.".into(),
+                        ));
+                    }
+                    _ => {}
+                }
             }
-            Err(error) if !stale(store, generation) => {
-                let message = match error {
-                    ServerFnError::ServerError { code: 401, .. } => {
-                        "Sign in again before changing your saved games.".to_string()
-                    }
-                    ServerFnError::ServerError { code: 403, .. } => {
-                        "This account cannot change saved games.".to_string()
-                    }
-                    _ => "Could not save this game. Try again.".to_string(),
-                };
-                store.error.set(Some(message));
+            Err(message) if !stale(store, generation) => {
+                store
+                    .error
+                    .set(Some("Device saved games are unavailable.".into()));
+                store.warning.set(Some(message));
             }
             _ => {}
         }
+    }
+    #[cfg(not(feature = "desktop"))]
+    if *store.account_mode.read() {
+        change_account_favorite(store, game_id, favorite, generation).await;
     } else if !stale(store, generation) {
         let mut ids = match read_device().await {
             Ok(ids) => ids,
@@ -340,7 +644,7 @@ async fn change_favorite(mut store: LibraryStore, game_id: i64, favorite: bool) 
             Err(DeviceReadError::Invalid) => {
                 store.storage.set(StorageState::Invalid);
                 store.warning.set(Some(
-                    "Device favorites are malformed or from an unknown version and were left unchanged. Reset them to start over.".to_string(),
+                    "Device favorites are malformed or from an unknown version and were left unchanged. Reset them before changing device favorites.".to_string(),
                 ));
                 remove_pending(store, game_id);
                 return;
@@ -362,6 +666,34 @@ async fn change_favorite(mut store: LibraryStore, game_id: i64, favorite: bool) 
     }
 }
 
+async fn change_account_favorite(
+    mut store: LibraryStore,
+    game_id: i64,
+    favorite: bool,
+    generation: u64,
+) {
+    match api::set_game_favorite(game_id, favorite).await {
+        Ok(GameFavoriteState { favorite, .. }) if !stale(store, generation) => {
+            let mut ids = store.ids.read().clone();
+            apply_favorite(&mut ids, game_id, favorite);
+            store.ids.set(ids);
+        }
+        Err(error) if !stale(store, generation) => {
+            let message = match error {
+                ServerFnError::ServerError { code: 401, .. } => {
+                    "Sign in again before changing your saved games.".to_string()
+                }
+                ServerFnError::ServerError { code: 403, .. } => {
+                    "This account cannot change saved games.".to_string()
+                }
+                _ => "Could not save this game. Try again.".to_string(),
+            };
+            store.error.set(Some(message));
+        }
+        _ => {}
+    }
+}
+
 fn remove_pending(mut store: LibraryStore, game_id: i64) {
     store.pending.write().remove(&game_id);
 }
@@ -370,6 +702,7 @@ fn stale(store: LibraryStore, generation: u64) -> bool {
     !generation_matches(generation, *store.generation.peek())
 }
 
+#[cfg(not(feature = "desktop"))]
 fn current_guest(store: LibraryStore, generation: u64) -> bool {
     guest_generation_matches(
         generation,
@@ -378,6 +711,7 @@ fn current_guest(store: LibraryStore, generation: u64) -> bool {
     )
 }
 
+#[cfg(any(not(feature = "desktop"), test))]
 fn guest_generation_matches(
     result_generation: u64,
     current_generation: u64,
@@ -390,6 +724,7 @@ fn generation_matches(result_generation: u64, current_generation: u64) -> bool {
     result_generation == current_generation
 }
 
+#[cfg(not(feature = "desktop"))]
 fn sync_failed(mut store: LibraryStore, generation: u64) {
     if !stale(store, generation) {
         store
@@ -398,12 +733,14 @@ fn sync_failed(mut store: LibraryStore, generation: u64) {
     }
 }
 
+#[cfg(not(feature = "desktop"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeviceReadError {
     Unavailable,
     Invalid,
 }
 
+#[cfg(not(feature = "desktop"))]
 async fn read_device() -> Result<Vec<i64>, DeviceReadError> {
     let raw = document::eval(
         r#"
@@ -420,6 +757,7 @@ try {
     decode_device(raw.as_deref()).map_err(|_| DeviceReadError::Invalid)
 }
 
+#[cfg(not(feature = "desktop"))]
 async fn persist_device(ids: &[i64]) -> Result<(), ()> {
     let value = serde_json::to_string(&DeviceFavorites {
         version: STORAGE_VERSION,
@@ -444,6 +782,7 @@ try {
         .and_then(|ok| ok.then_some(()).ok_or(()))
 }
 
+#[cfg(not(feature = "desktop"))]
 async fn clear_device() -> Result<(), ()> {
     document::eval(
         r#"
@@ -461,6 +800,7 @@ try {
     .and_then(|ok| ok.then_some(()).ok_or(()))
 }
 
+#[cfg(not(feature = "desktop"))]
 async fn acknowledge_device(acknowledged: &[i64]) -> Result<(), String> {
     let current = read_device().await.map_err(|_| {
         "Favorites were imported, but device storage could not be updated. A retry is safe."
@@ -474,11 +814,13 @@ async fn acknowledge_device(acknowledged: &[i64]) -> Result<(), String> {
         })
 }
 
+#[cfg(any(not(feature = "desktop"), test))]
 fn remove_acknowledged(mut current: Vec<i64>, acknowledged: &[i64]) -> Vec<i64> {
     current.retain(|id| !acknowledged.contains(id));
     current
 }
 
+#[cfg(any(not(feature = "desktop"), test))]
 fn decode_device(raw: Option<&str>) -> Result<Vec<i64>, ()> {
     let Some(raw) = raw else {
         return Ok(Vec::new());
@@ -490,6 +832,7 @@ fn decode_device(raw: Option<&str>) -> Result<Vec<i64>, ()> {
     Ok(ordered_unique(decoded.game_ids))
 }
 
+#[cfg(any(not(feature = "desktop"), test))]
 fn ordered_unique(ids: Vec<i64>) -> Vec<i64> {
     let mut unique = Vec::with_capacity(ids.len());
     for id in ids {

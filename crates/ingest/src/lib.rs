@@ -11,6 +11,7 @@ pub mod github;
 pub mod github_links;
 pub mod igdb;
 pub mod importance;
+pub mod launcher;
 pub mod llm;
 pub mod maintenance;
 pub mod media;

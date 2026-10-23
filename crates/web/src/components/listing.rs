@@ -72,7 +72,6 @@ pub fn GameListTable(games: Vec<GameCard>) -> Element {
 
 #[component]
 fn GameRow(game: GameCard) -> Element {
-    let href = format!("/games/{}", game.slug);
     let year = game
         .release_year
         .map(|y| y.to_string())
@@ -93,7 +92,7 @@ fn GameRow(game: GameCard) -> Element {
     let wanted = game.want_count;
     rsx! {
         tr { class: TABLE_ROW,
-            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
+            td { class: "{TABLE_TD} font-medium", Link { to: crate::routes::Route::GamePage { slug: game.slug.clone() }, class: "hover:underline", "{name}" } }
             td { class: "{TABLE_TD} tabular text-muted-foreground", "{year}" }
             td { class: "{TABLE_TD} text-right tabular", "{ports}" }
             td { class: "{TABLE_TD} text-muted-foreground", "{runs}" }
@@ -151,7 +150,6 @@ pub fn RankingTable(rows: Vec<RankedGame>) -> Element {
 
 #[component]
 fn RankingRow(row: RankedGame) -> Element {
-    let href = format!("/games/{}", row.game.slug);
     let name = row.game.name.clone();
     let score = format!("{:.1}", row.score);
     let rank = row.rank.to_string();
@@ -160,7 +158,7 @@ fn RankingRow(row: RankedGame) -> Element {
     rsx! {
         tr { class: TABLE_ROW,
             td { class: "{TABLE_TD} text-right tabular text-muted-foreground", "{rank}" }
-            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
+            td { class: "{TABLE_TD} font-medium", Link { to: crate::routes::Route::GamePage { slug: row.game.slug.clone() }, class: "hover:underline", "{name}" } }
             td { class: "{TABLE_TD} text-right tabular", "{score}" }
             td { class: TABLE_TD, TrendChip { rank: row.rank, prev_rank: row.prev_rank } }
             td { class: "{TABLE_TD} text-right tabular", "{ports}" }
@@ -200,8 +198,6 @@ pub fn PortTable(ports: Vec<PortCard>) -> Element {
 
 #[component]
 fn PortRow(port: PortCard) -> Element {
-    let href = format!("/games/{}/{}", port.game_slug, port.slug);
-    let game_href = format!("/games/{}", port.game_slug);
     let runs = port
         .targets
         .iter()
@@ -224,8 +220,8 @@ fn PortRow(port: PortCard) -> Element {
     let stars = port.github_stars;
     rsx! {
         tr { class: TABLE_ROW,
-            td { class: "{TABLE_TD} font-medium", a { href: "{href}", class: "hover:underline", "{name}" } }
-            td { class: TABLE_TD, a { href: "{game_href}", class: "text-muted-foreground hover:text-foreground", "{game}" } }
+            td { class: "{TABLE_TD} font-medium", Link { to: crate::routes::Route::PortPage { game_slug: port.game_slug.clone(), port_slug: port.slug.clone() }, class: "hover:underline", "{name}" } }
+            td { class: TABLE_TD, Link { to: crate::routes::Route::GamePage { slug: port.game_slug.clone() }, class: "text-muted-foreground hover:text-foreground", "{game}" } }
             td { class: "{TABLE_TD} text-muted-foreground", "{kind}" }
             td { class: "{TABLE_TD} text-muted-foreground", "{runs}" }
             td { class: "{TABLE_TD} text-right tabular", "{stars}" }

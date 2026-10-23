@@ -41,7 +41,7 @@ pub fn RouteError(status: u16) -> Element {
         section { class: "py-12 text-center",
             h1 { class: H1, "{heading}" }
             p { class: "mt-2 text-muted-foreground", "{text}" }
-            a { href: "/", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} mt-6", "Back to the front page" }
+            Link { to: crate::routes::Route::Home { window: String::new() }, class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} mt-6", "Back to the front page" }
         }
     }
 }

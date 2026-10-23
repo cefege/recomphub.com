@@ -1,0 +1,44 @@
+[
+  {
+    "id": "banjo-recompiled-macos",
+    "revision": 1,
+    "repo_url": "https://github.com/banjorecomp/banjorecomp",
+    "os": "macos",
+    "architectures": ["aarch64", "x86_64"],
+    "minimum_os_version": "13.0",
+    "asset_name_template": "BanjoRecompiled-{tag}-macOS.zip",
+    "package_format": "zip",
+    "launch": {
+      "executable": "BanjoRecompiled.app/Contents/MacOS/BanjoRecompiled",
+      "working_directory": "BanjoRecompiled.app/Contents/Resources",
+      "arguments": []
+    },
+    "data_adapter": "banjo_n64_us_10",
+    "requirements": [
+      "Supply your own legally obtained Banjo-Kazooie North American 1.0 ROM.",
+      "x86_64 builds require SSE4.1.",
+      "Graphics: D3D12 shader model 6, Vulkan 1.2, or Metal Argument Buffers Tier 2. https://github.com/BanjoRecomp/BanjoRecomp"
+    ]
+  },
+  {
+    "id": "banjo-recompiled-windows",
+    "revision": 1,
+    "repo_url": "https://github.com/banjorecomp/banjorecomp",
+    "os": "windows",
+    "architectures": ["x86_64"],
+    "minimum_os_version": null,
+    "asset_name_template": "BanjoRecompiled-{tag}-Windows.zip",
+    "package_format": "zip",
+    "launch": {
+      "executable": "BanjoRecompiled.exe",
+      "working_directory": ".",
+      "arguments": []
+    },
+    "data_adapter": "banjo_n64_us_10",
+    "requirements": [
+      "Supply your own legally obtained Banjo-Kazooie North American 1.0 ROM.",
+      "x86_64 builds require SSE4.1.",
+      "Graphics: D3D12 shader model 6, Vulkan 1.2, or Metal Argument Buffers Tier 2. https://github.com/BanjoRecomp/BanjoRecomp"
+    ]
+  }
+]

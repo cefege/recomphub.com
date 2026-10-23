@@ -13,7 +13,6 @@ const ICON_TARGETS: [&str; 6] = ["windows", "macos", "linux", "android", "ios", 
 /// ports run on in the cover's bottom corner.
 #[component]
 pub fn GameCardView(game: GameCard, #[props(default)] rank: Option<i64>) -> Element {
-    let href = format!("/games/{}", game.slug);
     let portless = game.port_count == 0;
     let initials = initials_of(&game.name);
     let year = game.release_year.map(|y| y.to_string());
@@ -49,7 +48,7 @@ pub fn GameCardView(game: GameCard, #[props(default)] rank: Option<i64>) -> Elem
     let favorite_name = game.name.clone();
     rsx! {
         article { class: "group relative flex flex-col gap-2",
-            a { href: "{href}", class: "flex flex-col gap-2 rounded-lg outline-offset-4",
+            Link { to: crate::routes::Route::GamePage { slug: game.slug.clone() }, class: "flex flex-col gap-2 rounded-lg outline-offset-4",
                 div { class: "relative aspect-[3/4] overflow-hidden rounded-lg border bg-muted",
                     Picture {
                         media: game.cover.clone(),
