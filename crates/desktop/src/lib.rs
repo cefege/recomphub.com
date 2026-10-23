@@ -2349,7 +2349,12 @@ fn sync_tree(root: &Path) -> Result<(), DesktopError> {
         if kind.is_dir() {
             sync_tree(&entry.path())?;
         } else if kind.is_file() {
-            File::open(entry.path())?.sync_all()?;
+            // Windows FlushFileBuffers requires a handle opened with write access.
+            #[cfg(windows)]
+            let file = File::options().write(true).open(entry.path())?;
+            #[cfg(not(windows))]
+            let file = File::open(entry.path())?;
+            file.sync_all()?;
         }
     }
     sync_parent(root)

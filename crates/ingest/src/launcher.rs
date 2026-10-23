@@ -567,6 +567,10 @@ mod tests {
 
         let retained_at = Utc::now() - Duration::hours(1);
         builds::upsert(&pool, &promoted.manifest, true, retained_at).await?;
+        let retained_at = builds::get(&pool, &recipe.id)
+            .await?
+            .expect("verification timestamp persisted")
+            .checked_at;
         source.set(Observation::Failure);
         assert!(
             sync_reviewed(&pool, std::slice::from_ref(&revised_recipe), &source)
