@@ -62,7 +62,6 @@ jobs:
         run: cargo check -p recomphub --no-default-features --features web --target wasm32-unknown-unknown
 
   browser-library:
-    needs: test
     runs-on: ubuntu-24.04
     services:
       postgres:

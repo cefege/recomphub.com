@@ -236,7 +236,9 @@ pub fn Shell() -> Element {
                         }
                     }
                     div { class: "ml-auto flex items-center gap-2",
-                        a { href: "/submit", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM} hidden sm:inline-flex", "Submit a port" }
+                        span { class: "hidden sm:inline-flex",
+                            a { href: "/submit", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM}", "Submit a port" }
+                        }
                         form { action: "/search", method: "get", role: "search", class: "hidden lg:block",
                             input {
                                 r#type: "search",
