@@ -820,7 +820,7 @@ fn game_card(game: &GameRow, covers: &HashMap<i64, MediaRef>) -> GameCard {
 }
 
 #[cfg(feature = "server")]
-async fn game_cards(
+pub(crate) async fn game_cards(
     pool: &sqlx::PgPool,
     games: &[GameRow],
 ) -> Result<Vec<GameCard>, ServerFnError> {
@@ -923,7 +923,7 @@ async fn funding_map(
 /// Builds cards for ports, batching authors' avatars and covers into one media query.
 /// A port with no push date counts as 0 days since its last push.
 #[cfg(feature = "server")]
-async fn port_cards(
+pub(crate) async fn port_cards(
     pool: &sqlx::PgPool,
     items: Vec<PortWithGame>,
 ) -> Result<Vec<PortCard>, ServerFnError> {

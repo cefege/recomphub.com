@@ -1,8 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 
+#[cfg(not(feature = "desktop"))]
 use dioxus::fullstack::{WebSocketOptions, use_websocket};
 use dioxus::prelude::*;
-use recomphub_shared::{ActivityItem, ClientMsg, LiveGame, ServerMsg};
+use recomphub_shared::{ActivityItem, LiveGame};
+#[cfg(not(feature = "desktop"))]
+use recomphub_shared::{ClientMsg, ServerMsg};
 
 use crate::components::keyed;
 use crate::components::styles::{BADGE, BADGE_SECONDARY};
@@ -66,6 +69,7 @@ pub fn use_live_watch(watching: Option<i64>, visible: Vec<i64>) {
 }
 
 /// Mounts the websocket session. Render only after hydration, so the socket never runs during SSR.
+#[cfg(not(feature = "desktop"))]
 #[component]
 pub fn LiveSocket() -> Element {
     let store = use_context::<LiveStore>();
@@ -74,6 +78,7 @@ pub fn LiveSocket() -> Element {
 }
 
 /// One websocket connection. A new `epoch` remounts it, which reconnects.
+#[cfg(not(feature = "desktop"))]
 #[component]
 fn LiveSession(epoch: u32) -> Element {
     let _ = epoch;
@@ -135,6 +140,7 @@ fn LiveSession(epoch: u32) -> Element {
     rsx! {}
 }
 
+#[cfg(not(feature = "desktop"))]
 fn apply(mut store: LiveStore, msg: ServerMsg) {
     match msg {
         ServerMsg::Presence {
@@ -161,11 +167,13 @@ fn apply(mut store: LiveStore, msg: ServerMsg) {
     }
 }
 
+#[cfg(not(feature = "desktop"))]
 #[cfg(target_arch = "wasm32")]
 async fn sleep_ms(ms: u64) {
     gloo_timers::future::sleep(std::time::Duration::from_millis(ms)).await;
 }
 
+#[cfg(not(feature = "desktop"))]
 #[cfg(not(target_arch = "wasm32"))]
 async fn sleep_ms(ms: u64) {
     tokio::time::sleep(std::time::Duration::from_millis(ms)).await;

@@ -80,7 +80,7 @@ fn validated_ids(game_ids: Vec<i64>, limit: usize) -> Result<Vec<i64>, ServerFnE
     Ok(ids)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use super::validated_ids;
 

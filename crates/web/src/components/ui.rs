@@ -4,13 +4,74 @@ use recomphub_shared::{AiEvidenceDto, MediaRef, PortCard, TargetPlatform, VideoD
 
 use crate::api;
 use crate::components::icons::{AndroidIcon, AppleIcon, GlobeIcon, LinuxIcon, WindowsIcon};
+#[cfg(not(feature = "desktop"))]
+use crate::components::login_redirect;
+#[cfg(not(feature = "desktop"))]
+use crate::components::styles::BUTTON_MD;
 use crate::components::styles::{
     BADGE, BADGE_DESTRUCTIVE, BADGE_OUTLINE, BADGE_SECONDARY, BADGE_SUCCESS, BADGE_WARNING, BUTTON,
-    BUTTON_DESTRUCTIVE, BUTTON_MD, BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM, BUTTON_XS,
-    CARD_SURFACE, H2, POPOVER, TAB, TAB_ACTIVE, TABS_LIST,
+    BUTTON_DESTRUCTIVE, BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM, BUTTON_XS, CARD_SURFACE, H2,
+    POPOVER, TAB, TAB_ACTIVE, TABS_LIST,
 };
-use crate::components::{Picture, RelativeTime, StarButton, ViewerStore, login_redirect};
+use crate::components::{Picture, RelativeTime, StarButton, ViewerStore};
 
+#[component]
+pub fn InternalLink(href: String, class: String, children: Element) -> Element {
+    #[cfg(feature = "desktop")]
+    {
+        let navigator = use_navigator();
+        let target = href.clone();
+        return rsx! {
+            a {
+                href: "{href}",
+                class: "{class}",
+                onclick: move |event| {
+                    event.prevent_default();
+                    navigator.push(target.clone());
+                },
+                {children}
+            }
+        };
+    }
+    #[cfg(not(feature = "desktop"))]
+    rsx! {
+        a { href: "{href}", class: "{class}", {children} }
+    }
+}
+#[component]
+pub fn ExternalLink(
+    url: String,
+    class: String,
+    #[props(default)] sponsored: bool,
+    children: Element,
+) -> Element {
+    #[cfg(feature = "desktop")]
+    let _ = sponsored;
+    #[cfg(feature = "desktop")]
+    let mut error = use_signal(|| None::<String>);
+    #[cfg(feature = "desktop")]
+    rsx! {
+        span { class: "inline-flex flex-col items-start",
+            button {
+                r#type: "button",
+                class: "{class}",
+                onclick: move |_| {
+                    if let Err(message) = crate::desktop::external::open_external_http(&url) {
+                        error.set(Some(message));
+                    }
+                },
+                {children}
+            }
+            if let Some(message) = error.read().as_ref() {
+                span { class: "text-xs text-destructive", "{message}" }
+            }
+        }
+    }
+    #[cfg(not(feature = "desktop"))]
+    rsx! {
+        a { href: "{url}", target: "_blank", rel: if sponsored { "noopener sponsored" } else { "noopener noreferrer" }, class: "{class}", {children} }
+    }
+}
 /// Display label for a runs-on slug (`ps-vita`, `windows`, ...).
 pub fn target_label(slug: &str) -> String {
     TargetPlatform::from_slug(slug)
@@ -194,8 +255,13 @@ pub fn ReleaseChip(
 /// Port card: used on game, author, platform and home pages.
 #[component]
 pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Element {
-    let href = format!("/games/{}/{}", port.game_slug, port.slug);
-    let game_href = format!("/games/{}", port.game_slug);
+    let href = crate::routes::Route::PortPage {
+        game_slug: port.game_slug.clone(),
+        port_slug: port.slug.clone(),
+    };
+    let game_href = crate::routes::Route::GamePage {
+        slug: port.game_slug.clone(),
+    };
     let initials = initials_of(&port.name);
     let tools_text = port.ai_tools.join(", ");
     rsx! {
@@ -212,11 +278,11 @@ pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Elemen
                 }
                 div { class: "min-w-0 flex-1",
                     h3 { class: "font-semibold leading-snug",
-                        a { href: "{href}", class: "hover:underline", "{port.name}" }
+                        Link { to: href.clone(), class: "hover:underline", "{port.name}" }
                     }
                     if show_game {
                         p { class: "text-sm text-muted-foreground",
-                            a { href: "{game_href}", class: "hover:text-foreground", "{port.game_name}" }
+                            Link { to: game_href.clone(), class: "hover:text-foreground", "{port.game_name}" }
                         }
                     }
                     div { class: "mt-2 flex flex-wrap items-center gap-1.5",
@@ -251,7 +317,7 @@ pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Elemen
                         li { class: "flex items-center gap-1.5 text-sm",
                             match a.github_login.clone() {
                                 Some(login) => rsx! {
-                                    a { href: "/authors/{login}", class: "flex items-center gap-1.5 text-muted-foreground hover:text-foreground",
+                                    Link { to: crate::routes::Route::AuthorPage { login: login.to_lowercase() }, class: "flex items-center gap-1.5 text-muted-foreground hover:text-foreground",
                                         Picture {
                                             media: a.avatar.clone(),
                                             alt: format!("{} avatar", a.name),
@@ -265,15 +331,12 @@ pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Elemen
                                 None => rsx! { span { class: "text-muted-foreground", "{a.name}" } },
                             }
                             if let Some(link) = a.funding.first() {
-                                a {
-                                    href: "{link.url}",
-                                    target: "_blank",
-                                    rel: "noopener sponsored",
-                                    title: "Support {a.name} on {link.platform.label()}",
-                                    "aria-label": "Support {a.name} on {link.platform.label()}",
-                                    class: "inline-flex items-center text-muted-foreground transition-colors hover:text-destructive",
-                                    crate::components::icons::HeartIcon { class: "size-3.5" }
-                                }
+                                    ExternalLink {
+                                        url: link.url.clone(),
+                                        sponsored: true,
+                                        class: "inline-flex items-center text-muted-foreground transition-colors hover:text-destructive".to_string(),
+                                        crate::components::icons::HeartIcon { class: "size-3.5" }
+                                    }
                             }
                         }
                     }
@@ -286,9 +349,9 @@ pub fn PortCardView(port: PortCard, #[props(default)] show_game: bool) -> Elemen
                     span { class: "text-xs text-muted-foreground tabular", "{port.github_stars} GitHub stars" }
                 }
                 div { class: "ml-auto flex gap-2",
-                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "View source" }
+                    ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}"), "View source" }
                     if let Some(url) = port.latest_release_url.clone() {
-                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM}", "View releases ↗" }
+                        ExternalLink { url, class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_SM}"), "View releases ↗" }
                     }
                 }
             }
@@ -342,12 +405,12 @@ pub fn Pager(base: String, page: i64, pages: i64) -> Element {
     rsx! {
         nav { class: "mt-10 flex items-center justify-center gap-2 text-sm", "aria-label": "Pages",
             match prev {
-                Some(href) => rsx! { a { href: "{href}", rel: "prev", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Previous" } },
+                Some(href) => rsx! { InternalLink { href, class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}"), "Previous" } },
                 None => rsx! { span { class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} pointer-events-none opacity-50", "aria-disabled": "true", "Previous" } },
             }
             span { class: "px-3 tabular text-muted-foreground", "Page {page} of {pages}" }
             match next {
-                Some(href) => rsx! { a { href: "{href}", rel: "next", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Next" } },
+                Some(href) => rsx! { InternalLink { href, class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}"), "Next" } },
                 None => rsx! { span { class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} pointer-events-none opacity-50", "aria-disabled": "true", "Next" } },
             }
         }
@@ -365,8 +428,8 @@ pub fn ViewToggle(base: String, list: bool) -> Element {
     };
     rsx! {
         nav { class: TABS_LIST, "aria-label": "View",
-            a { href: "{base}", class: "{TAB} {cards_cls}", "aria-current": if !list { "page" } else { "false" }, "Cards" }
-            a { href: "{list_href}", class: "{TAB} {list_cls}", "aria-current": if list { "page" } else { "false" }, "List" }
+            InternalLink { href: base, class: format!("{TAB} {cards_cls}"), "Cards" }
+            InternalLink { href: list_href, class: format!("{TAB} {list_cls}"), "List" }
         }
     }
 }
@@ -383,7 +446,7 @@ pub fn Breadcrumb(items: Vec<(String, String)>) -> Element {
                         if i == last {
                             span { class: "text-foreground", "aria-current": "page", "{label}" }
                         } else {
-                            a { href: "{href}", class: "transition-colors hover:text-foreground", "{label}" }
+                            InternalLink { href, class: "transition-colors hover:text-foreground".to_string(), "{label}" }
                             span { "aria-hidden": "true", "/" }
                         }
                     }
@@ -403,6 +466,14 @@ pub fn EmptyState(text: String) -> Element {
 /// Sign-in prompt for pages that need an account. Redirects back to the current page.
 #[component]
 pub fn LoginPrompt(text: String) -> Element {
+    #[cfg(feature = "desktop")]
+    return rsx! {
+        div { class: "{CARD_SURFACE} flex flex-col items-center gap-4 p-8 text-center",
+            p { class: "text-sm text-muted-foreground", "{text}" }
+            p { class: "text-sm text-muted-foreground", "Use Continue with Google in the RecompHub desktop sign-in panel." }
+        }
+    };
+    #[cfg(not(feature = "desktop"))]
     rsx! {
         div { class: "{CARD_SURFACE} flex flex-col items-center gap-4 p-8 text-center",
             p { class: "text-sm text-muted-foreground", "{text}" }
@@ -424,7 +495,13 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
     let mut playing = use_signal(|| false);
     let mut removed = use_signal(Vec::<i64>::new);
     let mut hide_error = use_signal(|| None::<String>);
-    let can_hide = use_context::<ViewerStore>().can_moderate();
+    let external_error = use_signal(|| None::<String>);
+    let online = crate::components::viewer::use_account_network_ready();
+    let can_hide = use_context::<ViewerStore>().can_moderate() && online;
+    #[cfg(feature = "desktop")]
+    let native = true;
+    #[cfg(not(feature = "desktop"))]
+    let native = false;
 
     let visible: Vec<VideoDto> = videos
         .into_iter()
@@ -491,20 +568,35 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
             div { class: "{layout}",
                 div { class: "min-w-0",
                     div { class: "aspect-video w-full overflow-hidden rounded-lg border bg-black",
-                        if playing() {
-                            iframe {
-                                key: "{current.youtube_id}",
-                                class: "h-full w-full",
-                                src: "{embed}",
-                                title: "{current.title}",
-                                allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
-                                allowfullscreen: true,
-                                referrerpolicy: "strict-origin-when-cross-origin",
-                            }
+                        if !cfg!(feature = "desktop") && playing() {
+                                iframe {
+                                    key: "{current.youtube_id}",
+                                    class: "h-full w-full",
+                                    src: "{embed}",
+                                    title: "{current.title}",
+                                    allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+                                    allowfullscreen: true,
+                                    referrerpolicy: "strict-origin-when-cross-origin",
+                                }
                         } else {
                             button { r#type: "button", class: "group relative block h-full w-full cursor-pointer",
-                                "aria-label": "Play {current.title}",
-                                onclick: move |_| playing.set(true),
+                                "aria-label": if native { "Play video in browser" } else { "Play {current.title}" },
+                                onclick: {
+                                    #[cfg(feature = "desktop")]
+                                    let youtube_id = current.youtube_id.clone();
+                                    move |_| {
+                                        #[cfg(feature = "desktop")]
+                                        {
+                                            let url = format!("https://www.youtube.com/watch?v={youtube_id}");
+                                            if let Err(error) = crate::desktop::external::open_external_http(&url) {
+                                                let mut external_error = external_error;
+                                                external_error.set(Some(error));
+                                            }
+                                        }
+                                        #[cfg(not(feature = "desktop"))]
+                                        playing.set(true);
+                                    }
+                                },
                                 Picture {
                                     media: current.thumb.clone(),
                                     alt: format!("Video thumbnail: {}", current.title),
@@ -517,7 +609,11 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
                                         crate::components::icons::PlayIcon { class: "size-7" }
                                     }
                                 }
+                                if native { span { class: "sr-only", "Play video in browser" } }
                             }
+                        }
+                        if let Some(error) = external_error.read().as_ref() {
+                            p { class: "mt-2 text-sm text-destructive", "{error}" }
                         }
                     }
                     div { class: "mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2",
@@ -537,6 +633,9 @@ pub fn VideoPlayer(videos: Vec<VideoDto>) -> Element {
                                     class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
                                     onclick: move |_| {
                                         spawn(async move {
+                                            if let Err(message) = crate::components::viewer::require_account_network() {
+                                                hide_error.set(Some(message)); return;
+                                            }
                                             match api::hide_video(current_id).await {
                                                 Ok(()) => {
                                                     removed.write().push(current_id);
@@ -629,9 +728,11 @@ pub fn PortHero(
 ) -> Element {
     let mut selected = use_signal(|| 0usize);
     let mut playing = use_signal(|| false);
-    let can_hide = use_context::<ViewerStore>().can_moderate();
+    let online = crate::components::viewer::use_account_network_ready();
+    let can_hide = use_context::<ViewerStore>().can_moderate() && online;
     let mut removed = use_signal(Vec::<i64>::new);
     let mut hide_error = use_signal(|| None::<String>);
+    let external_error = use_signal(|| None::<String>);
 
     let live_videos: Vec<VideoDto> = videos
         .into_iter()
@@ -680,21 +781,34 @@ pub fn PortHero(
                             "https://www.youtube-nocookie.com/embed/{}?autoplay=1&rel=0&playsinline=1",
                             v.youtube_id
                         );
+                        #[cfg(feature = "desktop")]
+                        let youtube_id = v.youtube_id.clone();
                         rsx! {
-                            if playing() {
-                                iframe {
-                                    key: "{video_id}",
-                                    class: "h-full w-full",
-                                    src: "{embed}",
-                                    title: "{title}",
-                                    allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
-                                    allowfullscreen: true,
-                                    referrerpolicy: "strict-origin-when-cross-origin",
-                                }
+                            if !cfg!(feature = "desktop") && playing() {
+                                    iframe {
+                                        key: "{video_id}",
+                                        class: "h-full w-full",
+                                        src: "{embed}",
+                                        title: "{title}",
+                                        allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+                                        allowfullscreen: true,
+                                        referrerpolicy: "strict-origin-when-cross-origin",
+                                    }
                             } else {
                                 button { r#type: "button", class: "group relative block h-full w-full cursor-pointer",
-                                    "aria-label": "Play {title}",
-                                    onclick: move |_| playing.set(true),
+                                    "aria-label": if cfg!(feature = "desktop") { "Play video in browser" } else { "Play {title}" },
+                                    onclick: move |_| {
+                                        #[cfg(feature = "desktop")]
+                                        {
+                                            let url = format!("https://www.youtube.com/watch?v={youtube_id}");
+                                            if let Err(error) = crate::desktop::external::open_external_http(&url) {
+                                                let mut external_error = external_error;
+                                                external_error.set(Some(error));
+                                            }
+                                        }
+                                        #[cfg(not(feature = "desktop"))]
+                                        playing.set(true);
+                                    },
                                     Picture {
                                         media: thumb,
                                         alt: format!("Video thumbnail: {title}"),
@@ -707,7 +821,11 @@ pub fn PortHero(
                                             crate::components::icons::PlayIcon { class: "size-7" }
                                         }
                                     }
+                                    if cfg!(feature = "desktop") { span { class: "sr-only", "Play video in browser" } }
                                 }
+                            }
+                            if let Some(error) = external_error.read().as_ref() {
+                                p { class: "mt-2 text-sm text-destructive", "{error}" }
                             }
                         }
                     }
@@ -726,6 +844,9 @@ pub fn PortHero(
                                 class: "{BUTTON} {BUTTON_DESTRUCTIVE} {BUTTON_XS}",
                                 onclick: move |_| {
                                     spawn(async move {
+                                        if let Err(message) = crate::components::viewer::require_account_network() {
+                                            hide_error.set(Some(message)); return;
+                                        }
                                         match api::hide_video(video_id).await {
                                             Ok(()) => {
                                                 removed.write().push(video_id);

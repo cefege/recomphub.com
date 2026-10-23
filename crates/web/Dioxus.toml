@@ -4,3 +4,32 @@ default_platform = "web"
 
 [web.app]
 title = "RecompHub"
+
+[bundle]
+identifier = "com.recomphub.desktop"
+publisher = "RecompHub"
+# The icon list is canonicalized by dx; Windows icon_path is passed through unresolved.
+icon = ["assets/recomphub-logo.icns", "assets/recomphub-logo.ico"]
+
+[bundle.macos]
+bundle_name = "RecompHub"
+minimum_system_version = "13.0"
+# Seal development bundles locally; this is not Developer ID signing or notarization.
+signing_identity = "-"
+
+# Dioxus 0.7.10 generates the native app from this section, separately from installer settings.
+[macos]
+bundle_name = "RecompHub"
+minimum_system_version = "13.0"
+signing_identity = "-"
+
+[macos.plist]
+CFBundleDisplayName = "RecompHub"
+CFBundleName = "RecompHub"
+
+[bundle.windows]
+webview_install_mode = { EmbedBootstrapper = { silent = false } }
+
+[bundle.windows.nsis]
+install_mode = "CurrentUser"
+installer_icon = "assets/recomphub-logo.ico"

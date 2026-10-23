@@ -11,7 +11,7 @@ use crate::components::styles::{
     BUTTON_OUTLINE, BUTTON_XS, H1, H2, LEAD, TABLE, TABLE_HEAD_ROW, TABLE_ROW, TABLE_TD, TABLE_TH,
     TABLE_TH_NUM, TABLE_WRAP,
 };
-use crate::components::{Breadcrumb, EmptyState, Seo, TargetIcon, TrendChip};
+use crate::components::{Breadcrumb, EmptyState, InternalLink, Seo, TargetIcon, TrendChip};
 use crate::pages::browse::count_label;
 
 /// Pluralised count: `1 game`, `3 games`.
@@ -221,7 +221,7 @@ pub fn StatsPage() -> Element {
                     ol { class: "grid gap-2 md:grid-cols-2",
                         for (login, name, count) in contributors {
                             li { key: "{login}", class: "flex items-baseline justify-between gap-3 rounded-lg border bg-card px-4 py-3",
-                                a { class: "font-medium hover:underline", href: "/authors/{login}", "{name}" }
+                                InternalLink { href: format!("/authors/{login}"), class: "font-medium hover:underline".to_string(), "{name}" }
                                 span { class: "text-sm text-muted-foreground tabular", "{count}" }
                             }
                         }
@@ -282,11 +282,7 @@ pub fn StatsPage() -> Element {
                                         }
                                         td { class: TABLE_TD,
                                             if row.gap_link {
-                                                a {
-                                                    class: "{BUTTON_OUTLINE} {BUTTON_XS}",
-                                                    href: "/creators/platforms?missing={row.slug}",
-                                                    "Ports missing it"
-                                                }
+                                                InternalLink { href: format!("/creators/platforms?missing={}", row.slug), class: format!("{BUTTON_OUTLINE} {BUTTON_XS}"), "Ports missing it" }
                                             }
                                         }
                                     }
@@ -314,14 +310,14 @@ pub fn StatsPage() -> Element {
                             for (slug, name, ports, missing) in gaps {
                                 li { key: "{slug}", class: "flex flex-wrap items-baseline justify-between gap-3 rounded-lg border bg-card px-4 py-3",
                                     div { class: "space-y-1",
-                                        a { class: "font-medium hover:underline", href: "/games/{slug}", "{name}" }
+                                        InternalLink { href: format!("/games/{slug}"), class: "font-medium hover:underline".to_string(), "{name}" }
                                         p { class: "text-sm text-muted-foreground", "Missing: {missing}" }
                                     }
                                     span { class: "text-sm text-muted-foreground tabular", "{ports}" }
                                 }
                             }
                         }
-                        a { class: "{BUTTON_OUTLINE} inline-flex", href: "/creators/platforms", "See every port missing a platform" }
+                        InternalLink { href: "/creators/platforms".to_string(), class: format!("{BUTTON_OUTLINE} inline-flex"), "See every port missing a platform" }
                     }
                 }
 
@@ -338,12 +334,12 @@ pub fn StatsPage() -> Element {
                         ul { class: "space-y-2",
                             for w in data.wanted.clone() {
                                 li { key: "{w.slug}", class: "flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3",
-                                    a { class: "font-medium hover:underline", href: "/games/{w.slug}", "{w.name}" }
-                                    a { class: "{BUTTON_OUTLINE} {BUTTON_XS}", href: "/submit?game={w.slug}", "Port it" }
+                                    InternalLink { href: format!("/games/{}", w.slug), class: "font-medium hover:underline".to_string(), "{w.name}" }
+                                    InternalLink { href: format!("/submit?game={}", w.slug), class: format!("{BUTTON_OUTLINE} {BUTTON_XS}"), "Port it" }
                                 }
                             }
                         }
-                        a { class: "{BUTTON_OUTLINE} inline-flex", href: "/creators/recompile", "See every game to recompile" }
+                        InternalLink { href: "/creators/recompile".to_string(), class: format!("{BUTTON_OUTLINE} inline-flex"), "See every game to recompile" }
                     }
                 }
             }
@@ -357,7 +353,7 @@ pub fn StatsPage() -> Element {
                         ul { class: "space-y-2",
                             for (slug, name, text) in covered_text {
                                 li { key: "{slug}", class: "flex items-baseline justify-between gap-3 rounded-lg border bg-card px-4 py-3",
-                                    a { class: "font-medium hover:underline", href: "/games/{slug}", "{name}" }
+                                    InternalLink { href: format!("/games/{slug}"), class: "font-medium hover:underline".to_string(), "{name}" }
                                     span { class: "text-sm text-muted-foreground tabular", "{text}" }
                                 }
                             }
@@ -389,7 +385,7 @@ pub fn StatsPage() -> Element {
                                     for (slug, name, games, ported, pct, text) in origins {
                                         tr { key: "{slug}", class: TABLE_ROW,
                                             td { class: TABLE_TD,
-                                                a { class: "font-medium hover:underline", href: "/platforms/{slug}", "{name}" }
+                                                InternalLink { href: format!("/platforms/{slug}"), class: "font-medium hover:underline".to_string(), "{name}" }
                                             }
                                             td { class: "{TABLE_TD} text-right tabular", "{games}" }
                                             td { class: "{TABLE_TD} text-right tabular", "{ported}" }
@@ -419,7 +415,7 @@ pub fn StatsPage() -> Element {
                         ol { class: "space-y-2",
                             for a in data.top_authors.clone() {
                                 li { key: "{a.login}", class: "flex items-baseline justify-between gap-3 rounded-lg border bg-card px-4 py-3",
-                                    a { class: "font-medium hover:underline", href: "/authors/{a.login}", "{a.name}" }
+                                    InternalLink { href: format!("/authors/{}", a.login), class: "font-medium hover:underline".to_string(), "{a.name}" }
                                     span { class: "text-sm text-muted-foreground tabular", {pl(a.ports, "port", "ports")}, ", ", {pl(a.platforms, "platform", "platforms")} }
                                 }
                             }
@@ -435,7 +431,7 @@ pub fn StatsPage() -> Element {
                         ol { class: "space-y-2",
                             for a in data.top_platform_authors.clone() {
                                 li { key: "{a.login}", class: "flex items-baseline justify-between gap-3 rounded-lg border bg-card px-4 py-3",
-                                    a { class: "font-medium hover:underline", href: "/authors/{a.login}", "{a.name}" }
+                                    InternalLink { href: format!("/authors/{}", a.login), class: "font-medium hover:underline".to_string(), "{a.name}" }
                                     span { class: "text-sm text-muted-foreground tabular", {pl(a.platforms, "platform", "platforms")}, ", ", {pl(a.ports, "port", "ports")} }
                                 }
                             }

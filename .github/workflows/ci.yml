@@ -119,3 +119,74 @@ jobs:
       - name: Stop isolated website container
         if: always()
         run: docker stop recomphub-browser-ci || true
+  native-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            package_types: macos --package-types dmg
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            package_types: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install verified Dioxus CLI 0.7.10 binary
+        run: python .github/install_desktop_cli.py ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check desktop dependency boundary
+        shell: bash
+        run: |
+          tree="$(cargo tree -p recomphub --no-default-features --features desktop -e normal)"
+          case "$tree" in
+            *recomphub-db*|*recomphub-ingest*|*sqlx*|*dioxus-server*)
+              echo "Desktop dependency tree includes a server-only dependency."
+              exit 1
+              ;;
+          esac
+
+      - name: Test native engine lifecycle
+        run: cargo test -p recomphub-desktop
+
+      - name: Test desktop authentication state
+        run: cargo test -p recomphub --no-default-features --features desktop --lib
+
+      - name: Bundle development debug desktop artifacts
+        run: dx bundle --desktop --target ${{ matrix.target }} --features desktop --no-default-features --package recomphub --fullstack false --codesign false --package-types ${{ matrix.package_types }} --out-dir target/desktop-artifacts/debug
+
+      - name: Bundle development release desktop artifacts
+        run: dx bundle --desktop --target ${{ matrix.target }} --features desktop --no-default-features --release --package recomphub --fullstack false --codesign false --package-types ${{ matrix.package_types }} --out-dir target/desktop-artifacts/release
+
+      - name: Verify macOS app bundle signatures
+        if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict --verbose=2 target/desktop-artifacts/debug/RecompHub.app
+          codesign --verify --deep --strict --verbose=2 target/desktop-artifacts/release/RecompHub.app
+
+      - name: Install and open the signed-out Windows library
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./crates/web/tests/desktop_windows_smoke.ps1
+
+      - name: Upload development test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}-test
+          path: target/desktop-artifacts
+          if-no-files-found: warn

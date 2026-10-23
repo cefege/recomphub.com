@@ -1,17 +1,23 @@
-use dioxus::document::{Link, Script, Stylesheet};
+#[cfg(not(feature = "desktop"))]
+use dioxus::document::Script;
+use dioxus::document::{Link, Stylesheet};
 use dioxus::fullstack::FullstackContext;
 use dioxus::fullstack::http::StatusCode;
 use dioxus::prelude::*;
 
+#[cfg(not(feature = "desktop"))]
 use crate::api;
+#[cfg(not(feature = "desktop"))]
 use crate::components::styles::{
     BADGE, BADGE_PRIMARY, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_ICON, BUTTON_MD,
     BUTTON_OUTLINE, BUTTON_PRIMARY, BUTTON_SM, CARD_SURFACE, INPUT, MENU_ITEM, POPOVER,
 };
+#[cfg(not(feature = "desktop"))]
 use crate::components::{
-    DiscordCount, DiscordLink, LibraryStore, LiveSocket, LiveStore, Picture, SiteUrl, ViewerStore,
-    initials_of, login_redirect, set_me, set_me_error,
+    DiscordCount, DiscordLink, LiveSocket, Picture, initials_of, login_redirect, set_me,
+    set_me_error,
 };
+use crate::components::{LibraryStore, LiveStore, SiteUrl, ViewerStore};
 use crate::pages::RouteError;
 use crate::routes::Route;
 
@@ -21,6 +27,7 @@ const FONT_WOFF2: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 
+#[cfg(not(feature = "desktop"))]
 const RECOMPHUB_LOGO: Asset = asset!(
     "/assets/recomphub-logo.svg",
     AssetOptions::builder().with_hash_suffix(false)
@@ -36,13 +43,18 @@ const RECOMPHUB_FAVICON: Asset = asset!(
 /// instead, so Discord's per-invite use count (Server Settings -> Invites) shows which spot
 /// actually converts. Minted with `cargo run -p recomphub-worker --bin discord-setup --
 /// --placement-invites`; re-running that flag mints fresh codes, so don't re-run it casually.
+#[cfg(feature = "server")]
 pub(crate) const DISCORD_INVITE_CODE: &str = "XJWPAQHEzr";
+#[cfg(not(feature = "desktop"))]
 pub(crate) const DISCORD_INVITE_HEADER: &str = "https://discord.gg/by63B5vnsX";
+#[cfg(not(feature = "desktop"))]
 pub(crate) const DISCORD_INVITE_FOOTER: &str = "https://discord.gg/BCReT4WnUZ";
 pub(crate) const DISCORD_INVITE_HOME: &str = "https://discord.gg/K8CvdQDdwV";
 pub(crate) const DISCORD_INVITE_LISTING: &str = "https://discord.gg/6pJaWpBtWh";
 
+#[cfg(not(feature = "desktop"))]
 const GOOGLE_ANALYTICS_MEASUREMENT_ID: &str = "G-EZ96BDJE3J";
+#[cfg(not(feature = "desktop"))]
 const GOOGLE_ANALYTICS_BOOTSTRAP: &str = r#"
 window['ga-disable-G-EZ96BDJE3J'] = true;
 window.dataLayer = window.dataLayer || [];
@@ -83,6 +95,28 @@ gtag('consent', 'default', {
 /// Root component. Routing and the shared shell live here.
 #[component]
 pub fn App() -> Element {
+    #[cfg(feature = "desktop")]
+    {
+        use_context_provider(|| {
+            std::rc::Rc::new(dioxus::history::MemoryHistory::with_initial_path(
+                "/library",
+            )) as std::rc::Rc<dyn dioxus::history::History>
+        });
+        return rsx! {
+            Stylesheet { href: asset!("/assets/tailwind.css") }
+            Link {
+                rel: "preload",
+                r#as: "font",
+                r#type: "font/woff2",
+                crossorigin: "anonymous",
+                href: "{FONT_WOFF2}",
+            }
+            Link { rel: "icon", r#type: "image/png", href: "{RECOMPHUB_FAVICON}" }
+            Router::<Route> {}
+        };
+    }
+
+    #[cfg(not(feature = "desktop"))]
     rsx! {
         // Set the theme before first paint, from localStorage (default dark).
         Script {
@@ -114,6 +148,7 @@ pub fn App() -> Element {
 /// Shared chrome for every page: header, search entry, nav, footer.
 /// Loads the site origin once through `api::site_url`, then provides `SiteUrl`, `LiveStore`
 /// and `ViewerStore`. The socket and the viewer session start only after hydration.
+#[cfg(not(feature = "desktop"))]
 #[component]
 pub fn Shell() -> Element {
     let site = use_loader(api::site_url)?;
@@ -152,7 +187,7 @@ pub fn Shell() -> Element {
         div { class: "flex min-h-screen flex-col bg-background text-foreground",
             a { href: "#main", class: "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 {BUTTON} {BUTTON_OUTLINE} {BUTTON_SM}", "Skip to content" }
             header { class: "sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
-                div { class: "mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8",
+                div { class: "mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8",
                     details { class: "relative lg:hidden",
                         summary { class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} list-none", "aria-label": "Menu",
                             MenuIcon { class: "size-5" }
@@ -208,7 +243,7 @@ pub fn Shell() -> Element {
                                 name: "q",
                                 "aria-label": "Search games and ports",
                                 placeholder: "Search games and ports…",
-                                class: "{INPUT} h-8 w-44 xl:w-72",
+                                class: "{INPUT} h-8 w-32 xl:w-40",
                             }
                         }
                         a { href: "/search", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_ICON} lg:hidden", "aria-label": "Search",
@@ -318,7 +353,74 @@ pub fn Shell() -> Element {
     }
 }
 
+/// Native chrome avoids remote scripts, sockets, and a suspending site-origin loader.
+#[cfg(feature = "desktop")]
+#[component]
+pub fn Shell() -> Element {
+    let runtime = crate::desktop::runtime();
+    use_context_provider(|| runtime.clone());
+    use_context_provider(|| SiteUrl(runtime.origin.clone()));
+    let viewer = ViewerStore::provide();
+    let _auth = crate::desktop::auth::provide(viewer);
+
+    rsx! {
+        div { "data-theme": "dark", class: "h-screen overflow-hidden bg-background text-foreground",
+            NativeContent {}
+        }
+    }
+}
+
+/// Mount shared content and device-local library independently of account state.
+#[cfg(feature = "desktop")]
+#[component]
+fn NativeContent() -> Element {
+    let viewer = use_context::<ViewerStore>();
+    let _live = LiveStore::provide();
+    let _library = LibraryStore::provide(viewer);
+    let mut retry = use_signal(|| 0u64);
+    let mut ready = use_signal(|| None::<Result<(), String>>);
+    use_effect(move || {
+        let _ = retry();
+        ready.set(None);
+        spawn(async move {
+            ready.set(Some(crate::desktop::runtime().library().await.map(|_| ())));
+        });
+    });
+    rsx! {
+        if let Some(Err(message)) = ready() {
+            div { class: "fixed right-4 top-16 z-50 max-w-sm rounded-lg border border-destructive bg-card p-3 text-sm shadow-lg", role: "alert",
+                p { "{message}" }
+                button { r#type: "button", class: "mt-2 underline",
+                    onclick: move |_| { retry += 1; },
+                    "Retry opening library"
+                }
+            }
+        }
+        NativeRoutes {}
+    }
+}
+
+#[cfg(feature = "desktop")]
+#[component]
+fn NativeRoutes() -> Element {
+    let _native = crate::desktop::library::NativeLibraryStore::provide();
+    rsx! {
+        ErrorBoundary {
+            handle_error: |errors: ErrorContext| {
+                let status = errors.error()
+                    .map(|err| FullstackContext::commit_error_status(err).status)
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                rsx! { RouteError { status: status.as_u16() } }
+            },
+            crate::desktop::workspace::DesktopWorkspace {
+                Outlet::<Route> {}
+            }
+        }
+    }
+}
+
 /// Primary navigation: the three most common catalog destinations.
+#[cfg(not(feature = "desktop"))]
 const PRIMARY_NAV: [(&str, &str); 3] = [
     ("/games", "Browse"),
     ("/trending", "Trending"),
@@ -326,6 +428,7 @@ const PRIMARY_NAV: [(&str, &str); 3] = [
 ];
 
 /// Secondary destinations, available without competing with the primary catalog flow.
+#[cfg(not(feature = "desktop"))]
 const MORE_NAV: [(&str, &str); 4] = [
     ("/platforms", "Platforms"),
     ("/wanted", "Wanted"),
@@ -336,6 +439,7 @@ const MORE_NAV: [(&str, &str); 4] = [
 /// Count of pending member submissions, screenshots and videos, shown next to the Moderation
 /// link. Loads once per mount and is silent on any error or an empty count, so the menu never
 /// looks broken.
+#[cfg(not(feature = "desktop"))]
 #[component]
 fn PendingBadge() -> Element {
     let count = use_resource(|| async move {

@@ -13,13 +13,11 @@ pub fn FundingLinks(links: Vec<FundingLink>) -> Element {
     rsx! {
         div { class: "flex flex-wrap items-center gap-2",
             for (i, link) in links.iter().enumerate() {
-                a {
+                crate::components::ExternalLink {
                     key: "{i}",
-                    href: "{link.url}",
-                    title: "{link.url}",
-                    target: "_blank",
-                    rel: "noopener sponsored",
-                    class: "{BADGE} {BADGE_OUTLINE}",
+                    url: link.url.clone(),
+                    sponsored: true,
+                    class: format!("{BADGE} {BADGE_OUTLINE}"),
                     HeartIcon {}
                     "{link.platform.label()}"
                 }

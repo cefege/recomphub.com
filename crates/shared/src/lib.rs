@@ -3,6 +3,7 @@
 
 pub mod dto;
 pub mod enums;
+pub mod launcher;
 pub mod triage;
 pub use triage::*;
 pub mod live;
@@ -13,6 +14,7 @@ pub mod text;
 
 pub use dto::*;
 pub use enums::*;
+pub use launcher::*;
 pub use live::{ActivityItem, ClientMsg, LiveGame, PresenceSnapshotDto, ServerMsg};
 pub use maintenance::{MaintenanceInput, MaintenanceLevel, maintenance_level, maintenance_score};
 pub use release::{ReleaseInput, ReleaseState, release_state};

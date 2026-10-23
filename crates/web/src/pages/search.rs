@@ -11,6 +11,12 @@ use crate::pages::browse::{GameGrid, PortGrid, count_label};
 #[component]
 pub fn SearchPage(q: String) -> Element {
     let term = q.trim().to_string();
+    let mut query = use_signal(|| term.clone());
+    use_effect(use_reactive((&term,), move |(term,)| {
+        query.set(term);
+    }));
+    #[cfg(feature = "desktop")]
+    let navigator = use_navigator();
     let title = if term.is_empty() {
         "Search | RecompHub".to_string()
     } else {
@@ -30,10 +36,20 @@ pub fn SearchPage(q: String) -> Element {
                     action: "/search",
                     role: "search",
                     class: "flex max-w-2xl gap-2",
+                    onsubmit: move |event| {
+                        #[cfg(feature = "desktop")]
+                        {
+                            event.prevent_default();
+                            navigator.push(crate::routes::Route::SearchPage { q: query() });
+                        }
+                        #[cfg(not(feature = "desktop"))]
+                        let _ = event;
+                    },
                     input {
                         r#type: "search",
                         name: "q",
-                        value: "{term}",
+                        value: "{query}",
+                        oninput: move |event| query.set(event.value()),
                         placeholder: "Game or port name",
                         class: "{INPUT} flex-1",
                     }

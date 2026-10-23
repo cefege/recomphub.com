@@ -2,6 +2,7 @@
 
 pub mod bootstrap;
 pub mod config;
+pub mod desktop_auth;
 pub mod http;
 pub mod live;
 pub mod oauth;

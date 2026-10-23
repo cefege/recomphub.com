@@ -69,8 +69,8 @@ pub fn PlatformsIndex() -> Element {
                         ul { class: "grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6",
                             for (slug, p) in items {
                                 li { key: "{p.id}",
-                                    a {
-                                        href: "/platforms/{slug}",
+                                    Link {
+                                        to: crate::routes::Route::PlatformPage { slug: slug.clone(), page: String::new(), view: String::new() },
                                         class: "block rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-accent",
                                         span { class: "block text-sm font-semibold leading-snug", "{p.name}" }
                                         span { class: "mt-2 block text-xs text-muted-foreground tabular",
@@ -143,9 +143,9 @@ fn PlatformInner(slug: String, page: i64, list: bool) -> Element {
             }
             nav { class: "flex flex-wrap gap-2", "aria-label": "Runs on",
                 for t in PRIMARY_TARGETS {
-                    a {
+                    Link {
                         key: "{t}",
-                        href: "/platforms/{slug}/{t}",
+                        to: crate::routes::Route::PlatformTargetPage { slug: slug.clone(), target: t.to_string(), page: String::new(), view: String::new() },
                         class: chip_class(false),
                         "Runs on {target_label(t)}"
                     }

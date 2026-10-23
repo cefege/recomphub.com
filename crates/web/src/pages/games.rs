@@ -26,8 +26,8 @@ use crate::components::styles::{
     H2, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
 };
 use crate::components::ui::{
-    Breadcrumb, CardGrid, Chip, EmptyState, Pager, PortCardView, Rail, Section, TargetIcon,
-    VideoPlayer, ViewToggle, initials_of, keyed, target_label,
+    Breadcrumb, CardGrid, Chip, EmptyState, InternalLink, Pager, PortCardView, Rail, Section,
+    TargetIcon, VideoPlayer, ViewToggle, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{WantButton, use_marks};
 use crate::pages::PortMainContent;
@@ -214,12 +214,12 @@ fn GamesIndexInner(params: GamesParams) -> Element {
             div { class: "mb-6 flex flex-wrap items-center gap-3",
                 nav { class: TABS_LIST, "aria-label": "Status",
                     for (href, label, on) in status_links {
-                        a { href: "{href}", class: tab_class(on), "{label}" }
+                        InternalLink { href, class: tab_class(on), "{label}" }
                     }
                 }
                 nav { class: TABS_LIST, "aria-label": "Sort",
                     for (href, label, on) in sort_links {
-                        a { href: "{href}", class: tab_class(on), "{label}" }
+                        InternalLink { href, class: tab_class(on), "{label}" }
                     }
                 }
                 ViewToggle { base: toggle_base, list }
@@ -482,15 +482,8 @@ fn GameBody(detail: GameDetail) -> Element {
     let decomps: Vec<(String, String, String)> = detail
         .decompilations
         .iter()
-        .map(|p| {
-            (
-                format!("/games/{}/{}", game.slug, p.slug),
-                p.name.clone(),
-                p.kind_label.clone(),
-            )
-        })
+        .map(|p| (p.slug.clone(), p.name.clone(), p.kind_label.clone()))
         .collect();
-    let submit_href = format!("/submit?game={}", game.slug);
     let related = detail.related.clone();
     let videos = detail.videos.clone();
     let sorted = sorted_ports(&list);
@@ -523,7 +516,7 @@ fn GameBody(detail: GameDetail) -> Element {
                     for platform in detail.platforms.iter() {
                         if let Some(slug) = platform.slug.as_ref() {
                             Chip { class: "hover:bg-accent".to_string(),
-                                a { href: "/platforms/{slug}", "{platform.name}" }
+                                Link { to: crate::routes::Route::PlatformPage { slug: slug.clone(), page: String::new(), view: String::new() }, "{platform.name}" }
                             }
                         }
                     }
@@ -552,7 +545,7 @@ fn GameBody(detail: GameDetail) -> Element {
                     }
                 }
                 if has_ports && !is_solo_port {
-                    a { href: "#native-projects", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} mt-4", "Choose a project" }
+                    InternalLink { href: "#native-projects".to_string(), class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD} mt-4"), "Choose a project" }
                 }
                 if has_ports {
                     p { class: "mt-4 max-w-2xl {LEAD}", "{blurb_text}" }
@@ -601,7 +594,7 @@ fn GameBody(detail: GameDetail) -> Element {
                     {keyed(rsx! { WantButton { key: "{game_id}-{want}", game_id, count: want } })}
                 }
                 div { class: "mt-4 flex flex-wrap items-center justify-center gap-3",
-                    a { href: "{submit_href}", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Know of one? Submit it" }
+                    Link { to: crate::routes::Route::SubmitPage { game: game.slug.clone(), repo: String::new() }, class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Know of one? Submit it" }
                     DiscordLink {
                         href: DISCORD_INVITE_LISTING,
                         label: "Ask in Discord",
@@ -616,7 +609,7 @@ fn GameBody(detail: GameDetail) -> Element {
                 ul { class: "grid gap-4 md:grid-cols-2",
                     for (href, name, kind) in decomps {
                         li { key: "{href}",
-                            a { href: "{href}", class: "flex items-center justify-between gap-3 {CARD_SURFACE} p-4 transition-colors hover:bg-accent",
+                            Link { to: crate::routes::Route::PortPage { game_slug: game.slug.clone(), port_slug: href.clone() }, class: "flex items-center justify-between gap-3 {CARD_SURFACE} p-4 transition-colors hover:bg-accent",
                                 span { class: "font-medium", "{name}" }
                                 Chip { class: "text-xs".to_string(), "{kind}" }
                             }

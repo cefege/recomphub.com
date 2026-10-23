@@ -13,8 +13,8 @@ use super::styles::{
     TAB_ACTIVE, TABS_LIST, TEXTAREA,
 };
 use super::time::RelativeTime;
-use super::ui::{EmptyState, LoginPrompt, initials_of, target_label};
-use super::viewer::ViewerStore;
+use super::ui::{EmptyState, ExternalLink, LoginPrompt, initials_of, target_label};
+use super::viewer::{ViewerStore, require_account_network, use_account_network_ready};
 use crate::api;
 
 /// Maximum comment length, matched by the server.
@@ -27,6 +27,7 @@ const MAX_SCREENSHOT_MB: u64 = 10;
 #[component]
 pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> Element {
     let viewer = use_context::<ViewerStore>();
+    let online = use_account_network_ready();
     let signed_in = viewer.logged_in();
     let ready = *viewer.ready.read();
 
@@ -60,6 +61,9 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     use_effect(move || {
         if viewer.logged_in() {
             spawn(async move {
+                if require_account_network().is_err() {
+                    return;
+                }
                 if let Ok(value) = api::my_rating(port_id).await {
                     my_stars.set(value);
                 }
@@ -117,6 +121,10 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let mut rate = move |value: i16| {
         rating_error.set(None);
         spawn(async move {
+            if let Err(message) = require_account_network() {
+                rating_error.set(Some(message));
+                return;
+            }
             match api::rate_port(port_id, value).await {
                 Ok(next) => {
                     summary.set(next);
@@ -130,6 +138,10 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let clear_rating = move |_| {
         rating_error.set(None);
         spawn(async move {
+            if let Err(message) = require_account_network() {
+                rating_error.set(Some(message));
+                return;
+            }
             match api::clear_rating(port_id).await {
                 Ok(next) => {
                     summary.set(next);
@@ -190,6 +202,11 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
         posting.set(true);
         post_error.set(None);
         spawn(async move {
+            if let Err(message) = require_account_network() {
+                post_error.set(Some(message));
+                posting.set(false);
+                return;
+            }
             // A comment with no text but an attachment is allowed: the server requires text in
             // a comment, so when there is none, only the attachments are submitted.
             let comment_ok = if has_body {
@@ -213,6 +230,11 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                 // reselecting the file or retyping the link.
                 let mut extra_errors = Vec::new();
                 if let Some((name, data)) = screenshot {
+                    if let Err(message) = require_account_network() {
+                        post_error.set(Some(message));
+                        posting.set(false);
+                        return;
+                    }
                     match api::upload_port_image(port_id, name, data).await {
                         Ok(_) => {
                             screenshot_name.set(None);
@@ -222,6 +244,11 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                     }
                 }
                 if let Some(link) = video {
+                    if let Err(message) = require_account_network() {
+                        post_error.set(Some(message));
+                        posting.set(false);
+                        return;
+                    }
                     match api::submit_port_video(port_id, link).await {
                         Ok(_) => video_url.set(String::new()),
                         Err(e) => extra_errors.push(format!("video: {e}")),
@@ -306,7 +333,7 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
 
             div { class: "flex flex-col gap-2",
                 h3 { class: "text-base font-semibold", "Share your experience" }
-                if ready && signed_in {
+                if ready && signed_in && online {
                     form { class: "flex flex-col gap-2 rounded-lg border p-3", onsubmit: post,
                         div { class: "flex flex-wrap items-center justify-between gap-2",
                             div {
@@ -430,6 +457,8 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                             p { class: "text-xs text-destructive", "{msg}" }
                         }
                     }
+                } else if ready && signed_in && !online {
+                    p { class: "text-sm text-muted-foreground", "Account changes are disabled offline. Refresh your session before posting or rating." }
                 } else if ready {
                     LoginPrompt { text: "Sign in to rate {port_name} and share your experience." }
                 }
@@ -533,6 +562,7 @@ fn CommentCard(
     on_delete: EventHandler<i64>,
 ) -> Element {
     let viewer = use_context::<ViewerStore>();
+    let online = use_account_network_ready();
     let is_author = viewer
         .me
         .read()
@@ -579,6 +609,11 @@ fn CommentCard(
             Some(tested)
         };
         spawn(async move {
+            if let Err(message) = require_account_network() {
+                error.set(Some(message));
+                busy.set(false);
+                return;
+            }
             match api::edit_comment(id, body, tested).await {
                 Ok(updated) => {
                     on_change.call(updated);
@@ -594,6 +629,11 @@ fn CommentCard(
         busy.set(true);
         error.set(None);
         spawn(async move {
+            if let Err(message) = require_account_network() {
+                error.set(Some(message));
+                busy.set(false);
+                return;
+            }
             match api::delete_comment(id).await {
                 Ok(()) => on_delete.call(id),
                 Err(e) => error.set(Some(e.to_string())),
@@ -614,6 +654,11 @@ fn CommentCard(
             };
             let remove = hidden && hide_remove_rating();
             spawn(async move {
+                if let Err(message) = require_account_network() {
+                    error.set(Some(message));
+                    busy.set(false);
+                    return;
+                }
                 match api::set_comment_hidden(id, hidden, reason, remove).await {
                     Ok(updated) => {
                         on_change.call(updated);
@@ -641,11 +686,9 @@ fn CommentCard(
                     }
                 }
                 if let Some(login) = comment.github_login.clone() {
-                    a {
-                        class: "text-sm font-medium hover:underline",
-                        href: "https://github.com/{login}",
-                        target: "_blank",
-                        rel: "noopener noreferrer",
+                    ExternalLink {
+                        url: format!("https://github.com/{login}"),
+                        class: "text-sm font-medium hover:underline".to_string(),
                         "{display}"
                     }
                 } else {
@@ -695,7 +738,7 @@ fn CommentCard(
                         button {
                             r#type: "submit",
                             class: "{BUTTON} {BUTTON_SECONDARY} {BUTTON_SM}",
-                            disabled: busy() || edit_body().trim().is_empty(),
+                            disabled: !online || busy() || edit_body().trim().is_empty(),
                             "Save"
                         }
                         button {
@@ -727,7 +770,7 @@ fn CommentCard(
 
             if !editing() {
                 div { class: "flex flex-wrap items-center gap-3 text-xs",
-                    if is_author && !comment.hidden {
+                    if online && is_author && !comment.hidden {
                         button {
                             r#type: "button",
                             class: "{BUTTON} {BUTTON_LINK} {BUTTON_SM}",
@@ -758,7 +801,7 @@ fn CommentCard(
                             }
                         }
                     }
-                    if can_moderate {
+                    if online && can_moderate {
                         if comment.hidden {
                             button {
                                 r#type: "button",

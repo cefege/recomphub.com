@@ -84,6 +84,8 @@ def main() -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         guest = browser.new_context(viewport={"width": 390, "height": 844})
+        # Allow cold debug WebAssembly startup on slow CI workers.
+        guest.set_default_timeout(60000)
         guest.route("**/*", lambda route: route.abort() if not route.request.url.startswith(BASE) else route.continue_())
         page = guest.new_page()
         page.goto(f"{BASE}/games/fixture-a")
@@ -93,6 +95,7 @@ def main() -> None:
         page.get_by_text("Fixture Game A").wait_for()
         page.reload()
         page.get_by_text("Fixture Game A").wait_for()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "mobile library overflows horizontally"
         page.screenshot(path="artifacts/library-390.png", full_page=True)
 
         # Installing an existing session cookie makes the device selection merge additively.
@@ -105,17 +108,45 @@ def main() -> None:
         page.set_viewport_size({"width": 1440, "height": 1000})
         page.screenshot(path="artifacts/library-1440.png", full_page=True)
 
+        # A card may unmount while its account write is pending. The shared
+        # provider must finish it and release the pending state on the next route.
+        delayed_writes = []
+        def delay_favorite_write(route):
+            if not delayed_writes:
+                delayed_writes.append(route)
+            else:
+                route.continue_()
+        page.route("**/api/v1/library/favorites/set", delay_favorite_write)
+        page.get_by_role("button", name="Remove Fixture Game A from your library", exact=True).click()
+        page.locator('a[href="/games/fixture-a"]').first.click()
+        page.wait_for_url(f"{BASE}/games/fixture-a")
+        assert len(delayed_writes) == 1
+        delayed_writes[0].continue_()
+        page.unroute("**/api/v1/library/favorites/set", delay_favorite_write)
+        save = page.get_by_role("button", name="Save Fixture Game A to your library", exact=True)
+        save.wait_for()
+        assert save.is_enabled()
+        save.click()
+        page.get_by_role("button", name="Remove Fixture Game A from your library", exact=True).wait_for()
+
         # The account survives a clean browser context and does not leak to another account.
         clean = browser.new_context()
+        clean.set_default_timeout(60000)
         clean.add_cookies([{"name": COOKIE, "value": alice, "url": BASE}])
         clean_page = clean.new_page()
         clean_page.goto(f"{BASE}/library")
         clean_page.get_by_text("Fixture Game A").wait_for()
         other = browser.new_context()
+        other.set_default_timeout(60000)
         other.add_cookies([{"name": COOKIE, "value": bob, "url": BASE}])
         other_page = other.new_page()
         other_page.goto(f"{BASE}/library")
         other_page.get_by_text("No saved games yet").wait_for()
+        other_page.evaluate("""(url) => {
+            history.pushState(history.state, "", url);
+            dispatchEvent(new PopStateEvent("popstate", {state: history.state}));
+        }""", f"{BASE}/library?page=999")
+        other_page.wait_for_url(f"{BASE}/library?page=1")
 
         # Raw SSR never contains the authenticated selection, and logout returns to device state.
         html = urllib.request.urlopen(f"{BASE}/library").read().decode()
@@ -124,6 +155,26 @@ def main() -> None:
         clean_page.reload()
         clean_page.get_by_text("Device-only saved games").wait_for()
         assert clean_page.get_by_text("Fixture Game A").count() == 0
+
+        # History changes reuse SearchPage; the input must follow its route, not its first query.
+        history_page = other.new_page()
+        history_page.goto(f"{BASE}/search?q=Fixture")
+        query = history_page.locator("main input[name='q']")
+        assert query.input_value() == "Fixture"
+        history_page.get_by_role(
+            "button", name="Save Fixture Game A to your library", exact=True
+        ).click(trial=True)
+        history_page.evaluate("""(url) => {
+            history.pushState(history.state, "", url);
+            dispatchEvent(new PopStateEvent("popstate", {state: history.state}));
+        }""", f"{BASE}/search?q=MissingHistoryProbe")
+        history_page.wait_for_function(
+            "document.querySelector('main input[name=q]')?.value === 'MissingHistoryProbe'"
+        )
+        history_page.go_back()
+        history_page.wait_for_function(
+            "document.querySelector('main input[name=q]')?.value === 'Fixture'"
+        )
         browser.close()
 
 

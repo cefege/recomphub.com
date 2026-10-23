@@ -22,11 +22,9 @@ pub fn DiscordLink(
     #[props(default)] class: String,
 ) -> Element {
     rsx! {
-        a {
-            href: "{href}",
-            target: "_blank",
-            rel: "noopener noreferrer",
-            class: "{class}",
+        crate::components::ExternalLink {
+            url: href.to_string(),
+            class,
             DiscordIcon { class: "size-4" }
             "{label}"
         }

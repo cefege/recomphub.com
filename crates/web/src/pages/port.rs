@@ -17,11 +17,12 @@ use crate::components::styles::{
 };
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
-    AiBadge, Breadcrumb, PlayabilityMeter, PortCardView, PortHero, ReleaseChip, Section,
-    TargetIcon, initials_of, keyed, target_label,
+    AiBadge, Breadcrumb, ExternalLink, InternalLink, PlayabilityMeter, PortCardView, PortHero,
+    ReleaseChip, Section, TargetIcon, initials_of, keyed, target_label,
 };
 use crate::components::viewer::{StarButton, use_marks};
 use crate::components::{DiscordCount, DiscordLink, FavoriteButton};
+use crate::routes::Route;
 
 /// `/games/:game_slug/:port_slug`. Remounts when either slug changes.
 #[component]
@@ -95,7 +96,7 @@ fn AboutPort(about: PortAbout, repo_url: String) -> Element {
                     "Generated from the repository's README and release notes "
                     RelativeTime { at: about.generated_at }
                     ". Check the "
-                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "repository" }
+                    ExternalLink { url: repo_url.clone(), class: TEXT_LINK.to_string(), "repository" }
                     " for the latest details."
                 }
             }
@@ -163,10 +164,10 @@ fn InstallationGuide(
                         ol { class: "flex list-decimal flex-col gap-3 pl-5 text-sm leading-relaxed",
                             li {
                                 if let Some(url) = release_url.clone() {
-                                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "View project releases ↗" }
+                                    ExternalLink { url: url.clone(), class: TEXT_LINK.to_string(), "View project releases ↗" }
                                     " for {port_name}."
                                 } else {
-                                    a { href: "{repo_url}", target: "_blank", rel: "noopener", class: "{TEXT_LINK}", "View project source ↗" }
+                                    ExternalLink { url: repo_url.clone(), class: TEXT_LINK.to_string(), "View project source ↗" }
                                     " and use its documented release or build instructions."
                                 }
                             }
@@ -253,10 +254,13 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
     };
     let subtitle = format!("{} of", article_kind(&port.kind_label));
 
-    let redirect_href = game_href.clone();
+    let navigator = use_navigator();
+    let redirect_slug = game.slug.clone();
     use_effect(move || {
         if is_sole_port {
-            let _ = document::eval(&format!("location.replace('{redirect_href}')"));
+            navigator.replace(Route::GamePage {
+                slug: redirect_slug.clone(),
+            });
         }
     });
     // Recorded here, not in `PortMainContent`: when that content is embedded on the game page
@@ -279,7 +283,7 @@ fn PortBody(detail: PortDetail, ratings: RatingSummary) -> Element {
             }
             p { class: "mt-2 text-muted-foreground",
                 "{subtitle} "
-                a { href: "{game_href}", class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
+                Link { to: crate::routes::Route::GamePage { slug: game.slug.clone() }, class: "font-medium text-foreground underline-offset-4 hover:underline", "{game.name}" }
             }
         }
         PortMainContent { detail, ratings: ratings.clone() }
@@ -391,7 +395,6 @@ pub(crate) fn PortMainContent(
     let stars = port.github_stars;
     let star_key = format!("{}-{}", port.id, port.star_count);
     let star_count = i64::from(port.star_count);
-    let edit_href = format!("/submit/edit/{}", port.id);
     let other_title = format!("Other ports of {}", game.name);
     let other_ports = d.other_ports.clone();
     let videos = d.videos.clone();
@@ -436,6 +439,11 @@ pub(crate) fn PortMainContent(
         "No ratings yet".to_string()
     };
 
+    #[cfg(feature = "desktop")]
+    let native_actions = rsx! { crate::desktop::install_actions::InstallActions { port_id } };
+    #[cfg(not(feature = "desktop"))]
+    let native_actions = rsx! {};
+
     rsx! {
         div { class: "grid gap-6 md:grid-cols-[1fr_300px]",
             PortHero {
@@ -451,11 +459,7 @@ pub(crate) fn PortMainContent(
                 {
                     p { class: "text-sm text-muted-foreground", "{about.summary}" }
                 }
-                a {
-                    href: "#ratings-heading",
-                    class: "text-sm font-medium hover:underline",
-                    "{rating_preview}"
-                }
+                InternalLink { href: "#ratings-heading".to_string(), class: "text-sm font-medium hover:underline".to_string(), "{rating_preview}" }
                 dl { class: "flex flex-col gap-2",
                     Fact { label: "Release".to_string(),
                         ReleaseChip {
@@ -469,7 +473,7 @@ pub(crate) fn PortMainContent(
                             for (index, (href, name, _)) in authors.iter().cloned().enumerate() {
                                 span { key: "{index}",
                                     if let Some(href) = href {
-                                        a { href: "{href}", class: "font-medium hover:underline", "{name}" }
+                                        InternalLink { href, class: "font-medium hover:underline".to_string(), "{name}" }
                                     } else {
                                         span { class: "font-medium", "{name}" }
                                     }
@@ -516,12 +520,12 @@ pub(crate) fn PortMainContent(
             div { class: "flex flex-wrap gap-2",
                 if show_installation {
                     if let Some(url) = download.clone() {
-                        a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View releases ↗" }
+                        ExternalLink { url, class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View releases ↗" }
                     } else {
-                        a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View source ↗" }
+                        ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View source ↗" }
                     }
                 } else {
-                    a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}", "View source ↗" }
+                    ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View source ↗" }
                 }
                 if show_installation && download.is_none() {
                     span { class: "self-center text-sm text-muted-foreground", "No downloadable release is recorded." }
@@ -529,11 +533,11 @@ pub(crate) fn PortMainContent(
                 if !show_installation {
                     span { class: "self-center text-sm text-muted-foreground", "Decompilation — no playable port." }
                 }
-                a { href: "{port.repo_url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Repository" }
+                ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}"), "Repository" }
                 if let Some(url) = homepage.clone() {
-                    a { href: "{url}", target: "_blank", rel: "noopener", class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}", "Website" }
+                    ExternalLink { url, class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}"), "Website" }
                 }
-                a { href: "{edit_href}", class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
+                Link { to: crate::routes::Route::EditPortPage { port_id: port.id }, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
             }
             if show_installation {
                 p { class: "basis-full text-sm text-muted-foreground",
@@ -541,6 +545,8 @@ pub(crate) fn PortMainContent(
                 }
             }
         }
+
+        {native_actions}
 
         if show_installation {
             InstallationGuide {

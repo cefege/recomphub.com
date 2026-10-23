@@ -21,7 +21,7 @@ use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, Predicate};
 use tower_http::services::ServeFile;
 
-use super::{config, oauth, state};
+use super::{config, desktop_auth, oauth, state};
 
 /// Google's limit per sitemap file.
 const SITEMAP_LIMIT: usize = 45_000;
@@ -46,7 +46,8 @@ pub fn with_site_routes(router: Router) -> Router {
         .route("/auth/google/callback", get(oauth::callback))
         .route("/auth/logout", post(oauth::logout))
         .route("/media/{filename}", get(serve_media))
-        .route("/media/{kind}/{old_filename}", get(redirect_old_media));
+        .route("/media/{kind}/{old_filename}", get(redirect_old_media))
+        .merge(desktop_auth::routes());
     let compression = CompressionLayer::new().compress_when(DefaultPredicate::new().and(
         |status: StatusCode, _: Version, _: &HeaderMap, _: &Extensions| {
             // Websocket upgrades (101) must pass through untouched.
@@ -61,9 +62,9 @@ pub fn with_site_routes(router: Router) -> Router {
     router
         .merge(site)
         .layer(compression)
-        .layer(middleware::from_fn(cache_headers))
         .layer(middleware::from_fn(canonical))
         .layer(DefaultBodyLimit::max(24 * 1024 * 1024))
+        .layer(middleware::from_fn(cache_headers))
 }
 
 async fn healthz() -> Response {
@@ -700,13 +701,24 @@ fn canonical_path(path: &str) -> String {
     lower
 }
 
-/// Cache account-library responses privately and successful media responses for one hour.
+/// Cache account and desktop-authorization responses privately; media and public HTML retain
+/// their existing cache policies.
 async fn cache_headers(req: Request, next: Next) -> Response {
-    let is_library = req.uri().path().starts_with("/api/v1/library/");
+    let path = req.uri().path();
+    let is_desktop_auth = path.starts_with("/api/v1/desktop/auth/")
+        || path == "/auth/desktop"
+        || path == "/auth/desktop/approve";
+    let is_private = path.starts_with("/api/v1/library/") || is_desktop_auth || path == "/api/me";
     let is_read = matches!(*req.method(), Method::GET | Method::HEAD);
-    let is_media = req.uri().path().starts_with("/media/");
+    let is_media = path.starts_with("/media/");
     let mut response = next.run(req).await;
-    if is_library {
+    if is_desktop_auth {
+        response
+            .headers_mut()
+            .entry(header::REFERRER_POLICY)
+            .or_insert(HeaderValue::from_static("no-referrer"));
+    }
+    if is_private {
         response.headers_mut().insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static("private, no-store"),

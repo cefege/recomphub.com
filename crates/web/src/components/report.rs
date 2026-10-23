@@ -10,6 +10,7 @@ pub fn ReportDialog(game_id: i64, #[props(default)] port_id: Option<i64>) -> Ele
     let mut note = use_signal(String::new);
     let mut status = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
+    let online = crate::components::viewer::use_account_network_ready();
     rsx! {
         button {
             r#type: "button",
@@ -42,6 +43,9 @@ pub fn ReportDialog(game_id: i64, #[props(default)] port_id: Option<i64>) -> Ele
                         if let Some(message) = status() {
                             p { class: "text-sm", "{message}" }
                         }
+                        if !online {
+                            p { class: "text-sm text-muted-foreground", "Reconnect and refresh your session before sending account changes." }
+                        }
                         div { class: "flex justify-end gap-2",
                             button {
                                 r#type: "button",
@@ -51,7 +55,7 @@ pub fn ReportDialog(game_id: i64, #[props(default)] port_id: Option<i64>) -> Ele
                             }
                             button {
                                 r#type: "button",
-                                disabled: busy(),
+                                disabled: busy() || !online,
                                 class: "{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}",
                                 onclick: move |_| {
                                     let text = note().trim().to_string();
@@ -61,6 +65,9 @@ pub fn ReportDialog(game_id: i64, #[props(default)] port_id: Option<i64>) -> Ele
                                     }
                                     busy.set(true);
                                     spawn(async move {
+                                        if let Err(message) = crate::components::viewer::require_account_network() {
+                                            status.set(Some(message)); busy.set(false); return;
+                                        }
                                         match api::submit_report(game_id, port_id, text).await {
                                             Ok(_) => {
                                                 status.set(Some("Thanks. A moderator will look at it.".to_string()));
