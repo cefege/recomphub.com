@@ -92,9 +92,15 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Generate descriptions for ports from their stored GitHub text, using the Anthropic Messages API.
+    /// Generate structured installation guides for ports from their stored GitHub text, using configured AI providers.
     DescribePorts {
-        /// Print the request the next run would send for the first port needing a description, and call nothing.
+        /// Maximum number of ports to process.
+        #[arg(long, default_value_t = describe::RUN_LIMIT)]
+        limit: usize,
+        /// Deliberately selected port ID. May be repeated.
+        #[arg(long = "id")]
+        ids: Vec<i64>,
+        /// Print the request the next run would send for the first selected port needing a guide, and call nothing.
         #[arg(long)]
         dry_run: bool,
     },
@@ -242,25 +248,28 @@ async fn run(command: Command) -> Result<()> {
                 media_discovery::run_media_discovery(&pool, submit_limit, retrieve_limit).await?;
             info!(?report, "media-discovery finished");
         }
-        Command::DescribePorts { dry_run } => {
+        Command::DescribePorts {
+            limit,
+            ids,
+            dry_run,
+        } => {
             let pool = pool().await?;
             if dry_run {
-                match describe::preview_prompt(&pool).await? {
+                match describe::preview_prompt(&pool, &ids).await? {
                     Some((port_id, system, user)) => {
                         println!("port {port_id}");
                         println!("system:\n{system}");
                         println!("user:\n{user}");
                     }
-                    None => println!("no port needs a description"),
+                    None => println!("no port needs a guide"),
                 }
             } else {
                 match Sealer::from_env() {
                     Ok(sealer) => {
                         let http = imports::http_client()?;
                         let report =
-                            describe::describe_ports(&pool, &http, &sealer, describe::RUN_LIMIT)
-                                .await?;
-                        info!(?report, "describe-ports finished");
+                            describe::describe_ports(&pool, &http, &sealer, limit, &ids).await?;
+                        info!(?report, limit, ids = ?ids, "describe-ports finished");
                     }
                     Err(e) => warn!(error = %e, "describe-ports skipped"),
                 }

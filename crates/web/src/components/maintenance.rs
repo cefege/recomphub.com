@@ -46,7 +46,7 @@ pub fn MaintenanceBadge(level: MaintenanceLevel) -> Element {
     }
 }
 
-/// Full maintenance block for the port page: level, counts and the 12-week sparkline.
+/// Compact activity summary, with counts and the sparkline available on demand.
 #[component]
 pub fn MaintenancePanel(maintenance: MaintenanceDto, weekly_commits: Vec<i32>) -> Element {
     let level = maintenance.level;
@@ -57,39 +57,30 @@ pub fn MaintenancePanel(maintenance: MaintenanceDto, weekly_commits: Vec<i32>) -
         counted(weekly_commits.len() as i64, "week", "weeks"),
     );
     rsx! {
-        div { class: "{CARD_SURFACE} grid gap-6 p-6",
-            div { class: "flex flex-wrap items-center gap-3",
+        div { class: "{CARD_SURFACE} p-4",
+            div { class: "flex flex-wrap items-center gap-2",
                 MaintenanceBadge { level }
                 p { class: "text-sm text-muted-foreground", "{level.description()}" }
             }
-            dl { class: "grid grid-cols-2 gap-4 sm:grid-cols-4",
-                MaintenanceStat {
-                    label: "Commits in 30 days",
-                    value: maintenance.commits_30d.to_string(),
-                }
-                MaintenanceStat {
-                    label: "Commits in 90 days",
-                    value: maintenance.commits_90d.to_string(),
-                }
-                MaintenanceStat {
-                    label: "Contributors in 6 months",
-                    value: maintenance.committers_180d.to_string(),
-                }
-                MaintenanceStat {
-                    label: "Releases in 12 months",
-                    value: maintenance.releases_365d.to_string(),
-                }
-            }
-            if !weekly_commits.is_empty() {
-                div { class: "grid gap-2",
-                    Sparkline { weeks: weekly_commits.clone() }
-                    p { class: "text-sm text-muted-foreground",
-                        "{weeks_text}"
+            details { class: "mt-3 border-t pt-3",
+                summary { class: "cursor-pointer text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring", "Activity details" }
+                div { class: "mt-4 flex flex-col gap-4",
+                    dl { class: "grid grid-cols-2 gap-4 sm:grid-cols-4",
+                        MaintenanceStat { label: "Commits in 30 days", value: maintenance.commits_30d.to_string() }
+                        MaintenanceStat { label: "Commits in 90 days", value: maintenance.commits_90d.to_string() }
+                        MaintenanceStat { label: "Contributors in 6 months", value: maintenance.committers_180d.to_string() }
+                        MaintenanceStat { label: "Releases in 12 months", value: maintenance.releases_365d.to_string() }
+                    }
+                    if !weekly_commits.is_empty() {
+                        div { class: "grid gap-2",
+                            Sparkline { weeks: weekly_commits }
+                            p { class: "text-sm text-muted-foreground", "{weeks_text}" }
+                        }
+                    }
+                    p { class: "text-xs text-muted-foreground",
+                        "GitHub activity is not a playability score. Counts cover the default branch; contributors come from the 100 most recent commits."
                     }
                 }
-            }
-            p { class: "text-xs text-muted-foreground",
-                "Counts cover the default branch. Contributors are counted from the 100 most recent commits."
             }
         }
     }

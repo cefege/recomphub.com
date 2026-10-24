@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use recomphub_shared::dto::{PortAbout, RatingSummary};
+use recomphub_shared::dto::{InstallationGuides, PortAbout, RatingSummary};
 use recomphub_shared::seo::{meta_description, port_title};
 use recomphub_shared::{PortCard, PortDetail, TargetPlatform};
 
@@ -8,12 +8,13 @@ use crate::api;
 use crate::app::DISCORD_INVITE_LISTING;
 use crate::components::comments::PortComments;
 use crate::components::live::{LiveCount, LiveStore, use_live_watch};
-use crate::components::maintenance::MaintenancePanel;
+use crate::components::maintenance::{MaintenanceBadge, MaintenancePanel};
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
+use crate::components::shop::BuyShelf;
 use crate::components::styles::{
-    BADGE, BADGE_OUTLINE, BUTTON, BUTTON_DISCORD, BUTTON_GHOST, BUTTON_MD, BUTTON_OUTLINE,
-    BUTTON_PRIMARY, CARD_SURFACE, H1, TEXT_LINK,
+    BADGE, BADGE_OUTLINE, BUTTON, BUTTON_DISCORD, BUTTON_MD, BUTTON_PRIMARY, CARD_SURFACE, H1,
+    TEXT_LINK,
 };
 use crate::components::time::RelativeTime;
 use crate::components::ui::{
@@ -70,10 +71,10 @@ fn Fact(label: String, children: Element) -> Element {
 /// Generated description of the port, from its GitHub README and release notes.
 #[component]
 fn AboutPort(about: PortAbout, repo_url: String) -> Element {
-    let has_lists =
-        !(about.features.is_empty() && about.limitations.is_empty() && about.setup.is_empty());
+    let has_lists = !(about.features.is_empty() && about.limitations.is_empty());
     rsx! {
         Section { heading: "About this port".to_string(), class: "mt-12".to_string(),
+            p { class: "mb-4 max-w-3xl leading-relaxed", "{about.summary}" }
             div { class: "flex flex-col gap-6",
                 div { class: "flex flex-col gap-2",
                     span { class: "{BADGE} {BADGE_OUTLINE}", "{about.technique_label}" }
@@ -82,22 +83,15 @@ fn AboutPort(about: PortAbout, repo_url: String) -> Element {
                 if has_lists {
                     div { class: "grid gap-4 md:grid-cols-2",
                         if !about.features.is_empty() {
-                            AboutList { heading: "Features".to_string(), items: about.features.clone(), numbered: false }
+                            AboutList { heading: "Features".to_string(), items: about.features.clone() }
                         }
                         if !about.limitations.is_empty() {
-                            AboutList { heading: "Known limitations".to_string(), items: about.limitations.clone(), numbered: false }
-                        }
-                        if !about.setup.is_empty() {
-                            AboutList { heading: "Setup".to_string(), items: about.setup.clone(), numbered: true }
+                            AboutList { heading: "Known limitations".to_string(), items: about.limitations.clone() }
                         }
                     }
                 }
                 p { class: "text-sm text-muted-foreground",
-                    "Generated from the repository's README and release notes "
-                    RelativeTime { at: about.generated_at }
-                    ". Check the "
-                    ExternalLink { url: repo_url.clone(), class: TEXT_LINK.to_string(), "repository" }
-                    " for the latest details."
+                    ExternalLink { url: repo_url, class: TEXT_LINK.to_string(), "Full project documentation ↗" }
                 }
             }
         }
@@ -106,105 +100,124 @@ fn AboutPort(about: PortAbout, repo_url: String) -> Element {
 
 /// One titled list inside the About section. Empty lists are not rendered by the caller.
 #[component]
-fn AboutList(heading: String, items: Vec<String>, numbered: bool) -> Element {
+fn AboutList(heading: String, items: Vec<String>) -> Element {
     rsx! {
         div { class: "{CARD_SURFACE} p-4",
             h3 { class: "text-sm font-medium", "{heading}" }
-            if numbered {
-                ol { class: "mt-2 flex list-decimal flex-col gap-2 pl-5 text-sm",
-                    for item in items { li { "{item}" } }
-                }
-            } else {
-                ul { class: "mt-2 flex list-disc flex-col gap-2 pl-5 text-sm",
-                    for item in items { li { "{item}" } }
-                }
+            ul { class: "mt-2 flex list-disc flex-col gap-2 pl-5 text-sm",
+                for item in items { li { "{item}" } }
             }
         }
     }
 }
 
-fn is_recompilation(kind: &str) -> bool {
-    matches!(kind, "static_recomp" | "native_layer")
+fn is_native_port(kind: &str) -> bool {
+    kind.parse::<recomphub_shared::PortKind>()
+        .is_ok_and(recomphub_shared::PortKind::is_port)
 }
 
-#[cfg(test)]
-mod installation_tests {
-    use super::is_recompilation;
-
-    #[test]
-    fn installation_guidance_is_limited_to_playable_recompilation_kinds() {
-        assert!(is_recompilation("static_recomp"));
-        assert!(is_recompilation("native_layer"));
-        assert!(!is_recompilation("decompilation"));
-        assert!(!is_recompilation("source_port"));
-    }
-}
-
-/// Project-specific installation guidance for a recompilation. Platform cards are derived from
-/// the port's detected/declared targets; repository-provided setup text is never invented.
+/// Render the stored, OS-specific installation instructions without executing commands.
 #[component]
-fn InstallationGuide(
-    game_name: String,
-    port_name: String,
-    release_url: Option<String>,
-    repo_url: String,
-    targets: Vec<(String, String)>,
-    requirements: Vec<String>,
-    setup: Vec<String>,
-) -> Element {
+fn InstallationGuide(guide: Option<InstallationGuides>, repo_url: String) -> Element {
+    let default_index = guide.as_ref().map_or(0, |g| {
+        if g.windows.documented {
+            0
+        } else if g.macos.documented {
+            1
+        } else if g.linux.documented {
+            2
+        } else {
+            0
+        }
+    });
+    let mut selected = use_signal(|| default_index);
+    let guide_url = format!("{repo_url}#readme");
+    let systems = [
+        ("windows", "Windows"),
+        ("macos", "macOS"),
+        ("linux", "Linux"),
+    ];
+    let current = match selected() {
+        0 => guide.as_ref().map(|g| &g.windows),
+        1 => guide.as_ref().map(|g| &g.macos),
+        _ => guide.as_ref().map(|g| &g.linux),
+    };
+    let label = systems[selected()].1;
     rsx! {
-        Section { heading: "Install and use your game data".to_string(), class: "mt-12".to_string(),
-            p { class: "max-w-3xl text-sm leading-relaxed text-muted-foreground",
-                "Use the project release and files copied from media you already own. RecompHub does not provide game files, disc images, keys, or third-party download sources."
-            }
-            div { class: "mt-4 grid gap-4 md:grid-cols-2",
-                for (target, label) in targets {
-                    article { key: "{target}", class: "{CARD_SURFACE} flex flex-col gap-4 p-5",
-                        h3 { class: "font-medium", "Install on {label}" }
-                        ol { class: "flex list-decimal flex-col gap-3 pl-5 text-sm leading-relaxed",
-                            li {
-                                if let Some(url) = release_url.clone() {
-                                    ExternalLink { url: url.clone(), class: TEXT_LINK.to_string(), "View project releases ↗" }
-                                    " for {port_name}."
-                                } else {
-                                    ExternalLink { url: repo_url.clone(), class: TEXT_LINK.to_string(), "View project source ↗" }
-                                    " and use its documented release or build instructions."
+        div { id: "installation", class: "scroll-mt-6",
+            Section { heading: "Step 2: Install the port".to_string(), class: "mt-8".to_string(),
+                div { class: "flex max-w-full overflow-x-auto border-b", role: "tablist", "aria-label": "Installation operating system",
+                    for (index, (id, name)) in systems.iter().enumerate() {
+                        button {
+                            id: "installation-tab-{id}",
+                            r#type: "button",
+                            role: "tab",
+                            class: if selected() == index { "shrink-0 border-b-2 border-primary px-4 py-2 text-sm font-medium" } else { "shrink-0 border-b-2 border-transparent px-4 py-2 text-sm text-muted-foreground" },
+                            tabindex: if selected() == index { "0" } else { "-1" },
+                            "aria-selected": selected() == index,
+                            "aria-controls": "installation-panel",
+                            onclick: move |_| selected.set(index),
+                            onkeydown: move |event| {
+                                let active = selected();
+                                let next = match event.key() {
+                                    Key::ArrowRight => Some((active + 1) % 3),
+                                    Key::ArrowLeft => Some((active + 2) % 3),
+                                    Key::Home => Some(0),
+                                    Key::End => Some(2),
+                                    _ => None,
+                                };
+                                if let Some(next) = next {
+                                    event.prevent_default();
+                                    selected.set(next);
+                                    let id = ["installation-tab-windows", "installation-tab-macos", "installation-tab-linux"][next];
+                                    spawn(async move {
+                                        let eval = document::eval("document.getElementById(await dioxus.recv())?.focus();");
+                                        if eval.send(id).is_ok() {
+                                            let _ = eval.join::<()>().await;
+                                        }
+                                    });
                                 }
-                            }
-                            li {
-                                "Extract or install the release exactly as its included README says. "
-                                "The project has not supplied a universal install location; do not guess or replace files in the original game install."
-                            }
-                            li {
-                                "Provide only the original {game_name} data the project documents below. "
-                                "Copy it from media or a store download you are entitled to use."
-                            }
-                        }
-                        if !setup.is_empty() {
-                            div { class: "rounded border p-3",
-                                h4 { class: "text-sm font-medium", "Project setup and data placement" }
-                                ol { class: "mt-2 flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground",
-                                    for step in setup.clone() {
-                                        li { "{step}" }
-                                    }
-                                }
-                            }
-                        } else {
-                            p { class: "text-sm text-muted-foreground",
-                                "The repository did not provide exact extraction or data-placement steps in the scanned documentation. Check its README before moving any game data."
-                            }
+                            },
+                            "{name}"
                         }
                     }
                 }
-            }
-            if !requirements.is_empty() {
-                div { class: "mt-4 {CARD_SURFACE} p-5",
-                    h3 { class: "font-medium", "Required original-game data" }
-                    ul { class: "mt-2 flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground",
-                        for requirement in requirements {
-                            li { "{requirement}" }
+                article { id: "installation-panel", role: "tabpanel", "aria-labelledby": "installation-tab-{systems[selected()].0}", tabindex: "0", class: "{CARD_SURFACE} mt-4 min-w-0 p-5",
+                    h3 { class: "font-medium", "{label} installation instructions" }
+                    if let Some(os) = current {
+                        if os.documented {
+                            if !os.requirements.is_empty() {
+                                h4 { class: "mt-4 text-sm font-semibold", "For {label}" }
+                                ul { class: "mt-2 flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed",
+                                    for requirement in os.requirements.iter() { li { "{requirement}" } }
+                                }
+                            }
+                            if !os.steps.is_empty() {
+                                ol { class: "mt-4 flex list-decimal flex-col gap-4 pl-5 text-sm leading-relaxed",
+                                    for step in os.steps.iter() {
+                                        li {
+                                            h4 { class: "font-semibold", "{step.title}" }
+                                            p { class: "mt-1 whitespace-pre-line", "{step.detail}" }
+                                            if let Some(command) = step.command.as_ref() {
+                                                pre { class: "mt-2 max-w-full overflow-x-auto rounded bg-muted p-3 text-xs", code { "{command}" } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if !os.notes.is_empty() {
+                                h4 { class: "mt-4 text-sm font-semibold", "Notes" }
+                                ul { class: "mt-2 flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed",
+                                    for note in os.notes.iter() { li { "{note}" } }
+                                }
+                            }
+                        } else {
+                            p { class: "mt-3 text-sm text-muted-foreground", "No documented {label} installation instructions are available for this project." }
                         }
+                    } else {
+                        p { class: "mt-3 text-sm text-muted-foreground", "Installation instructions have not been recorded yet." }
                     }
+                    ExternalLink { url: guide_url.clone(), class: format!("{TEXT_LINK} mt-4 inline-block text-sm"), "Read the project's documentation ↗" }
                 }
             }
         }
@@ -402,29 +415,19 @@ pub(crate) fn PortMainContent(
     let last_commit = d.last_commit_at;
     let ai_tools = port.ai_tools.clone();
     let ai_evidence = port.ai_evidence.clone();
-    let about = d.about.clone();
+    let mut about = d.about.clone();
     let has_about = about.is_some();
-    let about_requirements: Vec<String> = about
+    let mut installation_requirements = about
         .as_ref()
         .map(|a| a.requirements.clone())
         .unwrap_or_default();
-    let installation_setup = about
-        .as_ref()
-        .map(|about| about.setup.clone())
-        .unwrap_or_default();
-    let mut installation_requirements = about_requirements.clone();
-    if let Some(requirements) = requirements.clone().filter(|text| !text.trim().is_empty()) {
+    if let Some(requirements) = requirements.filter(|text| !text.trim().is_empty())
+        && !installation_requirements.contains(&requirements)
+    {
         installation_requirements.push(requirements);
     }
-    let show_installation = is_recompilation(&port.kind);
-    let installation_targets = if runs.is_empty() {
-        vec![(
-            "unknown".to_string(),
-            "Supported system not stated".to_string(),
-        )]
-    } else {
-        runs.clone()
-    };
+    let installation = about.as_mut().and_then(|about| about.installation.take());
+    let show_installation = is_native_port(&port.kind);
     let rating_preview = if ratings.count > 0 {
         let avg = ratings
             .average
@@ -445,7 +448,7 @@ pub(crate) fn PortMainContent(
     let native_actions = rsx! {};
 
     rsx! {
-        div { class: "grid gap-6 md:grid-cols-[1fr_300px]",
+        div { class: "grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px]",
             PortHero {
                 cover: if embedded { None } else { port.cover.clone() },
                 screenshots: screenshots.clone(),
@@ -454,10 +457,19 @@ pub(crate) fn PortMainContent(
                 initials: initials.clone(),
             }
             aside { class: "flex flex-col gap-4",
-                if !embedded
-                    && let Some(about) = about.as_ref()
-                {
-                    p { class: "text-sm text-muted-foreground", "{about.summary}" }
+                div { id: "port-download", class: "flex flex-col gap-3",
+                    if show_installation {
+                        if let Some(url) = download.clone() {
+                            ExternalLink { url, class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD} w-full"), "Download" }
+                            p { class: "text-xs leading-relaxed text-muted-foreground", "Opens the project's release page. Choose the download for your system; files are not verified by RecompHub." }
+                        } else {
+                            p { class: "text-sm font-medium", "No download available" }
+                            p { class: "text-xs leading-relaxed text-muted-foreground", "No release is recorded. Check the repository for build instructions." }
+                        }
+                    } else {
+                        p { class: "text-sm text-muted-foreground", "Source project, not a playable download." }
+                    }
+                    ExternalLink { url: port.repo_url.clone(), class: format!("{TEXT_LINK} text-sm"), "View repository" }
                 }
                 InternalLink { href: "#ratings-heading".to_string(), class: "text-sm font-medium hover:underline".to_string(), "{rating_preview}" }
                 dl { class: "flex flex-col gap-2",
@@ -466,6 +478,13 @@ pub(crate) fn PortMainContent(
                             version: port.latest_version.clone(),
                             at: port.latest_release_at,
                             state_label: port.release_state_label.clone(),
+                        }
+                    }
+                    Fact { label: "Activity".to_string(),
+                        if let Some(maintenance) = port.maintenance {
+                            MaintenanceBadge { level: maintenance.level }
+                        } else {
+                            "Not checked"
                         }
                     }
                     Fact { label: "Developer".to_string(),
@@ -494,7 +513,7 @@ pub(crate) fn PortMainContent(
                         }
                     }
                     Fact { label: "AI use".to_string(),
-                        AiBadge { usage: port.ai_usage.clone(), tools: ai_tools.clone(), evidence: ai_evidence.clone() }
+                        AiBadge { usage: port.ai_usage.clone(), tools: ai_tools.clone(), evidence: ai_evidence.clone(), align_end: true }
                     }
                     Fact { label: "Playability".to_string(),
                         PlayabilityMeter { playability: port.playability.clone() }
@@ -512,52 +531,62 @@ pub(crate) fn PortMainContent(
             }
         }
 
-        div { class: "{CARD_SURFACE} mt-6 flex flex-wrap items-center justify-between gap-4 p-4",
-            div { class: "flex flex-wrap items-center gap-4",
-                LiveCount { game_id }
-                {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
-            }
-            div { class: "flex flex-wrap gap-2",
-                if show_installation {
-                    if let Some(url) = download.clone() {
-                        ExternalLink { url, class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View releases ↗" }
-                    } else {
-                        ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View source ↗" }
+        if show_installation { {native_actions} }
+
+        if show_installation {
+            Section { heading: "Step 1: Get the original game".to_string(), class: "mt-8".to_string(),
+                div { id: "game-data", class: "{CARD_SURFACE} scroll-mt-6 p-5",
+                    div {
+                        h3 { class: "font-medium", "Check the original game files" }
+                        p { class: "mt-2 text-sm text-muted-foreground", "Original version used by this project: {source_name}. Already own a compatible copy? You don't need to buy it again. Another edition may not contain compatible files." }
+                        if !installation_requirements.is_empty() {
+                            ul { class: "mt-3 flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed",
+                                for requirement in installation_requirements.iter() { li { "{requirement}" } }
+                            }
+                        } else {
+                            p { class: "mt-3 text-sm", "The exact files and supported editions are not recorded. Check the project's requirements before buying a copy or moving game data." }
+                        }
+                        ExternalLink { url: format!("{}#readme", port.repo_url), class: format!("{TEXT_LINK} mt-3 inline-block text-sm"), "Check project requirements ↗" }
+                        p { class: "mt-3 text-xs text-muted-foreground", "Use game files you are entitled to supply. RecompHub does not provide original game data." }
                     }
-                } else {
-                    ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_PRIMARY} {BUTTON_MD}"), "View source ↗" }
+                    BuyShelf { offers: d.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports: true, embedded: true }
                 }
-                if show_installation && download.is_none() {
-                    span { class: "self-center text-sm text-muted-foreground", "No downloadable release is recorded." }
-                }
-                if !show_installation {
-                    span { class: "self-center text-sm text-muted-foreground", "Decompilation — no playable port." }
-                }
-                ExternalLink { url: port.repo_url.clone(), class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}"), "Repository" }
-                if let Some(url) = homepage.clone() {
-                    ExternalLink { url, class: format!("{BUTTON} {BUTTON_OUTLINE} {BUTTON_MD}"), "Website" }
-                }
-                Link { to: crate::routes::Route::EditPortPage { port_id: port.id }, class: "{BUTTON} {BUTTON_GHOST} {BUTTON_MD}", "Suggest an edit" }
             }
-            if show_installation {
-                p { class: "basis-full text-sm text-muted-foreground",
-                    "Release links open upstream project pages; RecompHub does not verify their files. Reported targets are project support, not verified downloads. Some ports require original game assets; RecompHub does not provide them."
+            InstallationGuide {
+                guide: installation,
+                repo_url: port.repo_url.clone(),
+            }
+        } else if !installation_requirements.is_empty() {
+            Section { heading: "Project requirements".to_string(), class: "mt-8".to_string(),
+                ul { class: "flex list-disc flex-col gap-2 pl-5 text-sm",
+                    for requirement in installation_requirements.iter() { li { "{requirement}" } }
                 }
             }
         }
 
-        {native_actions}
-
-        if show_installation {
-            InstallationGuide {
-                game_name: game.name.clone(),
-                port_name: port.name.clone(),
-                release_url: download.clone(),
-                repo_url: port.repo_url.clone(),
-                targets: installation_targets,
-                requirements: installation_requirements,
-                setup: installation_setup,
+        if !other_ports.is_empty() {
+            Section { heading: other_title, class: "mt-8".to_string(),
+                ul { class: "grid gap-4 md:grid-cols-2",
+                    for other in other_ports.iter() {
+                        {
+                            let key = format!("{}-{}", other.id, other.star_count);
+                            rsx! { li { key: "{key}", PortCardView { port: other.clone() } } }
+                        }
+                    }
+                }
             }
+        }
+
+        div { class: "mt-6",
+            if let Some(m) = port.maintenance {
+                MaintenancePanel { maintenance: m, weekly_commits: d.weekly_commits.clone() }
+            } else {
+                p { class: "text-sm text-muted-foreground", "Project activity has not been checked yet." }
+            }
+        }
+        div { class: "mt-3 flex flex-wrap items-center gap-4 text-sm text-muted-foreground",
+            LiveCount { game_id }
+            {keyed(rsx! { StarButton { key: "{star_key}", port_id, count: star_count } })}
         }
 
         div { class: "{CARD_SURFACE} mt-6 flex flex-wrap items-center justify-between gap-4 p-4",
@@ -578,49 +607,31 @@ pub(crate) fn PortMainContent(
             AboutPort { about, repo_url: port.repo_url.clone() }
         }
 
-        if let Some(m) = port.maintenance {
-            Section { heading: "Maintenance".to_string(), class: "mt-12".to_string(),
-                MaintenancePanel { maintenance: m, weekly_commits: d.weekly_commits.clone() }
-            }
-        }
-
-        if requirements.is_some() || !about_requirements.is_empty() {
-            Section { heading: "System requirements".to_string(), class: "mt-12".to_string(),
-                div { class: "flex flex-col gap-4",
-                    if !about_requirements.is_empty() {
-                        ul { class: "flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted-foreground",
-                            for item in about_requirements.clone() {
-                                li { "{item}" }
-                            }
-                        }
-                    }
-                    if let Some(text) = requirements {
-                        p { class: "whitespace-pre-line leading-relaxed text-muted-foreground", "{text}" }
-                    }
-                }
-            }
-        }
-
-        if let Some(text) = description_text
-            && !has_about
-        {
-            Section { heading: "Repository description".to_string(), class: "mt-12".to_string(),
-                p { class: "whitespace-pre-line leading-relaxed", "{text}" }
-            }
-        }
-
-        if !other_ports.is_empty() {
-            Section { heading: other_title, class: "mt-12".to_string(),
-                ul { class: "grid gap-4 md:grid-cols-2",
-                    for other in other_ports {
-                        {
-                            let key = format!("{}-{}", other.id, other.star_count);
-                            rsx! { li { key: "{key}", PortCardView { port: other } } }
+        if !has_about {
+            Section { heading: "About this port".to_string(), class: "mt-12".to_string(),
+                if let Some(text) = description_text {
+                    p { class: "max-w-3xl whitespace-pre-line leading-relaxed", "{text}" }
+                } else {
+                    p { class: "max-w-3xl leading-relaxed",
+                        "{port.name} is a {port.kind_label.to_lowercase()} of {game.name}. "
+                        if port.kind == "static_recomp" {
+                            "Static recompilation translates the original game's machine code to run natively on a new system."
+                        } else if port.kind == "decompilation" {
+                            "This project reconstructs the original source code. It is not a playable native port."
+                        } else {
+                            "The project's supported systems and release status are listed above. Check its documentation for features and known limitations."
                         }
                     }
                 }
             }
         }
+        div { class: "mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm",
+            if let Some(url) = homepage {
+                ExternalLink { url, class: TEXT_LINK.to_string(), "Project website" }
+            }
+            Link { to: crate::routes::Route::EditPortPage { port_id: port.id }, class: TEXT_LINK, "Suggest an edit" }
+        }
+
     }
 }
 

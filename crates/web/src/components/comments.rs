@@ -5,12 +5,12 @@ use dioxus::prelude::*;
 use recomphub_shared::TargetPlatform;
 use recomphub_shared::dto::{CommentDto, CommentQuery, CommentSort, RatingSummary};
 
-use super::icons::{ImageIcon, StarIcon, YoutubeIcon};
+use super::icons::{ImageIcon, StarIcon};
 use super::picture::Picture;
 use super::styles::{
-    BADGE, BADGE_DESTRUCTIVE, BADGE_OUTLINE, BADGE_SECONDARY, BUTTON, BUTTON_GHOST, BUTTON_LINK,
-    BUTTON_MD, BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM, CARD_SURFACE, H2, INPUT, LABEL, TAB,
-    TAB_ACTIVE, TABS_LIST, TEXTAREA,
+    BADGE, BADGE_DESTRUCTIVE, BADGE_OUTLINE, BADGE_SECONDARY, BUTTON, BUTTON_LINK, BUTTON_MD,
+    BUTTON_OUTLINE, BUTTON_SECONDARY, BUTTON_SM, CARD_SURFACE, H2, INPUT, LABEL, TAB, TAB_ACTIVE,
+    TABS_LIST, TEXTAREA,
 };
 use super::time::RelativeTime;
 use super::ui::{EmptyState, ExternalLink, LoginPrompt, initials_of, target_label};
@@ -47,7 +47,6 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let mut generation = use_signal(|| 0u64);
 
     let mut draft = use_signal(String::new);
-    let mut target = use_signal(String::new);
     let mut posting = use_signal(|| false);
     let mut post_error = use_signal(|| None::<String>);
     let mut screenshot_name = use_signal(|| None::<String>);
@@ -55,7 +54,6 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let mut screenshot_error = use_signal(|| None::<String>);
     let mut screenshot_busy = use_signal(|| false);
     let mut video_url = use_signal(String::new);
-    let mut show_video_input = use_signal(|| false);
 
     // Load the viewer's own rating once the viewer is known.
     use_effect(move || {
@@ -186,12 +184,6 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
         evt.prevent_default();
         let body = draft();
         let has_body = !body.trim().is_empty();
-        let tested = target();
-        let tested = if tested.is_empty() {
-            None
-        } else {
-            Some(tested)
-        };
         let screenshot = screenshot_name().zip(screenshot_data());
         let video = video_url();
         let video = if video.trim().is_empty() {
@@ -210,10 +202,9 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
             // A comment with no text but an attachment is allowed: the server requires text in
             // a comment, so when there is none, only the attachments are submitted.
             let comment_ok = if has_body {
-                match api::create_comment(port_id, body, tested).await {
+                match api::create_comment(port_id, body, None).await {
                     Ok(_) => {
                         draft.set(String::new());
-                        target.set(String::new());
                         true
                     }
                     Err(e) => {
@@ -281,7 +272,7 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
     let can_post = !posting()
         && !screenshot_busy()
         && draft_len <= MAX_BODY
-        && (draft_len > 0 || has_screenshot || has_video);
+        && (!draft().trim().is_empty() || has_screenshot || has_video);
     let sort_now = sort();
     let stars_now = stars();
 
@@ -332,94 +323,26 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
             }
 
             div { class: "flex flex-col gap-2",
-                h3 { class: "text-base font-semibold", "Share your experience" }
+                h3 { class: "text-base font-semibold", "Leave a comment" }
                 if ready && signed_in && online {
-                    form { class: "flex flex-col gap-2 rounded-lg border p-3", onsubmit: post,
-                        div { class: "flex flex-wrap items-center justify-between gap-2",
-                            div {
-                                role: "radiogroup",
-                                "aria-label": "Your rating",
-                                class: "flex items-center gap-0.5",
-                                for n in 1..=5i16 {
-                                    label {
-                                        key: "{n}",
-                                        class: "inline-flex cursor-pointer rounded-sm p-0.5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
-                                        input {
-                                            r#type: "radio",
-                                            class: "sr-only",
-                                            name: "rate-{port_id}",
-                                            value: "{n}",
-                                            checked: mine == Some(n),
-                                            "aria-label": "Rate {n} out of 5",
-                                            onchange: move |_| rate(n),
-                                        }
-                                        StarIcon {
-                                            filled: mine.is_some_and(|m| m >= n),
-                                            class: if mine.is_some_and(|m| m >= n) { "size-5 text-warning" } else { "size-5 text-muted-foreground/30" },
-                                        }
-                                    }
-                                }
-                                if mine.is_some() {
-                                    button {
-                                        r#type: "button",
-                                        class: "{BUTTON} {BUTTON_LINK} {BUTTON_SM} px-1 text-xs",
-                                        onclick: clear_rating,
-                                        "Clear"
-                                    }
-                                }
-                            }
-                            select {
-                                class: "{INPUT} h-8 w-auto py-0 text-xs",
-                                "aria-label": "Tested on",
-                                value: "{target}",
-                                onchange: move |e| target.set(e.value()),
-                                option { value: "", "Tested on…" }
-                                for (slug, label) in TargetPlatform::ALL.iter().map(|p| (p.slug(), p.label())) {
-                                    option { key: "{slug}", value: "{slug}", "{label}" }
-                                }
-                            }
-                        }
+                    form { class: "flex flex-col gap-3", onsubmit: post,
                         textarea {
                             id: "comment-body-{port_id}",
                             "aria-label": "Your comment on {port_name}",
-                            class: "{TEXTAREA} min-h-20 resize-y border-0 p-0 shadow-none focus-visible:ring-0",
+                            class: "{TEXTAREA} min-h-20 resize-y",
                             rows: "3",
                             placeholder: "How does {port_name} run for you?",
                             value: "{draft}",
                             oninput: move |e| draft.set(e.value()),
                         }
-                        if let Some(name) = screenshot_name() {
-                            div { class: "flex w-fit items-center gap-1.5 rounded-full border px-2 py-1 text-xs text-muted-foreground",
-                                ImageIcon { class: "size-3.5" }
-                                span { "{name}" }
-                                button {
-                                    r#type: "button",
-                                    class: "text-muted-foreground hover:text-foreground",
-                                    "aria-label": "Remove the attached screenshot",
-                                    onclick: move |_| {
-                                        screenshot_name.set(None);
-                                        screenshot_data.set(None);
-                                    },
-                                    "×"
-                                }
+                        details { class: "text-sm",
+                            summary { class: "cursor-pointer text-muted-foreground hover:text-foreground",
+                                "Add a screenshot or video (optional)"
                             }
-                        }
-                        if show_video_input() {
-                            input {
-                                r#type: "url",
-                                class: "{INPUT} h-8 text-xs",
-                                placeholder: "https://www.youtube.com/watch?v=…",
-                                value: "{video_url}",
-                                oninput: move |e| video_url.set(e.value()),
-                            }
-                        }
-                        div { class: "flex flex-wrap items-center justify-between gap-2 border-t pt-2",
-                            div { class: "flex items-center gap-1",
-                                label {
-                                    class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM} size-8 cursor-pointer p-0",
-                                    "aria-label": "Attach a screenshot",
-                                    title: "Attach a screenshot",
+                            div { class: "mt-3 flex flex-col gap-3",
+                                label { class: "{BUTTON} {BUTTON_OUTLINE} {BUTTON_SM} w-fit cursor-pointer",
                                     ImageIcon { class: "size-4" }
+                                    "Choose screenshot"
                                     input {
                                         r#type: "file",
                                         accept: "image/*",
@@ -428,39 +351,92 @@ pub fn PortComments(port_id: i64, port_name: String, ratings: RatingSummary) -> 
                                         onchange: on_screenshot_change,
                                     }
                                 }
-                                button {
-                                    r#type: "button",
-                                    class: "{BUTTON} {BUTTON_GHOST} {BUTTON_SM} size-8 p-0",
-                                    "aria-label": "Add a gameplay video link",
-                                    title: "Add a gameplay video link",
-                                    onclick: move |_| show_video_input.set(!show_video_input()),
-                                    YoutubeIcon { class: "size-4" }
+                                if let Some(name) = screenshot_name() {
+                                    div { class: "flex w-fit items-center gap-1.5 rounded-full border px-2 py-1 text-xs text-muted-foreground",
+                                        ImageIcon { class: "size-3.5" }
+                                        span { "{name}" }
+                                        button {
+                                            r#type: "button",
+                                            class: "text-muted-foreground hover:text-foreground",
+                                            "aria-label": "Remove the attached screenshot",
+                                            onclick: move |_| {
+                                                screenshot_name.set(None);
+                                                screenshot_data.set(None);
+                                            },
+                                            "×"
+                                        }
+                                    }
+                                }
+                                input {
+                                    r#type: "url",
+                                    "aria-label": "Gameplay video URL (optional)",
+                                    class: "{INPUT}",
+                                    placeholder: "Gameplay video URL",
+                                    value: "{video_url}",
+                                    oninput: move |e| video_url.set(e.value()),
                                 }
                             }
-                            div { class: "flex items-center gap-2",
+                        }
+                        div { class: "flex flex-wrap items-center justify-end gap-2",
+                            if draft_len >= MAX_BODY - 200 {
                                 span { class: "text-xs tabular text-muted-foreground", "{draft_len}/{MAX_BODY}" }
-                                button {
-                                    r#type: "submit",
-                                    class: "{BUTTON} {BUTTON_SECONDARY} {BUTTON_SM}",
-                                    disabled: !can_post,
-                                    if posting() { "Posting" } else { "Post" }
-                                }
+                            }
+                            button {
+                                r#type: "submit",
+                                class: "{BUTTON} {BUTTON_SECONDARY} {BUTTON_SM}",
+                                disabled: !can_post,
+                                if posting() { "Posting" } else { "Post comment" }
                             }
                         }
                         if let Some(msg) = screenshot_error() {
-                            p { class: "text-xs text-destructive", "{msg}" }
-                        }
-                        if let Some(msg) = rating_error() {
                             p { class: "text-xs text-destructive", "{msg}" }
                         }
                         if let Some(msg) = post_error() {
                             p { class: "text-xs text-destructive", "{msg}" }
                         }
                     }
+                    div { class: "flex flex-wrap items-center gap-2",
+                        span { class: "text-sm text-muted-foreground", "Rate this port (optional)" }
+                        div {
+                            role: "radiogroup",
+                            "aria-label": "Your rating",
+                            class: "flex items-center gap-0.5",
+                            for n in 1..=5i16 {
+                                label {
+                                    key: "{n}",
+                                    class: "inline-flex cursor-pointer rounded-sm p-0.5 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                                    input {
+                                        r#type: "radio",
+                                        class: "sr-only",
+                                        name: "rate-{port_id}",
+                                        value: "{n}",
+                                        checked: mine == Some(n),
+                                        "aria-label": "Rate {n} out of 5",
+                                        onchange: move |_| rate(n),
+                                    }
+                                    StarIcon {
+                                        filled: mine.is_some_and(|m| m >= n),
+                                        class: if mine.is_some_and(|m| m >= n) { "size-5 text-warning" } else { "size-5 text-muted-foreground/30" },
+                                    }
+                                }
+                            }
+                        }
+                        if mine.is_some() {
+                            button {
+                                r#type: "button",
+                                class: "{BUTTON} {BUTTON_LINK} {BUTTON_SM} px-1 text-xs",
+                                onclick: clear_rating,
+                                "Clear rating"
+                            }
+                        }
+                        if let Some(msg) = rating_error() {
+                            p { class: "text-xs text-destructive", "{msg}" }
+                        }
+                    }
                 } else if ready && signed_in && !online {
                     p { class: "text-sm text-muted-foreground", "Account changes are disabled offline. Refresh your session before posting or rating." }
                 } else if ready {
-                    LoginPrompt { text: "Sign in to rate {port_name} and share your experience." }
+                    LoginPrompt { text: "Sign in to post a comment or rate {port_name}." }
                 }
             }
 

@@ -203,14 +203,20 @@ pub fn PlayabilityMeter(playability: String) -> Element {
 
 /// AI usage badge with a hover and focus tooltip listing the evidence.
 #[component]
-pub fn AiBadge(usage: String, tools: Vec<String>, evidence: Vec<AiEvidenceDto>) -> Element {
+pub fn AiBadge(
+    usage: String,
+    tools: Vec<String>,
+    evidence: Vec<AiEvidenceDto>,
+    #[props(default)] align_end: bool,
+) -> Element {
     let (_, cls) = ai_style(&usage);
     let text = ai_text(&usage, &tools);
+    let placement = if align_end { "right-0" } else { "left-0" };
     rsx! {
         span { class: "group relative inline-flex", tabindex: "0",
             span { class: "{BADGE} {cls}", "{text}" }
             if !evidence.is_empty() {
-                span { class: "{POPOVER} pointer-events-none invisible absolute bottom-full left-0 mb-2 w-64 p-3 text-xs opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100",
+                span { class: "{POPOVER} {placement} pointer-events-none invisible absolute bottom-full mb-2 w-64 p-3 text-xs opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100",
                     span { class: "mb-1 block font-medium", "Evidence" }
                     for ev in evidence {
                         span { class: "block text-muted-foreground", "{ev.signal}: {ev.detail}" }

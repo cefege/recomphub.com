@@ -260,7 +260,7 @@ pub fn game_offers(
         }
         offers.push(BuyOffer {
             kind: OfferKind::Original,
-            title: format!("Find a {} copy", row.label),
+            title: format!("{} edition", row.label),
             subtitle: game_name.to_string(),
             badge: row.badge.to_string(),
             url,

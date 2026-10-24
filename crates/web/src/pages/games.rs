@@ -451,7 +451,6 @@ fn GameBody(detail: GameDetail) -> Element {
     let shots = detail.screenshots.clone();
     let year_text = game.release_year.map(|y| y.to_string()).unwrap_or_default();
     let developer = detail.developer.clone().unwrap_or_default();
-    let summary = detail.summary.clone();
     let stars_total = detail.total_github_stars;
     let stars_text = counted(
         stars_total,
@@ -491,6 +490,16 @@ fn GameBody(detail: GameDetail) -> Element {
     let shot_alt = game.name.clone();
     let lightbox_alt = game.name.clone();
     let lightbox_shot = lightbox().and_then(|i| shots.get(i).cloned());
+    let approaches = [
+        ("static_recomp", "Static recompilation translates the original game's machine code into code that runs natively on a new system."),
+        ("decomp_port", "A decompilation port adapts reconstructed game source code to run on another system."),
+        ("source_port", "A source port adapts available game source code for another system."),
+        ("reimplementation", "An engine reimplementation replaces the original engine. Game-data requirements depend on the project."),
+        ("fan_remake", "A fan remake recreates the game. Its features and compatibility may differ from the original."),
+        ("native_layer", "A native compatibility layer connects the original game code to the new system's libraries and services."),
+    ]
+    .into_iter()
+    .filter(|(kind, _)| list.iter().any(|port| port.kind == *kind));
 
     rsx! {
         Seo { title, description, path, og_image, json_ld }
@@ -620,7 +629,15 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        BuyShelf { offers: detail.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports }
+        if !is_solo_port {
+            if has_ports && !detail.buy_offers.is_empty() {
+                p { class: "mt-8 text-sm text-muted-foreground",
+                    InternalLink { href: "#native-projects".to_string(), class: "font-medium underline underline-offset-4".to_string(), "Check your chosen project's requirements" }
+                    " before buying. Different ports can need different original editions."
+                }
+            }
+            BuyShelf { offers: detail.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports }
+        }
 
         if !videos.is_empty() && !is_solo_port {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
@@ -668,24 +685,41 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        if let Some(text) = summary {
-            Section { heading: "About".to_string(), class: "mt-12".to_string(),
-                p { class: "text-xs text-muted-foreground", "Game description supplied by IGDB." }
-                p { class: "mt-2 max-w-3xl leading-relaxed", "{text}" }
+        if has_ports && !is_solo_port {
+            Section { heading: "About the native projects".to_string(), class: "mt-12".to_string(),
+                div { class: "flex max-w-3xl flex-col gap-3 leading-relaxed text-muted-foreground",
+                    for (kind, explanation) in approaches {
+                        p { key: "{kind}", "{explanation}" }
+                    }
+                    p { "Supported systems, original-game requirements and available builds differ by project. Open a project's page for its setup and known limitations." }
+                }
+            }
+        } else if !has_ports {
+            Section { heading: "Porting status".to_string(), class: "mt-12".to_string(),
+                p { class: "max-w-3xl leading-relaxed text-muted-foreground",
+                    if detail.decompilations.is_empty() {
+                        "No native port or decompilation project is listed for {game.name}. You can request a port above or submit a project that is missing from the catalog."
+                    } else {
+                        "Source-reconstruction projects are listed above, but no native port is recorded for {game.name}. A decompilation is development work, not a playable download."
+                    }
+                }
             }
         }
 
         if !faqs.is_empty() {
             Section { heading: "Frequently asked questions".to_string(), class: "mt-12".to_string(),
-                p { class: "mb-3 text-xs text-muted-foreground", "Catalog details and generated FAQ answers are based on recorded project data. Playability labels are community-reported, not independently tested." }
-                dl {
+                div { class: "overflow-hidden rounded-lg border",
                     for (index, item) in faqs.iter().enumerate() {
-                        div { key: "{index}", class: "border-b py-4",
-                            dt { class: "text-sm font-medium", "{item.question}" }
-                            dd { class: "mt-2 text-sm leading-relaxed text-muted-foreground", "{item.answer}" }
+                        details { key: "{index}", class: "group border-b last:border-0",
+                            summary { class: "flex cursor-pointer list-none items-center justify-between gap-4 p-4 text-sm font-medium hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden",
+                                "{item.question}"
+                                span { class: "shrink-0 text-lg text-muted-foreground group-open:rotate-45", "aria-hidden": "true", "+" }
+                            }
+                            p { class: "px-4 pb-4 text-sm leading-relaxed text-muted-foreground", "{item.answer}" }
                         }
                     }
                 }
+                p { class: "mt-3 text-xs text-muted-foreground", "Answers reflect recorded project details. Playability is community-reported, not independently tested." }
             }
         }
 

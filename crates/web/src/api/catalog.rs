@@ -565,7 +565,7 @@ fn about_dto(row: port_descriptions::PortDescriptionRow) -> recomphub_shared::dt
         features: row.features,
         requirements: row.requirements,
         limitations: row.limitations,
-        setup: row.setup,
+        installation: row.installation.map(|installation| installation.0),
         generated_at: row.generated_at,
     }
 }
@@ -649,6 +649,26 @@ pub async fn port_detail(
         port_screenshots
     };
 
+    let source_platforms: Vec<(Option<&str>, &str)> = platform_rows
+        .iter()
+        .filter(|p| {
+            source_platform
+                .as_ref()
+                .is_none_or(|source| source.id == p.id)
+        })
+        .map(|p| (p.slug.as_deref(), p.name.as_str()))
+        .collect();
+    let has_pc_port = port
+        .targets
+        .iter()
+        .any(|t| matches!(t.as_str(), "windows" | "linux" | "macos"));
+    let buy_offers = recomphub_shared::shop::game_offers(
+        crate::server::config::get().amazon_tag.as_deref(),
+        &game.name,
+        &source_platforms,
+        has_pc_port,
+    );
+
     Ok(PortDetail {
         port,
         game: game_card,
@@ -666,6 +686,7 @@ pub async fn port_detail(
         videos,
         screenshots,
         weekly_commits,
+        buy_offers,
     })
 }
 

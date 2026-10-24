@@ -291,19 +291,34 @@ impl GithubClient {
             .unwrap_or_default();
         match list.into_iter().find(|r| !r.draft) {
             None => Ok(None),
-            Some(r) => Ok(Some((
-                ReleaseInfo {
-                    tag: r.tag_name,
-                    url: r.html_url,
-                    published_at: r.published_at.as_deref().map(parse_ts).transpose()?,
-                    prerelease: r.prerelease,
-                    assets: r.assets.into_iter().map(|a| a.name).collect(),
-                },
-                crate::describe::RawRelease {
-                    name: r.name,
-                    body: r.body,
-                },
-            ))),
+            Some(r) => {
+                let mut notes = String::with_capacity(
+                    r.body.as_ref().map_or(0, String::len) + r.html_url.len() + 256,
+                );
+                notes.push_str("Release page: ");
+                notes.push_str(&r.html_url);
+                notes.push_str("\nPublished release files:\n");
+                for asset in &r.assets {
+                    notes.push_str("- ");
+                    notes.push_str(&asset.name);
+                    notes.push('\n');
+                }
+                notes.push_str("\nRelease notes:\n");
+                notes.push_str(r.body.as_deref().unwrap_or_default());
+                Ok(Some((
+                    ReleaseInfo {
+                        tag: r.tag_name,
+                        url: r.html_url,
+                        published_at: r.published_at.as_deref().map(parse_ts).transpose()?,
+                        prerelease: r.prerelease,
+                        assets: r.assets.into_iter().map(|a| a.name).collect(),
+                    },
+                    crate::describe::RawRelease {
+                        name: r.name,
+                        body: Some(notes),
+                    },
+                )))
+            }
         }
     }
 
@@ -437,7 +452,7 @@ impl GithubClient {
         let readme = self
             .rest_raw(&format!("{base}/readme"), RAW, ABSENT)
             .await?
-            .map(|text| crate::describe::clean_markdown(&text, 12_000));
+            .map(|text| crate::describe::readme_excerpt(&text));
 
         let release = match self.latest_release(&base).await? {
             Some((info, text)) => {

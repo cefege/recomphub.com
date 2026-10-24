@@ -2,7 +2,8 @@
 //! generated description built from it. The generation itself lives in `recomphub-ingest`.
 
 use chrono::{DateTime, Utc};
-use sqlx::{FromRow, PgExecutor};
+use recomphub_shared::dto::InstallationGuides;
+use sqlx::{FromRow, PgExecutor, types::Json};
 
 use crate::DbResult;
 
@@ -70,7 +71,7 @@ pub struct Candidate {
     pub port_name: String,
     pub kind: String,
     pub game_name: String,
-    pub game_targets: Vec<String>,
+    pub targets: Vec<String>,
     pub platform_name: Option<String>,
     pub source_hash: Option<String>,
     pub describe_attempted_at: Option<DateTime<Utc>>,
@@ -83,7 +84,7 @@ pub struct Candidate {
 pub async fn candidates(ex: impl PgExecutor<'_>) -> DbResult<Vec<Candidate>> {
     Ok(sqlx::query_as::<_, Candidate>(
         "SELECT s.port_id, s.content_hash, p.name AS port_name, p.kind,
-                g.name AS game_name, g.targets AS game_targets,
+                g.name AS game_name, port_platforms(p) AS targets,
                 pl.name AS platform_name, d.source_hash, s.describe_attempted_at,
                 p.homepage_url, p.license
          FROM port_description_sources s
@@ -126,7 +127,7 @@ pub struct NewPortDescription {
     pub features: Vec<String>,
     pub requirements: Vec<String>,
     pub limitations: Vec<String>,
-    pub setup: Vec<String>,
+    pub installation: InstallationGuides,
     pub model: String,
     pub provider: String,
     pub source_hash: String,
@@ -142,7 +143,7 @@ pub struct PortDescriptionRow {
     pub features: Vec<String>,
     pub requirements: Vec<String>,
     pub limitations: Vec<String>,
-    pub setup: Vec<String>,
+    pub installation: Option<Json<InstallationGuides>>,
     pub model: String,
     pub provider: Option<String>,
     pub source_hash: String,
@@ -154,7 +155,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
     sqlx::query(
         "INSERT INTO port_descriptions
              (port_id, summary, technique, technique_note, features, requirements, limitations,
-              setup, model, provider, source_hash, generated_at)
+              installation, model, provider, source_hash, generated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
          ON CONFLICT (port_id) DO UPDATE SET
              summary = EXCLUDED.summary,
@@ -163,7 +164,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
              features = EXCLUDED.features,
              requirements = EXCLUDED.requirements,
              limitations = EXCLUDED.limitations,
-             setup = EXCLUDED.setup,
+             installation = EXCLUDED.installation,
              model = EXCLUDED.model,
              provider = EXCLUDED.provider,
              source_hash = EXCLUDED.source_hash,
@@ -176,7 +177,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
     .bind(&d.features)
     .bind(&d.requirements)
     .bind(&d.limitations)
-    .bind(&d.setup)
+    .bind(Json(&d.installation))
     .bind(&d.model)
     .bind(&d.provider)
     .bind(&d.source_hash)
@@ -189,7 +190,7 @@ pub async fn save(ex: impl PgExecutor<'_>, d: &NewPortDescription) -> DbResult<(
 pub async fn get(ex: impl PgExecutor<'_>, port_id: i64) -> DbResult<Option<PortDescriptionRow>> {
     Ok(sqlx::query_as::<_, PortDescriptionRow>(
         "SELECT port_id, summary, technique, technique_note, features, requirements, limitations,
-                setup, model, provider, source_hash, generated_at
+                installation, model, provider, source_hash, generated_at
          FROM port_descriptions WHERE port_id = $1",
     )
     .bind(port_id)
