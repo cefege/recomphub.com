@@ -169,6 +169,9 @@ pub struct GameDetail {
     /// deterministic one.
     #[serde(default)]
     pub faq: Vec<FaqItem>,
+    /// Amazon affiliate offers; empty when no associate tag is configured.
+    #[serde(default)]
+    pub buy_offers: Vec<crate::shop::BuyOffer>,
 }
 
 /// One question and the answer shown under it on a game page.

@@ -411,6 +411,7 @@ mod tests {
             total_github_stars: 0,
             live_viewers: 0,
             faq: vec![],
+            buy_offers: vec![],
         }
     }
 

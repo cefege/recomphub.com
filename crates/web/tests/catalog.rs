@@ -60,6 +60,16 @@ fn igdb(igdb_id: i64, name: &str, slug: &str, popularity: i32) -> IgdbGame {
 async fn catalog_endpoints_return_expected_status_and_order() {
     let pool = fresh_database().await;
     assert!(init_pool(pool.clone()).is_ok(), "pool initialised twice");
+    recomphub::server::config::install(recomphub::server::config::Config {
+        database_url: String::new(),
+        site_url: "http://localhost".into(),
+        media_dir: "./data/media".into(),
+        google_client_id: None,
+        google_client_secret: None,
+        github_token: None,
+        admin_emails: vec![],
+        amazon_tag: Some("funnybirthday-20".into()),
+    });
 
     sqlx::query(
         "INSERT INTO platforms (igdb_id, slug, name) VALUES (18, 'nes', 'Nintendo Entertainment System')",
@@ -140,6 +150,8 @@ async fn catalog_endpoints_return_expected_status_and_order() {
     assert_eq!(detail.game.name, "Alpha Quest");
     assert_eq!(detail.ports.len(), 1);
     assert_eq!(detail.ports[0].name, "Alpha Port");
+    assert!(detail.buy_offers[0].url.contains("tag=funnybirthday-20"));
+    assert!(detail.buy_offers[0].url.contains("k=Alpha%20Quest%20NES"));
 
     // Default sort is popularity; page 0 is treated as page 1.
     let page = catalog::games_index(query(0)).await.expect("index");

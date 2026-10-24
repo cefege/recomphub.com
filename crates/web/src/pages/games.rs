@@ -21,6 +21,7 @@ use crate::components::live::{LiveCount, LiveStore, use_live_watch};
 use crate::components::picture::Picture;
 use crate::components::report::ReportDialog;
 use crate::components::seo::{Seo, SiteUrl};
+use crate::components::shop::BuyShelf;
 use crate::components::styles::{
     BADGE, BADGE_SECONDARY, BUTTON, BUTTON_DISCORD, BUTTON_MD, BUTTON_OUTLINE, CARD_SURFACE, H1,
     H2, LEAD, TAB, TAB_ACTIVE, TABS_LIST,
@@ -618,6 +619,8 @@ fn GameBody(detail: GameDetail) -> Element {
                 }
             }
         }
+
+        BuyShelf { offers: detail.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports }
 
         if !videos.is_empty() && !is_solo_port {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),

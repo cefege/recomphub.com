@@ -45,6 +45,7 @@ async fn browser_approved_authorization_runs_over_loopback() {
         google_client_secret: None,
         github_token: None,
         admin_emails: vec![],
+        amazon_tag: None,
     });
     let app = with_site_routes(
         Router::new()

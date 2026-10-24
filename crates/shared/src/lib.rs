@@ -10,6 +10,7 @@ pub mod live;
 pub mod maintenance;
 pub mod release;
 pub mod seo;
+pub mod shop;
 pub mod text;
 
 pub use dto::*;
@@ -18,6 +19,7 @@ pub use launcher::*;
 pub use live::{ActivityItem, ClientMsg, LiveGame, PresenceSnapshotDto, ServerMsg};
 pub use maintenance::{MaintenanceInput, MaintenanceLevel, maintenance_level, maintenance_score};
 pub use release::{ReleaseInput, ReleaseState, release_state};
+pub use shop::{BuyOffer, OfferKind};
 pub use text::{normalize_title, slugify};
 
 /// The six major platforms every game should reach. Platform parity and the creators'

@@ -75,6 +75,9 @@ pub fn PrivacyPage() -> Element {
                     ". These choices do not necessarily remove ads or prevent all advertising-related data use."
                 }
             }
+            Section { heading: "Affiliate links".to_string(),
+                p { "RecompHub is a participant in the Amazon Services LLC Associates Program. Some game pages link to Amazon search results with an affiliate tag. If you buy through them, RecompHub may earn a commission at no extra cost to you. Amazon sets its own cookies when you visit it; see Amazon's privacy notice." }
+            }
             div { id: "privacy-choices", class: "scroll-mt-20",
                 Section { heading: "Your cookie and advertising choices".to_string(),
                     p { "Analytics and advertising have separate consent controls. For visitors covered by European consent requirements, advertising consent must be handled by a Google-certified consent manager; accepting analytics does not grant advertising consent." }

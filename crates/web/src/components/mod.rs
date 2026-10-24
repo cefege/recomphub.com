@@ -10,6 +10,7 @@ pub mod maintenance;
 pub mod picture;
 pub mod report;
 pub mod seo;
+pub mod shop;
 pub mod stats;
 pub mod styles;
 pub mod time;

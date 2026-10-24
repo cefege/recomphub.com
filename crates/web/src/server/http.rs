@@ -861,6 +861,7 @@ mod tests {
             google_client_secret: None,
             github_token: None,
             admin_emails: Vec::new(),
+            amazon_tag: None,
         });
         state::init_pool(pool.clone()).expect("test installs the only server pool");
 

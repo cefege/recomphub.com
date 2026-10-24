@@ -17,6 +17,8 @@ pub struct Config {
     pub github_token: Option<String>,
     /// Lowercased emails that receive the `admin` role on sign-in. Only verified emails count.
     pub admin_emails: Vec<String>,
+    /// Amazon Associates tag for affiliate links. Without it, no affiliate shelf is shown.
+    pub amazon_tag: Option<String>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -41,6 +43,7 @@ impl Config {
             google_client_secret: env_var("GOOGLE_OAUTH_CLIENT_SECRET"),
             github_token: env_var("GITHUB_TOKEN"),
             admin_emails,
+            amazon_tag: env_var("AMAZON_ASSOCIATE_TAG"),
         })
     }
 }

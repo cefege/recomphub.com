@@ -320,6 +320,21 @@ pub async fn game_detail(lookup: String) -> Result<GameDetail, ServerFnError> {
         .map_err(db_error)?;
     let videos = video_dtos(pool, video_rows).await?;
 
+    let has_pc_port = card
+        .targets
+        .iter()
+        .any(|t| matches!(t.as_str(), "windows" | "linux" | "macos"));
+    let platform_pairs: Vec<(Option<&str>, &str)> = platform_rows
+        .iter()
+        .map(|p| (p.slug.as_deref(), p.name.as_str()))
+        .collect();
+    let buy_offers = recomphub_shared::shop::game_offers(
+        crate::server::config::get().amazon_tag.as_deref(),
+        &game.name,
+        &platform_pairs,
+        has_pc_port,
+    );
+
     Ok(GameDetail {
         game: card,
         summary: game.summary.clone(),
@@ -338,6 +353,7 @@ pub async fn game_detail(lookup: String) -> Result<GameDetail, ServerFnError> {
         total_github_stars,
         live_viewers: crate::api::live::live_viewers(game.id),
         faq: game_faqs::items(pool, game.id).await.map_err(db_error)?,
+        buy_offers,
     })
 }
 

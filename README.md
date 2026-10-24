@@ -127,6 +127,10 @@ Google's certified consent message must be configured in the **AdSense account**
 
 Publishing the message requires authenticated account access. Until it is published and loads, the advertising settings control reports that it is unavailable; the repository does not contain an alternative certified CMP.
 
+### Affiliate links
+
+Game pages show a "Get the original game" shelf of Amazon search links tagged with `AMAZON_ASSOCIATE_TAG` (built server-side in `recomphub_shared::shop`). Searches come from the game title and original platforms; no per-game purchase records or manual link review are required. Game-copy searches appear before optional console and controller searches. The shelf supports touch scrolling, previous/next buttons when it overflows, and Left/Right/Home/End keys while focused. Navigation respects reduced-motion settings. No Amazon API, prices or product images are used. The Associate disclosure appears above the links, and `/privacy` explains the affiliate relationship. Links use amazon.com, and the shelf is hidden in the desktop app.
+
 ### Catalog review and copyright
 
 Imported game descriptions are attributed to IGDB. FAQ comparisons describe recorded targets and community playability labels, not independent testing or editorial recommendations. Generated FAQs use the `facts-v2:` source-hash prefix; older cached answers are excluded until the existing ingest job regenerates them. This cutover requires no migration or manual database write.
@@ -150,6 +154,7 @@ Copy `.env.example` to `.env` for local development. In production, these come f
 | `SECRETS_KEY` | 32 bytes, base64 (`openssl rand -base64 32`); encrypts AI provider credentials at rest. Web and workers need the same value |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID (Web application); the only sign-in method. `/auth/google` returns 503 without it. Redirect URI: `${SITE_URL}/auth/google/callback` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret |
+| `AMAZON_ASSOCIATE_TAG` | Amazon Associates store ID (amazon.com only); the game-page affiliate shelf is hidden when unset. Production uses `funnybirthday-20` |
 | `ADMIN_EMAILS` | comma-separated; a Google sign-in whose verified email is listed gets the admin role |
 | `RUST_LOG` | |
 | `DISCORD_BOT_TOKEN` | Discord bot token for the one-shot `discord-setup` command; grants the bot API access to configure the RecompHub server |
