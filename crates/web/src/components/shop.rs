@@ -37,7 +37,7 @@ pub fn BuyShelf(
         };
         let initials = initials_of(&game_name);
         rsx! {
-            div { id: "buy-original",
+            div { key: "{game_name}", id: "buy-original",
                 Section { heading: "Get the original game".to_string(), class: "mt-12".to_string(),
                     p { class: "mb-3 text-sm text-muted-foreground", "{intro}" }
                     p { class: "mb-3 text-sm text-muted-foreground", "{AMAZON_DISCLOSURE}" }
@@ -62,7 +62,6 @@ pub fn BuyShelf(
                         }
                     }
                     ul {
-                        key: "{game_name}",
                         id: "buy-original-offers",
                         class: "rail flex snap-x gap-4 overflow-x-auto pb-4",
                         tabindex: "0",
