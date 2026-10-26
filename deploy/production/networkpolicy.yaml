@@ -67,6 +67,7 @@ spec:
                   - worker-describe-ports
                   - worker-describe-games
                   - worker-stats-snapshot
+                  - worker-discord-announce
       ports:
         - protocol: TCP
           port: 5432
