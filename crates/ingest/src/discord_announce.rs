@@ -91,7 +91,10 @@ impl DiscordClient {
             kind: u8,
         }
         let response = self
-            .request(reqwest::Method::GET, &format!("/guilds/{GUILD_ID}/channels"))
+            .request(
+                reqwest::Method::GET,
+                &format!("/guilds/{GUILD_ID}/channels"),
+            )
             .send()
             .await
             .context("listing Discord channels")?;
@@ -424,7 +427,10 @@ mod tests {
 
         // Never run before: the baseline swallows history already in the table.
         let baseline = last_posted_id(&pool).await?;
-        assert_eq!(due(&pool, baseline, "https://recomphub.com").await?.len(), 0);
+        assert_eq!(
+            due(&pool, baseline, "https://recomphub.com").await?.len(),
+            0
+        );
 
         activity::insert(
             &pool,
