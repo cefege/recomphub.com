@@ -1,7 +1,9 @@
 //! Posts new published ports and releases to the Discord server's `#announcements` channel, so
 //! Discord members see the same signal the public RSS feed (`GET /feed.xml`,
 //! `crates/web/src/server/http.rs`) already shows on the website — without anyone checking
-//! either by hand. Titles and links match the feed exactly, so the two never disagree.
+//! either by hand. Titles and links match the feed exactly, so the two never disagree. Each
+//! posted message gets its own public reply thread, since `#announcements` itself is read-only
+//! for members (`discord-setup`'s channel configuration): threads are where discussion happens.
 //!
 //! Scheduled by the worker's `discord-announce` command. Separate from `discord-setup`, which
 //! only configures the server's channels and permissions once, by hand.
@@ -18,12 +20,16 @@ use recomphub_db::PgPool;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
+use tracing::warn;
 
 const API: &str = "https://discord.com/api/v10";
 const GUILD_ID: &str = "1561674685316472994";
 const CHANNEL_NAME: &str = "announcements";
 /// Discord permission bit for sending messages, matching `discord-setup`'s `SEND_MESSAGES`.
 const SEND_MESSAGES: u64 = 1 << 11;
+/// Discord permission bit for starting a public thread from a message, matching
+/// `discord-setup`'s `CREATE_PUBLIC_THREADS`.
+const CREATE_PUBLIC_THREADS: u64 = 1 << 35;
 /// Discord's "Blurple" brand color (https://discord.com/branding), matching the website's
 /// `BUTTON_DISCORD` Join Discord CTAs.
 const BRAND_COLOR: u32 = 0x5865F2;
@@ -31,6 +37,8 @@ const LAST_POSTED_KEY: &str = "discord_announce_last_posted_id";
 /// Messages sent per run. A long outage (job suspended, token revoked) then replays as one
 /// bounded burst instead of flooding the channel; the rest posts on the following runs.
 const MAX_PER_RUN: usize = 20;
+/// Discord's hard cap on thread names.
+const THREAD_NAME_MAX_CHARS: usize = 100;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Report {
@@ -102,23 +110,10 @@ impl DiscordClient {
     }
 
     /// `discord-setup` makes `#announcements` read-only for `@everyone`, so the bot needs its
-    /// own explicit allow overwrite to post there regardless of how it was invited. Idempotent;
-    /// safe to call every run.
-    async fn ensure_send_permission(&self, channel_id: &str) -> Result<()> {
-        #[derive(Deserialize)]
-        struct CurrentUser {
-            id: String,
-        }
-        let me: CurrentUser = self
-            .request(reqwest::Method::GET, "/users/@me")
-            .send()
-            .await
-            .context("fetching the bot's own user id")?
-            .error_for_status()
-            .context("fetching the bot's own user id")?
-            .json()
-            .await
-            .context("decoding the bot's own user")?;
+    /// own explicit allow overwrite to post there and to start the per-announcement reply
+    /// thread, regardless of how it was invited. Idempotent; safe to call every run.
+    async fn ensure_bot_permissions(&self, channel_id: &str) -> Result<()> {
+        let me = self.current_user().await?;
         let response = self
             .request(
                 reqwest::Method::PUT,
@@ -127,21 +122,38 @@ impl DiscordClient {
             .json(&json!({
                 "id": me.id,
                 "type": 1,
-                "allow": SEND_MESSAGES.to_string(),
+                "allow": (SEND_MESSAGES | CREATE_PUBLIC_THREADS).to_string(),
                 "deny": "0",
             }))
             .send()
             .await
-            .context("granting the bot send permission")?;
+            .context("granting the bot send and thread permissions")?;
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            bail!("granting the bot send permission failed ({status}): {body}");
+            bail!("granting the bot send and thread permissions failed ({status}): {body}");
         }
         Ok(())
     }
 
-    async fn post(&self, channel_id: &str, announcement: &Announcement) -> Result<()> {
+    async fn current_user(&self) -> Result<CurrentUser> {
+        self.request(reqwest::Method::GET, "/users/@me")
+            .send()
+            .await
+            .context("fetching the bot's own user id")?
+            .error_for_status()
+            .context("fetching the bot's own user id")?
+            .json()
+            .await
+            .context("decoding the bot's own user")
+    }
+
+    /// Posts the announcement and returns the new message's id, for `create_thread`.
+    async fn post(&self, channel_id: &str, announcement: &Announcement) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Message {
+            id: String,
+        }
         let body = json!({
             "embeds": [{
                 "title": announcement.title,
@@ -159,15 +171,44 @@ impl DiscordClient {
             .await
             .with_context(|| format!("posting activity {}", announcement.activity_id))?;
         let status = response.status();
+        let body = response.text().await.context("reading Discord response")?;
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
             bail!(
                 "posting activity {} failed ({status}): {body}",
                 announcement.activity_id
             );
         }
+        let message: Message =
+            serde_json::from_str(&body).context("decoding the posted message")?;
+        Ok(message.id)
+    }
+
+    /// Opens a public thread on the announcement message so members — who can't post directly
+    /// in the read-only channel — can reply there. Errors propagate to the caller, which treats
+    /// a failed thread as non-fatal: the announcement itself already posted successfully.
+    async fn create_thread(&self, channel_id: &str, message_id: &str, name: &str) -> Result<()> {
+        let name: String = name.chars().take(THREAD_NAME_MAX_CHARS).collect();
+        let response = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/channels/{channel_id}/messages/{message_id}/threads"),
+            )
+            .json(&json!({"name": name, "auto_archive_duration": 10080}))
+            .send()
+            .await
+            .context("creating a reply thread")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            bail!("creating a reply thread failed ({status}): {body}");
+        }
         Ok(())
     }
+}
+
+#[derive(Deserialize)]
+struct CurrentUser {
+    id: String,
 }
 
 /// The stored watermark, or the current activity high-water mark when the job has never run
@@ -252,7 +293,9 @@ pub async fn preview(pool: &PgPool, site: &str) -> Result<Vec<(String, String)>>
 }
 
 /// Posts every published port addition and release since the last run to `#announcements`, in
-/// order, advancing the watermark after each successful post.
+/// order, advancing the watermark after each successful post. Opens a reply thread on each
+/// posted message so members can discuss it; a failed thread does not fail the run, since the
+/// announcement itself already posted.
 pub async fn run(pool: &PgPool, discord: &DiscordClient, site: &str) -> Result<Report> {
     let after_id = last_posted_id(pool).await?;
     let mut announcements = due(pool, after_id, site).await?;
@@ -263,9 +306,19 @@ pub async fn run(pool: &PgPool, discord: &DiscordClient, site: &str) -> Result<R
     }
 
     let channel_id = discord.channel_id().await?;
-    discord.ensure_send_permission(&channel_id).await?;
+    discord.ensure_bot_permissions(&channel_id).await?;
     for announcement in &announcements {
-        discord.post(&channel_id, announcement).await?;
+        let message_id = discord.post(&channel_id, announcement).await?;
+        if let Err(error) = discord
+            .create_thread(&channel_id, &message_id, &announcement.title)
+            .await
+        {
+            warn!(
+                activity_id = announcement.activity_id,
+                error = %format!("{error:#}"),
+                "discord-announce: posted but failed to open a reply thread"
+            );
+        }
         set_last_posted_id(pool, announcement.activity_id).await?;
     }
     Ok(Report {
