@@ -11,8 +11,8 @@ use recomphub_db::secrets::Sealer;
 use recomphub_ingest::github::{self, GithubClient};
 use recomphub_ingest::igdb::{self, IgdbClient};
 use recomphub_ingest::{
-    best_sellers, candidate_triage, describe, digest, discover, game_faqs, importance, media,
-    media_discovery,
+    best_sellers, candidate_triage, describe, digest, discord_announce, discover, game_faqs,
+    importance, media, media_discovery,
 };
 use recomphub_worker::imports;
 use serde::Deserialize;
@@ -122,6 +122,13 @@ enum Command {
         /// instead of advancing it from the stored value.
         #[arg(long)]
         hours: Option<i64>,
+    },
+    /// Post new published port additions and releases since the last run to the Discord
+    /// server's #announcements channel, in the same wording and order as `/feed.xml`.
+    DiscordAnnounce {
+        /// Print what would post and leave the watermark alone, instead of calling Discord.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -341,6 +348,23 @@ async fn run(command: Command) -> Result<()> {
                         report.failed.len(),
                         report.failed.join("; ")
                     );
+                }
+            }
+        }
+        Command::DiscordAnnounce { dry_run } => {
+            let pool = pool().await?;
+            let site = site_url();
+            if dry_run {
+                for (title, url) in discord_announce::preview(&pool, &site).await? {
+                    println!("{title}\t{url}");
+                }
+            } else {
+                let discord = discord_announce::DiscordClient::from_env()?;
+                let report = discord_announce::run(&pool, &discord, &site).await?;
+                if report.truncated {
+                    warn!(?report, "discord-announce finished, more due next run");
+                } else {
+                    info!(?report, "discord-announce finished");
                 }
             }
         }
