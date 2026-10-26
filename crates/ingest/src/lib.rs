@@ -3,6 +3,7 @@ pub mod candidate_triage;
 pub mod describe;
 pub mod detect;
 pub mod digest;
+pub mod discord_announce;
 pub mod discover;
 pub mod display_name;
 pub mod funding;

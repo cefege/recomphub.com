@@ -14,6 +14,8 @@ use serde_json::json;
 const API: &str = "https://discord.com/api/v10";
 const GUILD_ID: &str = "1561674685316472994";
 const SEND_MESSAGES: u64 = 1 << 11;
+const CREATE_PUBLIC_THREADS: u64 = 1 << 35;
+const SEND_MESSAGES_IN_THREADS: u64 = 1 << 38;
 const CATEGORY_NAME: &str = "COMMUNITY";
 /// Website CTA placements that get their own invite under `--placement-invites`.
 const INVITE_PLACEMENTS: &[&str] = &["header", "footer", "home", "listing"];
@@ -23,6 +25,9 @@ struct ChannelSpec {
     name: &'static str,
     topic: &'static str,
     read_only: bool,
+    /// Members can't post top-level here, but can create and reply in threads under each
+    /// message, so discord-announce's posts stay repliable without cluttering the channel.
+    allow_threads: bool,
 }
 
 const CHANNELS: &[ChannelSpec] = &[
@@ -30,26 +35,31 @@ const CHANNELS: &[ChannelSpec] = &[
         name: "welcome",
         topic: "Start here: be kind, do not share copyrighted game files or links, then say hello in #general.",
         read_only: true,
+        allow_threads: false,
     },
     ChannelSpec {
         name: "announcements",
-        topic: "Project news, releases, and events. Read-only; discuss updates in #general.",
+        topic: "Project news, releases, and events. Reply in a message's thread to discuss it.",
         read_only: true,
+        allow_threads: true,
     },
     ChannelSpec {
         name: "general",
         topic: "Ask questions, coordinate, and talk about recompiled and decompiled ports.",
         read_only: false,
+        allow_threads: false,
     },
     ChannelSpec {
         name: "showcase",
         topic: "Share ports, builds, progress, screenshots, demos, and useful links. One project per post.",
         read_only: false,
+        allow_threads: false,
     },
     ChannelSpec {
         name: "website-bugs",
         topic: "Report recomphub.com bugs. Include the page URL, expected and actual results, browser/device, and screenshots or console errors.",
         read_only: false,
+        allow_threads: false,
     },
 ];
 
@@ -457,11 +467,23 @@ async fn run(cli: Cli) -> Result<()> {
 
     for (spec, channel) in CHANNELS.iter().zip(&ordered_channels) {
         if spec.read_only {
+            let allow = if spec.allow_threads {
+                CREATE_PUBLIC_THREADS | SEND_MESSAGES_IN_THREADS
+            } else {
+                0
+            };
             if cli.dry_run {
-                println!("DENY SEND_MESSAGES to @everyone in #{}", spec.name);
+                if spec.allow_threads {
+                    println!(
+                        "DENY SEND_MESSAGES, ALLOW thread replies to @everyone in #{}",
+                        spec.name
+                    );
+                } else {
+                    println!("DENY SEND_MESSAGES to @everyone in #{}", spec.name);
+                }
             } else {
                 discord
-                    .overwrite(&channel.id, GUILD_ID, 0, SEND_MESSAGES)
+                    .overwrite(&channel.id, GUILD_ID, allow, SEND_MESSAGES)
                     .await?;
             }
         } else if cli.dry_run {
