@@ -22,6 +22,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::warn;
 
+use crate::media::MEDIA_RENDER_VERSION;
+
 const API: &str = "https://discord.com/api/v10";
 const GUILD_ID: &str = "1561674685316472994";
 const CHANNEL_NAME: &str = "announcements";
@@ -53,6 +55,8 @@ struct Announcement {
     activity_id: i64,
     title: String,
     url: String,
+    /// The port's first approved screenshot, or the game's cover when the port has none.
+    image_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -157,13 +161,15 @@ impl DiscordClient {
         struct Message {
             id: String,
         }
-        let body = json!({
-            "embeds": [{
-                "title": announcement.title,
-                "url": announcement.url,
-                "color": BRAND_COLOR,
-            }],
+        let mut embed = json!({
+            "title": announcement.title,
+            "url": announcement.url,
+            "color": BRAND_COLOR,
         });
+        if let Some(image_url) = &announcement.image_url {
+            embed["image"] = json!({"url": image_url});
+        }
+        let body = json!({"embeds": [embed]});
         let response = self
             .request(
                 reqwest::Method::POST,
@@ -254,29 +260,56 @@ fn title(kind: &str, version: Option<&str>, port_name: &str, game_name: &str) ->
     }
 }
 
-type ActivityRow = (i64, String, Option<String>, String, String, String, String);
+type ActivityRow = (
+    i64,
+    String,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+);
 
 /// Port additions and releases on published ports since `after_id`, oldest first. Same filter
 /// as `/feed.xml`.
 async fn due(pool: &PgPool, after_id: i64, site: &str) -> Result<Vec<Announcement>> {
     let rows = sqlx::query_as::<_, ActivityRow>(
-        "SELECT a.id, a.kind, a.data->>'version', g.slug, g.name, p.slug, p.name \
+        "SELECT a.id, a.kind, a.data->>'version', g.slug, g.name, p.slug, p.name, \
+                COALESCE(port_shot.public_filename, cover.public_filename) \
          FROM activity a \
          JOIN games g ON g.id = a.game_id \
          JOIN ports p ON p.id = a.port_id \
+         LEFT JOIN LATERAL ( \
+             SELECT m.public_filename FROM port_media pm JOIN media m ON m.id = pm.media_id \
+             WHERE pm.port_id = p.id AND pm.status = 'approved' AND m.status = 'ready' \
+               AND m.render_version >= $2 AND cardinality(m.widths) > 0 \
+               AND m.public_filename IS NOT NULL \
+             ORDER BY pm.position NULLS LAST, pm.created_at, pm.id LIMIT 1 \
+         ) port_shot ON true \
+         LEFT JOIN LATERAL ( \
+             SELECT m.public_filename FROM media m \
+             WHERE m.id = g.cover_media_id AND m.status = 'ready' \
+               AND m.render_version >= $2 AND cardinality(m.widths) > 0 \
+               AND m.public_filename IS NOT NULL \
+         ) cover ON true \
          WHERE a.kind IN ('port_added', 'release') AND p.status = 'published' AND a.id > $1 \
          ORDER BY a.id ASC",
     )
     .bind(after_id)
+    .bind(MEDIA_RENDER_VERSION)
     .fetch_all(pool)
     .await?;
     Ok(rows
         .into_iter()
         .map(
-            |(id, kind, version, game_slug, game_name, port_slug, port_name)| Announcement {
-                activity_id: id,
-                title: title(&kind, version.as_deref(), &port_name, &game_name),
-                url: format!("{site}/games/{game_slug}/{port_slug}"),
+            |(id, kind, version, game_slug, game_name, port_slug, port_name, image_filename)| {
+                Announcement {
+                    activity_id: id,
+                    title: title(&kind, version.as_deref(), &port_name, &game_name),
+                    url: format!("{site}/games/{game_slug}/{port_slug}"),
+                    image_url: image_filename.map(|filename| format!("{site}/media/{filename}")),
+                }
             },
         )
         .collect())
