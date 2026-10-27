@@ -582,7 +582,7 @@ pub async fn search_games(text: String) -> Result<Vec<GameChoice>, ServerFnError
             .collect();
         out.push(GameChoice {
             game_id: Some(g.id),
-            igdb_id: Some(g.igdb_id),
+            igdb_id: g.igdb_id,
             name: g.name,
             release_year: g.first_release_date.map(|d| d.year()),
             platforms,

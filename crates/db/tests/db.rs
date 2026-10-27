@@ -69,6 +69,39 @@ fn new_port(submitter: i64, payload: Value) -> NewSubmission {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn manual_games_get_unique_slugs_and_are_never_refreshed_from_igdb(
+    pool: PgPool,
+) -> DbResult<()> {
+    let synced = make_game(&pool, 9001, "Gods", "gods").await?;
+    sqlx::query("UPDATE games SET igdb_synced_at = now() - interval '60 days' WHERE id = $1")
+        .bind(synced)
+        .execute(&pool)
+        .await?;
+    let mut conn = pool.acquire().await?;
+    let manual = games::ManualGame {
+        name: "Gods".to_string(),
+        first_release_date: NaiveDate::from_ymd_opt(1991, 1, 1),
+        source_url: "https://example.org/catalog/gods".to_string(),
+        ..Default::default()
+    };
+    let first = games::insert_manual(&mut conn, &manual).await?;
+    let second = games::insert_manual(&mut conn, &manual).await?;
+
+    let first_row = games::get(&pool, first).await?;
+    assert_eq!(first_row.igdb_id, None);
+    assert_ne!(first_row.slug, games::get(&pool, synced).await?.slug);
+    assert_ne!(games::get(&pool, second).await?.slug, first_row.slug);
+    assert_eq!(games::stale_igdb_ids(&pool, 30).await?, vec![9001]);
+    let source: Option<String> =
+        sqlx::query_scalar("SELECT catalog_source_url FROM games WHERE id = $1")
+            .bind(first)
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(source.as_deref(), Some(manual.source_url.as_str()));
+    Ok(())
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn media_claims_recover_after_worker_disconnect_and_retry_later(
     pool: PgPool,
 ) -> DbResult<()> {

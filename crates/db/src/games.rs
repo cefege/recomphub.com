@@ -1,14 +1,16 @@
-//! Games: IGDB upserts, media links, listings, hubs, trending and search.
+//! Games: IGDB upserts, manually added games, media links, listings, hubs, trending and search.
 
 use crate::{DbError, DbResult, media};
 use chrono::{DateTime, NaiveDate, Utc};
+use recomphub_shared::slugify;
 use sqlx::{PgConnection, PgExecutor};
 
 /// A row of the `games` table. The `search` column is not mapped.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct GameRow {
     pub id: i64,
-    pub igdb_id: i64,
+    /// `None` for a game added manually because IGDB does not list it.
+    pub igdb_id: Option<i64>,
     pub slug: String,
     pub name: String,
     pub alt_names: Vec<String>,
@@ -86,6 +88,83 @@ pub async fn upsert_igdb(conn: &mut PgConnection, g: &IgdbGame) -> DbResult<i64>
     .fetch_one(&mut *conn)
     .await?;
     Ok(id)
+}
+
+/// An officially released game that IGDB does not list, entered from verified sources.
+#[derive(Debug, Clone, Default)]
+pub struct ManualGame {
+    pub name: String,
+    pub alt_names: Vec<String>,
+    pub summary: Option<String>,
+    pub first_release_date: Option<NaiveDate>,
+    pub developer: Option<String>,
+    pub publisher: Option<String>,
+    /// Source used to verify the game's identity and metadata.
+    pub source_url: String,
+    /// IGDB platform ids (`platforms.igdb_id`) of the original release.
+    pub platform_igdb_ids: Vec<i32>,
+}
+
+/// Inserts a game without an IGDB id, with a slug derived from its name that no other game
+/// uses. Returns the game id. IGDB refreshes never touch it (see [`stale_igdb_ids`]).
+pub async fn insert_manual(conn: &mut PgConnection, g: &ManualGame) -> DbResult<i64> {
+    let name = g.name.trim();
+    if name.is_empty() {
+        return Err(DbError::InvalidPayload("game name is empty".to_string()));
+    }
+    let source_url = g.source_url.trim();
+    if !(source_url.starts_with("https://") || source_url.starts_with("http://")) {
+        return Err(DbError::InvalidPayload(
+            "manual game needs a source URL".to_string(),
+        ));
+    }
+    let mut base = slugify(name);
+    if base.is_empty() {
+        base = "game".to_string();
+    }
+    let mut slug = base.clone();
+    let mut n = 2;
+    while sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM games WHERE slug = $1)")
+        .bind(&slug)
+        .fetch_one(&mut *conn)
+        .await?
+    {
+        slug = format!("{base}-{n}");
+        n += 1;
+    }
+    let id = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO games (slug, name, alt_names, summary, first_release_date, developer,
+                            publisher, catalog_source_url, search)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                 to_tsvector('simple', $2::text || ' ' || array_to_string($3::text[], ' ')))
+         RETURNING id",
+    )
+    .bind(&slug)
+    .bind(name)
+    .bind(&g.alt_names)
+    .bind(&g.summary)
+    .bind(g.first_release_date)
+    .bind(&g.developer)
+    .bind(&g.publisher)
+    .bind(source_url)
+    .fetch_one(&mut *conn)
+    .await?;
+    set_platforms(&mut *conn, id, g.platform_igdb_ids.clone()).await?;
+    Ok(id)
+}
+
+/// IGDB ids of games never synced or last synced more than `days` ago, oldest first. Manually
+/// added games have no IGDB id and are excluded.
+pub async fn stale_igdb_ids(ex: impl PgExecutor<'_>, days: i32) -> DbResult<Vec<i64>> {
+    Ok(sqlx::query_scalar(
+        "SELECT igdb_id FROM games
+         WHERE igdb_id IS NOT NULL
+           AND (igdb_synced_at IS NULL OR igdb_synced_at < now() - ($1::int * interval '1 day'))
+         ORDER BY igdb_synced_at NULLS FIRST, id",
+    )
+    .bind(days)
+    .fetch_all(ex)
+    .await?)
 }
 
 /// Replaces the game's platform links. Ids that have no `platforms` row are skipped.

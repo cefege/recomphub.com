@@ -561,14 +561,7 @@ pub async fn catalog_sync(pool: &PgPool, client: &IgdbClient) -> Result<CatalogR
         offset += PAGE_SIZE;
     }
 
-    let stale: Vec<i64> = sqlx::query_scalar(
-        "SELECT igdb_id FROM games
-         WHERE igdb_synced_at IS NULL OR igdb_synced_at < now() - ($1::int * interval '1 day')
-         ORDER BY igdb_synced_at NULLS FIRST, id",
-    )
-    .bind(STALE_AFTER_DAYS)
-    .fetch_all(pool)
-    .await?;
+    let stale = games::stale_igdb_ids(pool, STALE_AFTER_DAYS).await?;
     for chunk in stale.chunks(PAGE_SIZE as usize) {
         let batch = client.games_by_ids(chunk).await?;
         report.resynced += upsert_batch(pool, client, &batch).await?;
