@@ -134,6 +134,8 @@ Game and playable-port pages show a compact "Get the original game" purchase pan
 
 The purchase panel deliberately uses search links rather than a live Amazon product feed. It has no Amazon API dependency and does not load API credentials. Catalog cover art identifies the game, not a particular Amazon listing; neither availability nor compatibility is verified.
 
+On games with multiple native projects, the purchase panel appears immediately after the game header, before the project list. Adding projects does not push the Amazon actions farther down the page. Single-port pages keep the edition-specific purchase panel in Step 1; source-only projects do not gain a playable-install flow.
+
 ### Catalog review and copyright
 
 Game-page descriptions explain the listed native-project techniques instead of repeating the imported original-game synopsis. Port pages use existing generated project descriptions when available, or recorded repository text and catalog facts otherwise. Imported synopses remain in the catalog data but are not displayed as page descriptions. FAQ answers appear in independent, keyboard-operable disclosures; their comparisons describe recorded targets and community playability labels, not independent testing or editorial recommendations. Generated FAQs use the `facts-v2:` source-hash prefix; older cached answers are excluded until the existing ingest job regenerates them.

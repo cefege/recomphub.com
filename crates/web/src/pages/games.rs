@@ -563,6 +563,16 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
+        if has_ports && !is_solo_port {
+            if !detail.buy_offers.is_empty() {
+                p { class: "mt-8 text-sm text-muted-foreground",
+                    InternalLink { href: "#native-projects".to_string(), class: "font-medium underline underline-offset-4".to_string(), "Check your chosen project's requirements" }
+                    " before buying. Different ports can need different original editions."
+                }
+            }
+            BuyShelf { offers: detail.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports }
+        }
+
         if is_solo_port {
             div { class: "mt-12",
                 GameSolePort { port: list[0].clone() }
@@ -629,16 +639,9 @@ fn GameBody(detail: GameDetail) -> Element {
             }
         }
 
-        if !is_solo_port {
-            if has_ports && !detail.buy_offers.is_empty() {
-                p { class: "mt-8 text-sm text-muted-foreground",
-                    InternalLink { href: "#native-projects".to_string(), class: "font-medium underline underline-offset-4".to_string(), "Check your chosen project's requirements" }
-                    " before buying. Different ports can need different original editions."
-                }
-            }
+        if !has_ports {
             BuyShelf { offers: detail.buy_offers.clone(), game_name: game.name.clone(), cover: game.cover.clone(), has_ports }
         }
-
         if !videos.is_empty() && !is_solo_port {
             Section { heading: "Gameplay videos".to_string(), class: "mt-12".to_string(),
                 VideoPlayer { videos }
